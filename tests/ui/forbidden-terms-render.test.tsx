@@ -1,0 +1,89 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen, waitFor } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { DidLoginFlow } from "@/components/did/did-login-flow";
+import { ConnectWalletFlow } from "@/components/wallet/connect-wallet-flow";
+import { DashboardView } from "@/components/dashboard/dashboard-view";
+import { ExportView } from "@/components/export/export-view";
+import { DisclaimerFooter } from "@/components/ui/disclaimer-footer";
+import { createNormalizedEventFixtures } from "@/lib/mock/fixtures";
+import type { AuthClient } from "@/lib/ports/auth-client";
+import type { WalletPort } from "@/lib/ports/wallet-port";
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }));
+
+const forbidden = ["세액", "납부할 세금", "신고서"];
+const events = createNormalizedEventFixtures();
+const summary = { periodPnl: "-45000.00", computableEventCount: 14, taxableEventCount: 14, pendingReviewCount: 8, currency: "KRW", period: { from: "2025-01-01T00:00:00.000Z", to: "2025-01-25T00:00:00.000Z" } };
+
+const ports = vi.hoisted(() => ({
+  list: vi.fn(),
+  getSummary: vi.fn(),
+  reclassify: vi.fn(),
+  getById: vi.fn(),
+  getProof: vi.fn(),
+}));
+vi.mock("@/lib/composition-root.client", () => ({
+  eventRepository: { list: ports.list, reclassify: ports.reclassify, getById: ports.getById },
+  summaryProvider: { getSummary: ports.getSummary },
+  anchorProofProvider: { getProof: ports.getProof },
+  authClient: { requestNonce: vi.fn(), verify: vi.fn(), presentDid: vi.fn(), logout: vi.fn(), getSession: vi.fn() },
+}));
+
+function authClient(): AuthClient {
+  return {
+    requestNonce: vi.fn(),
+    verify: vi.fn(),
+    presentDid: vi.fn().mockResolvedValue({ countryCode: "KR", ruleset: { country: "KR", cost_basis: "per_address", badge_label: "KR 주소별" } }),
+    logout: vi.fn(),
+    getSession: vi.fn(),
+  } as unknown as AuthClient;
+}
+
+function walletPort(): WalletPort {
+  return {
+    connect: vi.fn().mockResolvedValue({ address: "0x1111111111111111111111111111111111111111", chainId: 1 }),
+    getAccount: () => null,
+    signMessage: vi.fn(),
+    subscribeConnection: () => () => undefined,
+  };
+}
+
+function renderAll() {
+  ports.list.mockResolvedValue({ items: events.map((event) => ({ event, version: 1 })), nextCursor: null });
+  ports.getSummary.mockResolvedValue(summary);
+  ports.getById.mockResolvedValue({ event: events[0], version: 1, override_history: [] });
+  ports.getProof.mockResolvedValue({ tx_hash: "0xabc", merkle_root: "0xdef", anchored_at: "2025-01-02T00:00:00.000Z", explorer_url: "https://example.test/tx/0xabc" });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={client}>
+      <DidLoginFlow authClient={authClient()} />
+      <ConnectWalletFlow walletPort={walletPort()} authClient={authClient()} />
+      <DashboardView />
+      <ExportView />
+      <DisclaimerFooter />
+    </QueryClientProvider>,
+  );
+}
+
+describe("forbidden terminology in rendered route surfaces", () => {
+  it("keeps prohibited terms out of every mock-backed surface", async () => {
+    renderAll();
+    // 비동기 표면(ExportView 증명 카드 포함)이 전부 채워진 뒤에 검사해야 은폐가 없다.
+    for (const surface of ["did-login", "wallet-connect", "dashboard-summary", "anchor-proof"]) {
+      await waitFor(() =>
+        expect(document.querySelector(`[data-surface="${surface}"] [data-testid="mock-provenance"]`)).not.toBeNull(),
+      );
+    }
+    await screen.findByText("거래 요약");
+    await screen.findByText(`${summary.taxableEventCount}건`);
+    await waitFor(() => expect(document.body.textContent ?? "").toContain("탐색기에서 보기"));
+    const text = document.body.textContent ?? "";
+    for (const term of forbidden) expect(text).not.toContain(term);
+    expect(text).toContain("예상 손익");
+    // 이 건수는 계산에 들어간 이벤트 수다. 과세 여부는 판정 그룹이 정한다.
+    expect(text).toContain("계산 대상 이벤트");
+    expect(text).not.toContain("과세 대상 이벤트");
+    expect(text).toContain("확인 필요");
+  });
+});
