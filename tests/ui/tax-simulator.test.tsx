@@ -1,0 +1,975 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { TaxSimulator } from "@/components/tax/tax-simulator";
+import { createTaxScenarioEvents } from "@/lib/mock/tax-fixtures";
+import { computeTaxEstimate } from "@/lib/tax/engine";
+import { listRuleSetSummaries } from "@/lib/tax/rulesets";
+import { taxEstimateSchema, ruleSetListSchema } from "@/lib/http/tax-dto";
+import { createNormalizedEventFixtures } from "@/lib/mock/fixtures";
+import { deriveTaxEvents } from "@/lib/tax/derive";
+import type { NormalizedEvent } from "@/lib/schema/normalized-event";
+import { MockTaxEngine } from "@/lib/mock/tax-engine";
+import type { TaxEstimateRequest } from "@/lib/ports/tax-engine";
+import { AMOUNT_KIND_LABEL, GROUP_SHORT_LABEL } from "@/components/ui/judgment-badge";
+import { formatFiat } from "@/lib/format";
+
+const ports = vi.hoisted(() => ({ listRuleSets: vi.fn(), estimate: vi.fn() }));
+
+vi.mock("@/lib/composition-root.client", () => ({
+  taxEngine: { listRuleSets: ports.listRuleSets, estimate: ports.estimate },
+}));
+
+// 어댑터 대신 실제 엔진을 통과시켜 DTO 계약까지 함께 검증한다.
+ports.listRuleSets.mockImplementation(async () => ruleSetListSchema.parse(listRuleSetSummaries()));
+// 더블이 source를 무시하면 요청은 지갑인데 응답은 시나리오가 된다.
+// wallet은 실제 어댑터를, scenario는 시나리오 엔진을 태워 두 경로를 갈라 둔다.
+const walletEngine = new MockTaxEngine(() => createNormalizedEventFixtures());
+const defaultEstimate = async (input: TaxEstimateRequest) =>
+  input.source === "wallet"
+    ? taxEstimateSchema.parse(await walletEngine.estimate(input))
+    : taxEstimateSchema.parse(computeTaxEstimate({ ...input, events: createTaxScenarioEvents() }));
+ports.estimate.mockImplementation(defaultEstimate);
+
+/**
+ * 화면 기본 과세연도는 "올해"다(진입 즉시 답).
+ * 시나리오 픽스처는 2025년 거래이므로, 테스트는 그 해를 명시적으로 고른 뒤 단언한다.
+ */
+async function renderSimulator() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const view = render(
+    <QueryClientProvider client={client}>
+      <TaxSimulator />
+    </QueryClientProvider>,
+  );
+  await selectTaxYear(2025);
+  // 락인된 기대치(1,015.44 등)는 데모 시나리오 픽스처의 값이다. 출처를 명시한다.
+  fireEvent.click(screen.getByRole("button", { name: "데모 시나리오" }));
+  await waitFor(() => expect(ports.estimate.mock.calls.at(-1)?.[0].source).toBe("scenario"));
+  return view;
+}
+
+async function selectTaxYear(year: number) {
+  const details = (await screen.findByText("계산 조건 바꾸기")).closest("details")!;
+  details.open = true;
+  fireEvent.click(screen.getByRole("button", { name: String(year) }));
+}
+
+// 어떤 테스트가 도중에 실패해도 다음 테스트의 전제를 오염시키지 않게 한다.
+// 영원히 pending인 구현이 새어나가면 이후 테스트가 전부 타임아웃한다.
+afterEach(() => {
+  ports.listRuleSets.mockReset();
+  ports.estimate.mockReset();
+  ports.listRuleSets.mockImplementation(async () => ruleSetListSchema.parse(listRuleSetSummaries()));
+  ports.estimate.mockImplementation(defaultEstimate);
+});
+
+describe("TaxSimulator", () => {
+  it("독일 룰셋의 확정 상태·면세분·부담 추정을 함께 보여준다", async () => {
+    await renderSimulator();
+
+    await screen.findByText("독일 · 2025");
+    // 항목별 확정 상태의 topic 배지로도 통과하던 전역 단언을 요약 카드로 좁힌다.
+    expect(within(screen.getByLabelText("계산 요약")).getByText("확정·시행중")).toBeInTheDocument();
+    expect(screen.getByText("1년 초과 보유 비과세분")).toBeInTheDocument();
+    expect(screen.getByTestId("estimated-charge").textContent).toContain("1,015.44");
+    expect(document.querySelector('[data-surface="tax-simulator"] [data-testid="mock-provenance"]')).not.toBeNull();
+  });
+
+  it("국가를 바꾸면 해당 룰셋으로 다시 계산한다", async () => {
+    await renderSimulator();
+    await screen.findByText("독일 · 2025");
+
+    await userEvent.click(screen.getByRole("button", { name: /인도/ }));
+
+    await screen.findByText("인도 · 2025");
+    expect(await screen.findByText("상계 불가로 무시된 손실")).toBeInTheDocument();
+    expect(screen.getByText(/실효 31.2%/)).toBeInTheDocument();
+  });
+
+  it("미확정 국가는 금액 대신 판단 필요 항목을 제시한다", async () => {
+    await renderSimulator();
+    await screen.findByText("독일 · 2025");
+
+    await userEvent.click(screen.getByRole("button", { name: /한국/ }));
+
+    await screen.findByText("한국 · 2025");
+    expect(screen.getByTestId("estimated-charge").textContent).toBe("산출 불가");
+    expect(within(screen.getByLabelText("계산 요약")).getByText("미확정")).toBeInTheDocument();
+    expect(screen.getByText("판단이 필요한 항목")).toBeInTheDocument();
+  });
+
+  it("한계세율 입력이 계산에 반영된다", async () => {
+    await renderSimulator();
+    await screen.findByText("독일 · 2025");
+
+    const slider = screen.getByLabelText(/한계세율/);
+    fireEvent.change(slider, { target: { value: "45" } });
+    // 드래그 중에는 화면 숫자만 따라간다.
+    await waitFor(() => expect(screen.getByText(/한계세율 45%/)).toBeInTheDocument());
+    // 손을 뗄 때 한 번만 계산에 반영한다.
+    fireEvent.pointerUp(slider);
+    await waitFor(() => {
+      const lastCall = ports.estimate.mock.calls.at(-1)?.[0];
+      expect(lastCall.profile.marginalRatePercent).toBe("45");
+      expect(lastCall.source).toBe("scenario");
+    });
+  });
+
+  it("기본 출처는 내 지갑이고 지갑 파생 한계가 화면에 온다", async () => {
+    // 더블이 source를 무시하면 요청은 지갑인데 응답은 시나리오가 된다.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TaxSimulator currentYear={2025} />
+      </QueryClientProvider>,
+    );
+    await screen.findByText("독일 · 2025");
+    expect(ports.estimate.mock.calls.at(-1)?.[0].source).toBe("wallet");
+
+    // 지갑 경로만 만들 수 있는 파생 한계가 실제로 도달한다.
+    const shaky = await screen.findByLabelText("흔들리는 것");
+    expect(shaky.textContent).toContain("계산에서 제외했습니다");
+    expect(shaky.textContent).toContain("가스비는");
+  });
+
+  it("금지 용어를 노출하지 않는다", async () => {
+    await renderSimulator();
+    await screen.findByText("독일 · 2025");
+    const text = document.body.textContent ?? "";
+    for (const term of ["세액", "납부할 세금", "신고서"]) expect(text).not.toContain(term);
+  });
+});
+
+describe("TaxSimulator 제외 배너", () => {
+  const base = createNormalizedEventFixtures()[0];
+
+  afterEach(() => {
+    ports.estimate.mockImplementation(defaultEstimate);
+  });
+
+  /**
+   * 주어진 지갑 이벤트로 **실제 어댑터 경로**(deriveTaxEvents + 한계 병합)를 태운다.
+   * source를 무시하는 더블을 쓰면 지갑 파생·제외가 통째로 검증되지 않는다.
+   */
+  async function renderWithWallet(events: NormalizedEvent[]) {
+    // 실제 어댑터를 그대로 쓴다 — 병합 규칙을 여기서 다시 쓰면 프로덕션에 없는 화면을 검증하게 된다.
+    // source를 강제하면 화면은 "데모 시나리오"인데 결과는 지갑이 되어,
+    // 화면이 거짓을 말하는 상태를 테스트가 통과시킨다. 요청의 source를 그대로 존중한다.
+    const engine = new MockTaxEngine(() => events);
+    ports.estimate.mockImplementation(async (input: TaxEstimateRequest) =>
+      taxEstimateSchema.parse(await engine.estimate(input)),
+    );
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const view = render(
+      <QueryClientProvider client={client}>
+        <TaxSimulator currentYear={2025} />
+      </QueryClientProvider>,
+    );
+    // 기본 출처(내 지갑)를 그대로 둔다.
+    await waitFor(() => expect(ports.estimate.mock.calls.at(-1)?.[0].source).toBe("wallet"));
+    return view;
+  }
+
+  it("답 → 왜 → 신뢰도 → 세부 → 설정 순서를 지킨다", async () => {
+    // "답이 설정보다 앞"만 보면 중간 순서가 뒤집혀도 통과한다.
+    // 흔들리는 지점이 계산 내역 뒤로 밀리면 신뢰도보다 세부가 먼저 오는 화면이 된다.
+    // 판정 행과 한계가 모두 있는 상태여야 순서를 잴 수 있다.
+    await renderWithWallet(createNormalizedEventFixtures());
+    await screen.findByLabelText("흔들리는 것");
+    await screen.findByLabelText("판정 그룹");
+
+    const order = [
+      screen.getByTestId("estimated-charge"),
+      screen.getByLabelText("판정 그룹"),
+      screen.getByLabelText("흔들리는 것"),
+      screen.getByLabelText("계산 내역"),
+      screen.getByText("계산 조건 바꾸기"),
+    ];
+    for (let i = 0; i < order.length - 1; i += 1) {
+      const relation = order[i].compareDocumentPosition(order[i + 1]);
+      expect(relation & Node.DOCUMENT_POSITION_FOLLOWING, `${i} → ${i + 1} 순서`).toBeTruthy();
+    }
+  });
+
+  it("화면이 고른 출처와 결과의 출처가 같다", async () => {
+    // 하네스가 source를 강제하면 화면은 "데모 시나리오"인데 결과는 지갑이 된다.
+    // 그 상태를 통과시키면 테스트가 거짓 화면을 승인하는 셈이다.
+    await renderWithWallet([{ ...base, id: "w1" }]);
+    const pressed = screen
+      .getAllByRole("button")
+      .filter((node) => node.getAttribute("aria-pressed") === "true")
+      .map((node) => node.textContent);
+    expect(pressed).toContain("내 지갑 이벤트");
+    expect(pressed).not.toContain("데모 시나리오");
+    expect(ports.estimate.mock.calls.at(-1)?.[0].source).toBe("wallet");
+  });
+
+  it("같은 문장을 두 섹션에서 반복하지 않는다", async () => {
+    // 수신만 있으면 기간 내 작업이 없어 한계 패널 자체가 숨는다(빈 답은 흔들 것이 없다).
+    // 처분을 하나 넣어 실제 계산이 있는 상태에서 한계 표기를 검증한다.
+    await renderWithWallet([
+      { ...base, id: "no-price", price_status: "UNKNOWN", fiat_value: null },
+      { ...base, id: "estimated", price_status: "ESTIMATED" },
+      { ...base, id: "sold", classification: "SEND", user_override: null },
+    ]);
+    const shaky = await screen.findByLabelText("흔들리는 것");
+    const grounds = screen.queryByLabelText("계산 근거");
+
+    const shakyText = shaky.textContent ?? "";
+    const groundsText = grounds?.textContent ?? "";
+    for (const sentence of ["계산에서 제외했습니다", "추정가(ESTIMATED)", "가스비는"]) {
+      // 문구가 사라져도 통과하던 조건부 검사를 없앤다.
+      expect(shakyText, sentence).toContain(sentence);
+      expect(groundsText, sentence).not.toContain(sentence);
+    }
+  });
+
+  it("흔들리는 지점을 영향 순으로 세우고 금액으로 말하지 않는다", async () => {
+    // 수신만 있으면 기간 내 작업이 없어 한계 패널 자체가 숨는다(빈 답은 흔들 것이 없다).
+    // 처분을 하나 넣어 실제 계산이 있는 상태에서 한계 표기를 검증한다.
+    await renderWithWallet([
+      { ...base, id: "no-price", price_status: "UNKNOWN", fiat_value: null },
+      { ...base, id: "estimated", price_status: "ESTIMATED" },
+      { ...base, id: "sold", classification: "SEND", user_override: null },
+    ]);
+    const section = await screen.findByLabelText("흔들리는 것");
+
+    expect(section.textContent).toContain("이 답이 흔들리는 지점");
+    // 답에서 빠진 것이 근사보다 먼저 온다 — 영향 순.
+    const labels = [...section.querySelectorAll("li span:first-child")].map((node) => node.textContent);
+    expect(labels.indexOf("답에서 빠짐")).toBeLessThan(labels.indexOf("근사"));
+    // 얼마나 달라지는지는 계산하지 않았다. 금액을 쓰면 지어낸 추정이 된다.
+    expect(section.textContent).not.toMatch(/[€$₩][\d,]/);
+    // 고치러 갈 동선이 있다.
+    expect(section.querySelector('a[href="/dashboard?tab=review"]')).not.toBeNull();
+  });
+
+  it("기간 밖 취득만 있으면 그 기간에 셀 것이 없다고 말한다", async () => {
+    // 엔진은 원가 추적 때문에 기간 밖 취득을 판정 행으로 남긴다.
+    // 그걸 세면 "계산할 거래 없음"이 안 걸리고, 옛 취득 금액이 "왜 이 금액인가"에 뜬다.
+    await renderWithWallet([{ ...base, id: "old-buy", block_timestamp: "2024-03-01T00:00:00.000Z" }]);
+    await selectTaxYear(2025);
+
+    await waitFor(() => expect(screen.getByTestId("estimated-charge")).toHaveTextContent("계산할 거래 없음"));
+    expect(screen.queryByLabelText("판정 그룹")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("계산 내역")).not.toBeInTheDocument();
+  });
+
+  it("확인이 필요한 이벤트 수를 사유를 단정하지 않고 보여준다", async () => {
+    // 가격 미확정 1건 + 수량 0 1건 — 사유가 다르므로 "가격·분류"로 단정하면 거짓이다.
+    await renderWithWallet([
+      { ...base, id: "no-price", price_status: "UNKNOWN", fiat_value: null },
+      { ...base, id: "zero-qty", raw_amount: "0" },
+    ]);
+    expect(await screen.findByText(/확인이 필요해 계산에서 빠진 이벤트 2건/)).toBeInTheDocument();
+  });
+
+  it("자기 지갑 간 이체만 있으면 확인 필요 배너를 띄우지 않는다", async () => {
+    await renderWithWallet([{ ...base, id: "internal", classification: "INTERNAL_TRANSFER" }]);
+    await screen.findByTestId("estimated-charge");
+    expect(screen.queryByText(/계산에서 빠진 이벤트/)).not.toBeInTheDocument();
+  });
+
+  it("중복 id는 첫 건이 계산되므로 확인 필요로 세지 않는다", async () => {
+    await renderWithWallet([
+      { ...base, id: "dup" },
+      { ...base, id: "dup" },
+    ]);
+    await screen.findByTestId("estimated-charge");
+    expect(screen.queryByText(/계산에서 빠진 이벤트/)).not.toBeInTheDocument();
+  });
+
+  it("'내 지갑 이벤트'를 고르면 wallet 출처로 요청하고 가정을 노출한다", async () => {
+    // 어댑터를 그대로 통과시켜 source 전환과 assumptions→notes 경로를 실제로 검증한다.
+    ports.estimate.mockImplementation(async (input: { country: string; taxYear: number; source?: string }) => {
+      if (input.source !== "wallet") {
+        return taxEstimateSchema.parse(computeTaxEstimate({ ...input, events: createTaxScenarioEvents() }));
+      }
+      const derived = deriveTaxEvents([
+        { ...base, id: "dup" },
+        { ...base, id: "dup" },
+      ]);
+      const estimate = computeTaxEstimate({
+        ...input,
+        events: derived.events,
+        excludedEventIds: derived.excludedEventIds,
+      });
+      return taxEstimateSchema.parse({ ...estimate, notes: [...estimate.notes, ...derived.assumptions] });
+    });
+
+    await renderSimulator();
+    await screen.findByTestId("estimated-charge");
+    await userEvent.click(screen.getByRole("button", { name: "내 지갑 이벤트" }));
+
+    await waitFor(() => {
+      const calls = ports.estimate.mock.calls.map(([input]) => input.source);
+      expect(calls).toContain("wallet");
+    });
+    fireEvent.click(screen.getByText("계산 근거와 가정"));
+    expect(await screen.findByText(/중복된 이벤트 id는 첫 건만 계산에 넘겼습니다/)).toBeInTheDocument();
+  });
+});
+
+describe("세금 탭이 답 우선 3계층인가", () => {
+  it("답이 계산 조건보다 먼저 나온다", async () => {
+    const { container } = await renderSimulator();
+    await screen.findByText("독일 · 2025");
+
+    // L1 답과 설정의 문서 순서를 비교한다. 설정이 먼저면 사용자는 답까지 스크롤해야 한다.
+    const answer = screen.getByTestId("estimated-charge");
+    const settings = screen.getByText("계산 조건 바꾸기");
+    const order = answer.compareDocumentPosition(settings);
+    expect(order & Node.DOCUMENT_POSITION_FOLLOWING, "답이 설정보다 앞에 있어야 한다").toBeTruthy();
+    void container;
+  });
+
+  it("과세연도는 주어진 연도를 쓰고 자체 시계를 읽지 않는다", async () => {
+    // 서버가 연도를 내려준다. 화면이 따로 시계를 읽으면 연말 자정에 SSR과 hydration이 갈린다.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TaxSimulator currentYear={2025} />
+      </QueryClientProvider>,
+    );
+    await screen.findByText("독일 · 2025");
+
+    const details = screen.getByText("계산 조건 바꾸기").closest("details")!;
+    details.open = true;
+    // 선택된 버튼이 주어진 연도여야 한다.
+    expect(screen.getByRole("button", { name: "2025" })).toHaveAttribute("aria-pressed", "true");
+    // 창도 같은 연도 기준이다 — 다음 해 버튼이 있으면 두 시계를 읽고 있다는 뜻.
+    expect(screen.queryByRole("button", { name: "2026" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "2022" })).toBeInTheDocument();
+  });
+
+  it("지난 해를 보면서 '올해'라고 하지 않는다", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TaxSimulator currentYear={2026} />
+      </QueryClientProvider>,
+    );
+    await screen.findByText("올해 세금");
+
+    await selectTaxYear(2025);
+    await screen.findByText("독일 · 2025");
+    // 헤더가 "올해"라고 남으면 지난 해 결과를 올해라고 단정하는 것이다.
+    expect(screen.getByText("2025년 세금")).toBeInTheDocument();
+    expect(screen.queryByText("올해 세금")).not.toBeInTheDocument();
+  });
+
+  it("다른 나라를 고르면 거주국 결과라고 하지 않는다", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TaxSimulator countryCode="DE" currentYear={2025} />
+      </QueryClientProvider>,
+    );
+    await screen.findByText("독일 · 2025");
+    expect(screen.getByText(/거주국 룰셋을 적용한 결과/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /미국/ }));
+    await screen.findByText(/미국 · 2025/);
+    expect(screen.getByText(/선택한 국가 룰셋을 적용한 결과/)).toBeInTheDocument();
+    expect(screen.queryByText(/거주국 룰셋을 적용한 결과/)).not.toBeInTheDocument();
+  });
+
+  it("거주국을 모르면 어느 나라도 거주국이라 하지 않는다", async () => {
+    // prop이 없으면 기본 국가(독일)를 열지만, 그게 이 사람의 거주국이라는 근거는 없다.
+    await renderSimulator();
+    await screen.findByText("독일 · 2025");
+    expect(screen.getByText(/선택한 국가 룰셋을 적용한 결과/)).toBeInTheDocument();
+    expect(screen.queryByText(/거주국 룰셋을 적용한 결과/)).not.toBeInTheDocument();
+  });
+
+  it("헤더가 실제 출처와 준비 상태를 말한다", async () => {
+    // 정적 문장으로 두면 데모를 지갑이라 하고, 아직 계산도 안 한 화면을 "적용한 결과"라 한다.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TaxSimulator countryCode="DE" currentYear={2025} />
+      </QueryClientProvider>,
+    );
+    // 기본은 내 지갑이다.
+    await screen.findByText("독일 · 2025");
+    expect(screen.getByText(/지갑 이력에 거주국 룰셋을 적용한 결과/)).toBeInTheDocument();
+
+    // 데모 시나리오로 바꾸면 헤더도 따라간다.
+    const details = screen.getByText("계산 조건 바꾸기").closest("details")!;
+    details.open = true;
+    fireEvent.click(screen.getByRole("button", { name: "데모 시나리오" }));
+    await waitFor(() => expect(screen.getByText(/데모 시나리오에 거주국 룰셋을 적용한 결과/)).toBeInTheDocument());
+    expect(screen.queryByText(/지갑 이력에 거주국 룰셋을 적용한 결과/)).not.toBeInTheDocument();
+  });
+
+  it("결과가 없으면 적용한 결과라고 하지 않는다", async () => {
+    ports.listRuleSets.mockImplementation(() => new Promise(() => {}));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TaxSimulator countryCode="DE" currentYear={2025} />
+      </QueryClientProvider>,
+    );
+    await screen.findByText("적용할 룰셋을 확인하는 중입니다. 아직 계산하지 않았습니다.");
+    // 아직 아무것도 계산하지 않았는데 "적용한 결과"라 하면 화면이 거짓을 말한다.
+    expect(document.body.textContent).not.toMatch(/적용한 결과입니다/);
+  });
+
+  it("출처를 바꾸는 순간 헤더와 금액이 다른 출처를 말하지 않는다", async () => {
+    // 헤더는 state에서, 금액은 result에서 온다. 둘의 시점이 갈리면 화면이 두 이야기를 한다.
+    let release!: () => void;
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TaxSimulator countryCode="DE" currentYear={2025} />
+      </QueryClientProvider>,
+    );
+    await screen.findByText("독일 · 2025");
+    expect(screen.getByText(/지갑 이력에 .*적용한 결과/)).toBeInTheDocument();
+
+    // 새 출처의 계산을 붙잡아 둔다.
+    ports.estimate.mockImplementation(() => new Promise((resolve) => { release = () => resolve(undefined as never); }));
+    const details = screen.getByText("계산 조건 바꾸기").closest("details")!;
+    details.open = true;
+    fireEvent.click(screen.getByRole("button", { name: "데모 시나리오" }));
+
+    // 헤더가 새 출처를 말하는 순간 금액은 이미 사라져 있어야 한다.
+    await waitFor(() => expect(screen.getByText(/데모 시나리오에/)).toBeInTheDocument());
+    expect(screen.queryByTestId("estimated-charge")).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/적용한 결과입니다/);
+    void release;
+  });
+
+  it("할인·공제분을 법적 면세라고 부르지 않는다", async () => {
+    // exemptGains는 독일 보유기간 면세뿐 아니라 호주 50% CGT 할인, 캐나다 inclusion 비포함분,
+    // 영국·이탈리아 연간 공제까지 담는다. 전부 "면세"라 하면 법적 처리를 잘못 단정한다.
+    await renderSimulator();
+    await screen.findByText("독일 · 2025");
+
+    for (const country of [/독일/, /호주/, /캐나다/, /영국/, /이탈리아/]) {
+      fireEvent.click(screen.getByRole("button", { name: country }));
+      await waitFor(() => expect(screen.getByLabelText("계산 요약")).toBeInTheDocument());
+      const summary = screen.getByLabelText("계산 요약");
+      expect(summary.textContent, String(country)).toContain("과세표준 제외");
+      // 중립 라벨이 법적 사유를 지우면 안 된다 — 상위 범주임을 밝힌다.
+      expect(summary.textContent, String(country)).toContain("면세·할인·공제 합계");
+      expect(summary.textContent, String(country)).not.toContain("비과세·면세");
+    }
+  });
+
+  it("제외액이 0인 나라에는 할인·공제가 있는 것처럼 암시하지 않는다", async () => {
+    // 인도는 flat 30% 분리과세라 과세표준 제외가 구조적으로 0이다.
+    await renderSimulator();
+    await screen.findByText("독일 · 2025");
+    fireEvent.click(screen.getByRole("button", { name: /인도/ }));
+    await screen.findByText(/인도 · 2025/);
+
+    const summary = screen.getByLabelText("계산 요약");
+    expect(summary.textContent).toContain("과세표준 제외");
+    expect(summary.textContent).not.toContain("면세·할인·공제 합계");
+  });
+
+  it("계산이 실패하면 진행 중이라고 하지 않는다", async () => {
+    // result가 없는 이유는 셋이다 — 룰셋 못 찾음 / 실패 / 계산 중.
+    // 뭉뚱그리면 실패한 것을 "적용하는 중"이라고 거짓말한다.
+    ports.estimate.mockImplementation(async () => {
+      throw new Error("engine down");
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TaxSimulator countryCode="DE" currentYear={2025} />
+      </QueryClientProvider>,
+    );
+    await screen.findByText(/룰셋을 적용하지 못했습니다/);
+    expect(document.body.textContent).not.toMatch(/적용하는 중입니다/);
+    expect(document.body.textContent).not.toMatch(/적용한 결과입니다/);
+  });
+
+  it("이월 손실을 어느 방향으로 넘기는지 정확히 말한다", async () => {
+    // 엔진의 lossCarryforward는 이번 기간에서 다 쓰지 못해 **다음** 기간으로 넘길 손실이다.
+    await renderSimulator();
+    await screen.findByText("독일 · 2025");
+    const estimate = computeTaxEstimate({ country: "DE", taxYear: 2025, events: createTaxScenarioEvents() });
+    // 조건부 return을 두면 픽스처가 바뀌는 순간 이 계약이 조용히 검증되지 않는다.
+    expect(estimate.lossCarryforward).not.toBe("0");
+
+    expect(screen.getByText(/다음 기간으로 넘길 손실/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/이전 기간에서 넘어온/);
+  });
+
+  it("룰셋 목록이 비면 적용할 룰셋을 못 찾았다고 말한다", async () => {
+    ports.listRuleSets.mockImplementation(async () => ruleSetListSchema.parse([]));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TaxSimulator countryCode="DE" currentYear={2025} />
+      </QueryClientProvider>,
+    );
+    await screen.findByText("적용할 룰셋을 확인하지 못해 아직 계산하지 않았습니다.");
+    expect(document.body.textContent).not.toMatch(/적용한 결과입니다/);
+  });
+
+  it("계산 조건은 접혀 있다", async () => {
+    // 헬퍼는 연도를 고르려고 details를 연다. 기본 접힘 상태는 직접 렌더해서 본다.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TaxSimulator />
+      </QueryClientProvider>,
+    );
+    await screen.findByText("계산 조건 바꾸기");
+    // 12개 입력이 펼쳐져 있으면 첫 화면이 설정으로 찬다.
+    const details = screen.getByText("계산 조건 바꾸기").closest("details")!;
+    expect(details.open).toBe(false);
+  });
+
+  it("건수를 금액처럼 그리지 않는다", async () => {
+    await renderSimulator();
+    await screen.findByText("독일 · 2025");
+    fireEvent.click(screen.getByRole("button", { name: /한국/ }));
+    await screen.findByText("한국 · 2025");
+
+    const list = screen.getByLabelText("계산 내역");
+    // 한국 룰셋은 처분/수령 건수를 낸다. "₩5"가 아니라 "5건"이어야 한다.
+    const row = within(list).getByText("처분 건수").closest("li")!;
+    expect(row.textContent).toMatch(/\d+건/);
+    expect(row.textContent).not.toMatch(/₩/);
+  });
+
+  it("L2: 판정 그룹이 왜 이 금액인지 설명한다", async () => {
+    await renderSimulator();
+    await screen.findByText("독일 · 2025");
+    const section = screen.getByLabelText("판정 그룹");
+
+    // 독일 시나리오의 판정 그룹이 실제로 나온다.
+    expect(section.textContent).toMatch(/소득 · 과세/);
+    expect(section.textContent).toMatch(/비과세 · 1년 초과/);
+    expect(section.textContent).toMatch(/손실/);
+    // 각 그룹에 건수와 금액이 붙는다.
+    expect(section.textContent).toMatch(/\d+건/);
+    // 건별로 넘어갈 동선이 있다.
+    expect(section.textContent).toContain("어떤 거래가 어느 그룹인지 보기");
+  });
+
+  it("판정 그룹이 답을 이루는 금액을 실제로 보여준다", async () => {
+    await renderSimulator();
+    await screen.findByText("독일 · 2025");
+    const estimate = computeTaxEstimate({ country: "DE", taxYear: 2025, events: createTaxScenarioEvents() });
+    const section = screen.getByLabelText("판정 그룹");
+
+    // 조건부 단언은 그룹이 있으면 아무것도 검사하지 않는다. 항상 값을 대조한다.
+    expect(section.textContent).toContain(formatFiat(estimate.totals.incomeTotal, estimate.currency));
+    expect(section.textContent).toContain(formatFiat(estimate.totals.exemptGains, estimate.currency));
+    // 개수만 세면 그룹이 빠지거나 잘못 붙어도 통과한다. (그룹, 금액 종류) 쌍을 정확히 대조한다.
+    const expected = new Set(estimate.judgments.map((row) => `${row.group}|${row.amountKind}`));
+    const rendered = new Set(
+      [...section.querySelectorAll("li")].map(
+        (node) => `${node.getAttribute("data-group")}|${node.getAttribute("data-amount-kind")}`,
+      ),
+    );
+    expect(rendered).toEqual(expected);
+    // 각 줄이 사람이 읽을 라벨도 함께 보인다.
+    // 속성만 보면 보이는 배지 문구가 엉뚱해져도 통과한다.
+    for (const node of section.querySelectorAll("li")) {
+      const kind = node.getAttribute("data-amount-kind") as keyof typeof AMOUNT_KIND_LABEL;
+      const group = node.getAttribute("data-group") as keyof typeof GROUP_SHORT_LABEL;
+      expect(node.textContent, kind).toContain(AMOUNT_KIND_LABEL[kind]);
+      // 룰셋 고유 문구를 쓰더라도 그 그룹의 의미와 어긋나면 안 된다.
+      // 첫 span을 집으면 장식 span이 끼어들 때 엉뚱한 걸 읽고도 통과한다.
+      const badgeNode = node.querySelector(`[data-judgment-badge="${group}"]`);
+      expect(badgeNode, `${group} 배지 없음`).not.toBeNull();
+      const badge = badgeNode!.textContent ?? "";
+      const engineLabels = new Set(
+        estimate.judgments.filter((row) => row.group === group).map((row) => row.label),
+      );
+      expect([...engineLabels, GROUP_SHORT_LABEL[group]], `${group} badge=${badge}`).toContain(badge);
+    }
+    // 독일 시나리오는 과세 대상 손익이 0이므로 taxable 그룹이 없다.
+    expect(estimate.totals.taxableGains).toBe("0");
+  });
+
+  it("영국·호주의 비역년 과세기간을 화면이 그대로 보인다", async () => {
+    await renderSimulator();
+    await screen.findByText("독일 · 2025");
+
+    fireEvent.click(screen.getByRole("button", { name: /영국/ }));
+    await screen.findByText(/영국 · 2025/);
+    // 화면이 역년으로 되돌리거나 배타적 끝을 그대로 찍으면 하루 넓은 기간을 말한다.
+    expect(screen.getByLabelText("계산 요약")).toHaveTextContent("과세기간 2025-04-06 ~ 2026-04-05");
+
+    fireEvent.click(screen.getByRole("button", { name: /호주/ }));
+    await screen.findByText(/호주 · 2025/);
+    expect(screen.getByLabelText("계산 요약")).toHaveTextContent("과세기간 2025-07-01 ~ 2026-06-30");
+  });
+
+  it("국가를 바꿨다 돌아와도 슬라이더 입력이 남는다", async () => {
+    await renderSimulator();
+    await screen.findByText("독일 · 2025");
+    const details = screen.getByText("계산 조건 바꾸기").closest("details")!;
+    details.open = true;
+
+    fireEvent.change(screen.getByLabelText(/한계세율/), { target: { value: "45" } });
+    fireEvent.click(screen.getByRole("button", { name: /미국/ }));
+    await screen.findByText(/미국 · 2025/);
+    fireEvent.click(screen.getByRole("button", { name: /독일/ }));
+    await screen.findByText("독일 · 2025");
+
+    details.open = true;
+    // 사용자가 넣은 값을 국가 전환이 조용히 지우면 답이 달라진 걸 모른다.
+    expect(screen.getByLabelText(/한계세율/)).toHaveValue("45");
+  });
+
+  it("슬라이더는 드래그 중 재계산하지 않는다", async () => {
+    await renderSimulator();
+    await screen.findByText("독일 · 2025");
+    const slider = screen.getByLabelText(/한계세율/);
+    const before = ports.estimate.mock.calls.length;
+
+    // 드래그 한 번에 수십 번 발생하는 change. 매번 재계산하면 답이 깜빡이고 요청이 쏟아진다.
+    for (const value of ["36", "37", "38", "39", "40"]) {
+      fireEvent.change(slider, { target: { value } });
+    }
+    expect(ports.estimate.mock.calls.length).toBe(before);
+    expect(screen.getByText(/한계세율 40%/)).toBeInTheDocument();
+    expect(screen.getByText(/손을 떼면 40%로 다시 계산합니다/)).toBeInTheDocument();
+
+    fireEvent.pointerUp(slider);
+    await waitFor(() => expect(ports.estimate.mock.calls.length).toBe(before + 1));
+    await waitFor(() => expect(ports.estimate.mock.calls.at(-1)?.[0].profile.marginalRatePercent).toBe("40"));
+  });
+
+  it("이 국가가 쓰는 입력만 살리고 나머지는 그렇게 말한다", async () => {
+    await renderSimulator();
+    await screen.findByText("독일 · 2025");
+    const details = screen.getByText("계산 조건 바꾸기").closest("details")!;
+    details.open = true;
+
+    // 독일은 한계세율·이월결손금을 쓴다. 신고 구분은 쓰지 않는다.
+    expect(screen.getByLabelText(/한계세율/)).toBeInTheDocument();
+    expect(screen.getByLabelText("전년 이월결손금")).toBeInTheDocument();
+    // 안 쓰는 입력은 숨기지 않는다 — 숨기면 사용자가 자기 실수로 오해한다.
+    const filing = screen.getByText("신고 구분").closest("div")!;
+    expect(filing.textContent).toContain("이 국가에서 쓰지 않음");
+    expect(screen.queryByRole("button", { name: "부부합산" })).not.toBeInTheDocument();
+  });
+
+  it("룰셋 조회 실패를 진행 중이라고 말하지 않는다", async () => {
+    ports.listRuleSets.mockImplementation(async () => {
+      throw new Error("catalog down");
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TaxSimulator />
+      </QueryClientProvider>,
+    );
+
+    const details = (await screen.findByText("계산 조건 바꾸기")).closest("details")!;
+    details.open = true;
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("룰셋 목록을 불러오지 못했습니다."));
+    // 오류만 띄우고 나가는 문을 안 주면 막다른 화면이다.
+    expect(screen.getByRole("button", { name: "다시 시도" })).toBeInTheDocument();
+    const body = document.body.textContent ?? "";
+    expect(body).toContain("룰셋을 불러오지 못함");
+    expect(body).not.toContain("룰셋 확인 중");
+    expect(body).not.toContain("이 국가에서 쓰지 않음");
+
+    // 다시 시도가 실제로 회복시킨다.
+    ports.listRuleSets.mockImplementation(async () => ruleSetListSchema.parse(listRuleSetSummaries()));
+    fireEvent.click(screen.getByRole("button", { name: "다시 시도" }));
+    await screen.findByText(/독일 · /);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("목록이 비어 있으면 영원히 확인 중이라고 하지 않는다", async () => {
+    // 오류가 아니어도 답을 낼 수 없다. "확인 중"이라 하면 오지 않을 것을 기다리게 만든다.
+    ports.listRuleSets.mockImplementation(async () => ruleSetListSchema.parse([]));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TaxSimulator currentYear={2025} />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/룰셋이 없습니다/));
+    expect(screen.getByRole("button", { name: "다시 시도" })).toBeInTheDocument();
+    expect(screen.queryByText("적용할 룰셋을 확인하는 중입니다. 아직 계산하지 않았습니다.")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("estimated-charge")).not.toBeInTheDocument();
+  });
+
+  it("영국 세션(UK)도 룰셋(GB)을 찾는다", async () => {
+    // DID는 영국을 UK로 부르고 목록은 GB로 낸다. 정규화가 없으면 아무 룰셋도 못 찾는다.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TaxSimulator countryCode="UK" />
+      </QueryClientProvider>,
+    );
+    await selectTaxYear(2025);
+    await screen.findByText(/영국 · 2025/);
+    expect(screen.getByRole("button", { name: /영국/ })).toHaveAttribute("aria-pressed", "true");
+
+    const details = screen.getByText("계산 조건 바꾸기").closest("details")!;
+    details.open = true;
+    // GB는 지갑 외 소득과 디파이 소유권을 쓴다 — 룰셋을 찾았다는 증거.
+    expect(screen.getByLabelText("지갑 외 과세소득")).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("룰셋 확인 중");
+  });
+
+  it("룰셋을 못 받았으면 쓰지 않는다고 단정하지 않는다", async () => {
+    // selected가 없을 때 전부 "이 국가에서 쓰지 않음"으로 그리면 화면이 거짓을 말한다.
+    ports.listRuleSets.mockImplementation(() => new Promise(() => {}));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TaxSimulator />
+      </QueryClientProvider>,
+    );
+
+    const details = (await screen.findByText("계산 조건 바꾸기")).closest("details")!;
+    details.open = true;
+    const body = document.body.textContent ?? "";
+    expect(body).toContain("룰셋 확인 중");
+    expect(body).not.toContain("이 국가에서 쓰지 않음");
+
+    ports.listRuleSets.mockImplementation(async () => ruleSetListSchema.parse(listRuleSetSummaries()));
+  });
+
+  it("룰셋을 알기 전에는 계산을 요청하지 않는다", async () => {
+    // 먼저 물으면 첫 요청은 프로필 전체, 둘째는 걸러진 프로필로 나간다.
+    // 두 답이 같다는 보장은 계약에 기대는 것이고, 화면은 그 사이 한 번 깜빡인다.
+    let release!: () => void;
+    ports.listRuleSets.mockImplementation(
+      () => new Promise((resolve) => {
+        release = () => resolve(ruleSetListSchema.parse(listRuleSetSummaries()));
+      }),
+    );
+    const before = ports.estimate.mock.calls.length;
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TaxSimulator currentYear={2025} />
+      </QueryClientProvider>,
+    );
+    // 요청을 보낸 적이 없다 — "불러오는 중"이 아니라 "아직 계산하지 않았다"고 말해야 한다.
+    await screen.findByText("적용할 룰셋을 확인하는 중입니다. 아직 계산하지 않았습니다.");
+    expect(screen.queryByText("계산 결과를 불러오는 중입니다")).not.toBeInTheDocument();
+    expect(ports.estimate.mock.calls.length).toBe(before);
+
+    release();
+    await screen.findByText("독일 · 2025");
+    // 딱 한 번만 묻는다.
+    expect(ports.estimate.mock.calls.length).toBe(before + 1);
+    expect(Object.keys(ports.estimate.mock.calls.at(-1)![0].profile).sort()).toEqual([
+      "carriedLosses",
+      "marginalRatePercent",
+    ]);
+
+    ports.listRuleSets.mockImplementation(async () => ruleSetListSchema.parse(listRuleSetSummaries()));
+  });
+
+  it("룰셋 상태가 바뀌면 결과도 다시 받는다", async () => {
+    // 카탈로그만 바뀌고 결과가 그대로면 헤더는 옛 상태를, 아래 패널은 새 항목을 말한다.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TaxSimulator currentYear={2025} />
+      </QueryClientProvider>,
+    );
+    await screen.findByText("독일 · 2025");
+    const before = ports.estimate.mock.calls.length;
+
+    // 같은 프로필 필드, 확정 상태만 바뀐 카탈로그.
+    ports.listRuleSets.mockImplementation(async () =>
+      ruleSetListSchema.parse(
+        listRuleSetSummaries().map((ruleset) =>
+          ruleset.code === "DE" ? { ...ruleset, status: "PARTIAL" as const } : ruleset,
+        ),
+      ),
+    );
+    await client.invalidateQueries({ queryKey: ["tax", "rulesets"] });
+
+    await waitFor(() => expect(ports.estimate.mock.calls.length).toBeGreaterThan(before));
+  });
+
+  it("룰셋 메타데이터가 바뀌면 결과도 다시 받는다", async () => {
+    // 통화·계산방법이 바뀌었는데 옛 결과를 재사용하면 화면이 옛 문맥을 단정한다.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TaxSimulator currentYear={2025} />
+      </QueryClientProvider>,
+    );
+    await screen.findByText("독일 · 2025");
+    const before = ports.estimate.mock.calls.length;
+
+    ports.listRuleSets.mockImplementation(async () =>
+      ruleSetListSchema.parse(
+        listRuleSetSummaries().map((ruleset) =>
+          ruleset.code === "DE" ? { ...ruleset, method: "LIFO" as const } : ruleset,
+        ),
+      ),
+    );
+    await client.invalidateQueries({ queryKey: ["tax", "rulesets"] });
+    await waitFor(() => expect(ports.estimate.mock.calls.length).toBeGreaterThan(before));
+  });
+
+  it("쓰지 않는다고 말한 입력은 요청에도 넣지 않는다", async () => {
+    await renderSimulator();
+    await screen.findByText("독일 · 2025");
+
+    // 독일은 한계세율·이월결손금만 쓴다. 화면이 "쓰지 않음"이라 해놓고 값을 보내면
+    // 보이지 않는 값이 답을 바꿔도 아무도 모른다.
+    const sent = ports.estimate.mock.calls.at(-1)?.[0].profile;
+    expect(Object.keys(sent).sort()).toEqual(["carriedLosses", "marginalRatePercent"]);
+
+    fireEvent.click(screen.getByRole("button", { name: /미국/ }));
+    await screen.findByText(/미국 · 2025/);
+    await waitFor(() => {
+      const next = ports.estimate.mock.calls.at(-1)?.[0].profile;
+      expect(Object.keys(next).sort()).toEqual(["carriedLosses", "filingStatus", "otherIncome"]);
+    });
+  });
+
+  it("인도처럼 입력이 없는 국가는 빈 프로필을 보낸다", async () => {
+    await renderSimulator();
+    await screen.findByText("독일 · 2025");
+    fireEvent.click(screen.getByRole("button", { name: /인도/ }));
+    await screen.findByText(/인도 · 2025/);
+    await waitFor(() => {
+      expect(ports.estimate.mock.calls.at(-1)?.[0].profile).toEqual({});
+    });
+  });
+
+  it("미국으로 바꾸면 신고 구분이 살아난다", async () => {
+    await renderSimulator();
+    await screen.findByText("독일 · 2025");
+    fireEvent.click(screen.getByRole("button", { name: /미국/ }));
+    await screen.findByText(/미국 · 2025/);
+
+    const details = screen.getByText("계산 조건 바꾸기").closest("details")!;
+    details.open = true;
+    expect(screen.getByRole("button", { name: "부부합산" })).toBeInTheDocument();
+    // 반대로 독일이 쓰던 한계세율은 미국에서 쓰지 않는다.
+    const rate = screen.getByText("한계세율").closest("div")!;
+    expect(rate.textContent).toContain("이 국가에서 쓰지 않음");
+  });
+
+  it("이월결손금이 계산에 반영된다", async () => {
+    await renderSimulator();
+    await screen.findByText("독일 · 2025");
+    const details = screen.getByText("계산 조건 바꾸기").closest("details")!;
+    details.open = true;
+
+    fireEvent.change(screen.getByLabelText("전년 이월결손금"), { target: { value: "5000" } });
+    await waitFor(() => expect(ports.estimate.mock.calls.at(-1)?.[0].profile.carriedLosses).toBe("5000"));
+    // 비워도 엔진에는 항상 유효한 십진 문자열이 간다.
+    fireEvent.change(screen.getByLabelText("전년 이월결손금"), { target: { value: "" } });
+    await waitFor(() => expect(ports.estimate.mock.calls.at(-1)?.[0].profile.carriedLosses).toBe("0"));
+  });
+
+  it("미확정 국가는 확정 시 무엇이 되는지를 본문에 둔다", async () => {
+    await renderSimulator();
+    await screen.findByText("독일 · 2025");
+    fireEvent.click(screen.getByRole("button", { name: /한국/ }));
+    await screen.findByText("한국 · 2025");
+
+    const section = screen.getByLabelText("판단 필요 항목");
+    // 스위칭 벤치마크는 접힌 "계산 근거" 안이 아니라 판단 항목 옆에 있어야 한다.
+    expect(section.textContent).toMatch(/확정되면 →/);
+    expect(section.textContent).toMatch(/독일·미국 모델/);
+    expect(section.textContent).toMatch(/포르투갈/);
+    // 접힌 목록에는 남아 있지 않다 — 두 곳에 두면 어느 쪽이 최신인지 알 수 없다.
+    const grounds = screen.getByLabelText("계산 근거");
+    expect(grounds.textContent).not.toMatch(/스위칭 벤치마크/);
+  });
+
+  it("판단이 필요한 항목에서 해당 거래로 갈 수 있다", async () => {
+    await renderSimulator();
+    await screen.findByText("독일 · 2025");
+    fireEvent.click(screen.getByRole("button", { name: /한국/ }));
+    await screen.findByText("한국 · 2025");
+
+    const section = screen.getByLabelText("판단 필요 항목");
+    const link = [...section.querySelectorAll("a")].find((node) => /해당 이벤트 \d+건 보기/.test(node.textContent ?? ""));
+    expect(link).toBeDefined();
+    expect(link?.getAttribute("href")).toBe("/dashboard");
+  });
+
+  it("금액 종류가 다른 판정을 한 숫자로 더하지 않는다", async () => {
+    await renderSimulator();
+    await screen.findByText("독일 · 2025");
+    fireEvent.click(screen.getByRole("button", { name: /한국/ }));
+    await screen.findByText("한국 · 2025");
+
+    // 한국의 판정 보류에는 손익 행과 수령 FMV 행이 함께 있다.
+    // 둘을 더한 수는 아무것도 아니므로 줄을 나눠야 한다.
+    const section = screen.getByLabelText("판정 그룹");
+    const rows = [...section.querySelectorAll("li")].map((node) => node.textContent ?? "");
+    const pending = rows.filter((row) => row.includes("판정 보류"));
+    expect(pending.length).toBeGreaterThan(1);
+    expect(pending.some((row) => row.includes("손익"))).toBe(true);
+    expect(pending.some((row) => row.includes("수령 FMV"))).toBe(true);
+    // 섞어 더한 합계는 화면 어디에도 없어야 한다.
+    expect(section.textContent).not.toContain("13,130.5");
+  });
+
+  it("모든 판정 줄이 금액 종류를 밝힌다", async () => {
+    await renderSimulator();
+    await screen.findByText("독일 · 2025");
+    const section = screen.getByLabelText("판정 그룹");
+    for (const row of section.querySelectorAll("li")) {
+      const text = row.textContent ?? "";
+      // 종류 없이 금액만 있으면 무엇의 금액인지 알 수 없다.
+      expect(text, text).toMatch(/손익|취득가액|수령 FMV|승계 원가/);
+    }
+  });
+
+  it("셀 것이 없는 해는 0원이라고 말하지 않는다", async () => {
+    await renderSimulator();
+    await screen.findByText("독일 · 2025");
+    expect(screen.getByTestId("estimated-charge").textContent).toContain("1,015.44");
+
+    // 거래가 없는 해로 옮긴다. 취득 원가는 기간 밖에서도 남지만 그건 "이번 기간의 답"이 아니다.
+    await selectTaxYear(2023);
+    await waitFor(() => expect(screen.getByTestId("estimated-charge")).toHaveTextContent("계산할 거래 없음"));
+    const body = document.body.textContent ?? "";
+    // "€0.00"을 크게 띄우면 "올해는 낼 게 없구나"로 읽힌다.
+    expect(screen.getByTestId("estimated-charge").textContent).not.toMatch(/0\.00/);
+    expect(body).toContain("계산에 넣을 거래가 없습니다");
+    // 셀 것이 없다면서 옛 취득 그룹을 금액과 함께 보이면 화면이 두 이야기를 한다.
+    expect(screen.queryByLabelText("판정 그룹")).not.toBeInTheDocument();
+  });
+
+  it("흔들릴 것이 없으면 흔들린다고 말하지 않는다", async () => {
+    // 깨끗한 시나리오에서는 한계 패널 자체가 없어야 한다. 빈 패널을 띄우면 없는 불안을 만든다.
+    await renderSimulator();
+    await screen.findByText("독일 · 2025");
+    expect(screen.queryByLabelText("흔들리는 것")).not.toBeInTheDocument();
+  });
+
+  it("재조회 중에는 옛 금액을 새 조건의 답인 척하지 않는다", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TaxSimulator />
+      </QueryClientProvider>,
+    );
+    await selectTaxYear(2025);
+    fireEvent.click(screen.getByRole("button", { name: "데모 시나리오" }));
+    await screen.findByText("독일 · 2025");
+    await waitFor(() => expect(screen.getByTestId("estimated-charge").textContent).toContain("1,015.44"));
+
+    ports.estimate.mockImplementation(() => new Promise(() => {}));
+    void client.invalidateQueries({ queryKey: ["tax", "estimate"] });
+    await waitFor(() => expect(screen.queryByTestId("estimated-charge")).not.toBeInTheDocument());
+    expect(screen.getByText("계산 결과를 불러오는 중입니다")).toBeInTheDocument();
+    // 결과가 없어도 조건은 바꿀 수 있어야 한다. 조건이 결과 안에 있으면 막다른 화면이 된다.
+    expect(screen.getByText("계산 조건 바꾸기")).toBeInTheDocument();
+    expect(screen.getByLabelText(/한계세율/)).toBeInTheDocument();
+  });
+});
