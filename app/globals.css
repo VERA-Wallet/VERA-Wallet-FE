@@ -1,26 +1,68 @@
 @import "tailwindcss";
 
+@theme {
+  --font-sans:
+    "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Segoe UI",
+    "Malgun Gothic", "Noto Sans KR", Roboto, "Helvetica Neue", sans-serif;
+  --color-primary-50: #eff7ff;
+  --color-primary-100: #dbeeff;
+  --color-primary-200: #b9dcff;
+  --color-primary-300: #84c3ff;
+  --color-primary-400: #4da2ff;
+  --color-primary-500: #3182f6;
+  --color-primary-600: #1768d4;
+  --color-surface: #ffffff;
+  --color-canvas: #fafafa;
+  --color-ink: #18181b;
+  --color-muted: #71717a;
+  --color-receive: #16a34a;
+  --color-receive-soft: #dcfce7;
+  --color-dispose: #ea580c;
+  --color-dispose-soft: #ffedd5;
+  --color-neutral-event: #2563eb;
+  --color-neutral-event-soft: #dbeafe;
+  --radius-card: 1.25rem;
+  --radius-sheet: 1.5rem;
+  --shadow-card: 0 4px 16px rgb(24 24 27 / 0.06);
+  --shadow-sheet: 0 -12px 32px rgb(24 24 27 / 0.14);
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: var(--color-canvas);
+  --foreground: var(--color-ink);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
 }
 
 body {
+  margin: 0;
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 터치 타깃과 포커스 링을 전역으로 보장한다 — 개별 컴포넌트에서 빠뜨려도 접근성이 무너지지 않는다. */
+button,
+a,
+select,
+input,
+[role="tab"] {
+  &:focus-visible {
+    outline: 2px solid var(--color-primary-500);
+    outline-offset: 2px;
+    border-radius: 0.375rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
