@@ -1,0 +1,58 @@
+import "server-only";
+
+import { MockAuthStore } from "@/lib/mock/auth-store";
+import { getMockRuleset } from "@/lib/mock/rulesets";
+import { MockEventStore } from "@/lib/mock/store";
+import { MockTaxEngine } from "@/lib/mock/tax-engine";
+import type { AnchorProofProvider } from "@/lib/ports/anchor-proof-provider";
+import type { EventRepository } from "@/lib/ports/event-repository";
+import type { RuleSetRepository } from "@/lib/ports/ruleset-repository";
+import type { SummaryProvider } from "@/lib/ports/summary-provider";
+import type { TaxEnginePort } from "@/lib/ports/tax-engine";
+
+// mock 저장소 수명주기(로컬/테스트 단일 프로세스 전용):
+// - Route Handler와 RSC는 서로 다른 모듈 그래프로 번들될 수 있어 모듈 스코프 싱글턴이 분리된다.
+//   globalThis에 고정해 두 그래프가 같은 상태를 보게 한다.
+// - HMR: `??=`는 기존 인스턴스를 유지하므로 저장소 클래스나 fixture를 수정해도 dev 서버를 재시작하기 전까지
+//   기존 객체/데이터가 남는다(핫리로드로 초기화되지 않는다).
+// - 다중 프로세스/인스턴스: 프로세스마다 별도 메모리를 갖는다. 실제 배포에서는 이 in-memory 구성 대신
+//   공유 durable 저장소(백엔드/DB)로 교체해야 하며, v1 mock 단계 범위에서만 사용한다.
+const globalStores = globalThis as typeof globalThis & {
+  __verawalletEventStore?: MockEventStore;
+  __verawalletAuthStore?: MockAuthStore;
+};
+const store = (globalStores.__verawalletEventStore ??= new MockEventStore());
+const authStore = (globalStores.__verawalletAuthStore ??= new MockAuthStore());
+
+export const eventRepository: EventRepository = {
+  list: async (input) => store.list(input),
+  getById: async (id) => store.getById(id),
+  reclassify: async (id, input) => store.reclassify(id, input),
+};
+
+export const summaryProvider: SummaryProvider = {
+  getSummary: async (input) => store.summary(input),
+};
+
+export const ruleSetRepository: RuleSetRepository = {
+  getByCountry: async (country) => getMockRuleset(country),
+};
+
+export const taxEngine: TaxEnginePort = new MockTaxEngine(() => store.list({ limit: 100 }).items.map((item) => item.event));
+
+export const anchorProofProvider: AnchorProofProvider = {
+  getProof: async (eventId) => {
+    const event = store.getById(eventId)?.event;
+    return event
+      ? {
+          tx_hash: event.tx_hash,
+          merkle_root: `0x${event.id.replace("event-", "").padStart(64, "0")}`,
+          anchored_at: event.block_timestamp,
+          explorer_url: `https://etherscan.io/tx/${event.tx_hash}`,
+        }
+      : null;
+  },
+};
+
+export { store as mockEventStore };
+export { authStore };
