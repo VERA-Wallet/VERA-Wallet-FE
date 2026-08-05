@@ -39,3 +39,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+test-results/
+
+# GJC 런타임 상태·아티팩트 (소스가 아님)
+.gjc/
+.omc/
