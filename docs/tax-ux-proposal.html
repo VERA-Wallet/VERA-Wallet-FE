@@ -1,0 +1,1156 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>VeraWallet 세금 화면 재설계 제안</title>
+<style>
+  :root{
+    --primary:#3182f6; --primary-600:#1768d4; --primary-100:#dbeeff; --primary-50:#eff7ff;
+    --ink:#18181b; --muted:#71717a; --line:#e4e4e7; --canvas:#fafafa;
+    --amber-bg:#fffbeb; --amber-line:#fde68a; --amber-ink:#92400e;
+    --red-bg:#fef2f2; --red-line:#fecaca; --red-ink:#991b1b;
+    --ok-bg:#ecfdf5; --ok-ink:#065f46;
+    --card:1.25rem;
+    --shadow:0 4px 16px rgb(24 24 27 / .06);
+    font-family:"Pretendard Variable",Pretendard,-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Segoe UI","Malgun Gothic","Noto Sans KR",sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:#f4f4f5;color:var(--ink);-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1240px;margin:0 auto;padding:40px 24px 80px}
+  h1{font-size:30px;letter-spacing:-.02em;margin:0}
+  .sub{color:var(--muted);margin-top:10px;font-size:15px;line-height:1.6}
+  .principles{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:24px}
+  .principle{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px}
+  .principle b{display:block;font-size:13px;color:var(--primary-600)}
+  .principle p{margin:6px 0 0;font-size:13px;line-height:1.5;color:var(--muted)}
+
+  h2{font-size:19px;margin:44px 0 6px;letter-spacing:-.01em}
+  .h2sub{color:var(--muted);font-size:14px;margin:0 0 18px}
+
+  .flowcmp{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .flowbox{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px}
+  .flowbox.bad{border-color:var(--red-line);background:var(--red-bg)}
+  .flowbox.good{border-color:#a7f3d0;background:var(--ok-bg)}
+  .flowbox h3{margin:0 0 12px;font-size:14px}
+  .flowbox.bad h3{color:var(--red-ink)} .flowbox.good h3{color:var(--ok-ink)}
+  .proof{background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .ptab{width:100%;border-collapse:collapse;font-size:13px}
+  .ptab th{text-align:left;font-size:11.5px;color:var(--muted);font-weight:700;padding:10px 12px;border-bottom:1px solid var(--line);background:#fafafa}
+  .ptab td{padding:9px 12px;border-bottom:1px solid #f4f4f5;font-variant-numeric:tabular-nums}
+  .ptab td:first-child{font-family:ui-monospace,SFMono-Regular,monospace;font-size:11.5px;color:#52525b}
+  .ptab tr.hi{background:#fffbeb} .ptab tr.inv{background:#eff6ff}
+  .ptab .pos{color:#065f46;font-weight:700} .ptab .neg{color:#9f1239;font-weight:700}
+  .ptab .zero{color:#a1a1aa;font-weight:800}
+  .ptab .chg{font-weight:800;color:#92400e}
+  .ptab .chg.neg{color:#1d4ed8}
+  .ptab .cmt{font-size:11.5px;color:var(--muted)}
+  .pconc{padding:14px;background:#fafafa;border-top:1px solid var(--line)}
+  .pconc p{margin:0 0 8px;font-size:13.5px;line-height:1.65}
+  .pconc p:last-child{margin:0}
+  .why4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:14px}
+  .why4 .w{background:#fff;border:1px solid var(--line);border-radius:12px;padding:13px}
+  .why4 .w b{font-size:13px} .why4 .w p{margin:6px 0 0;font-size:12.5px;line-height:1.6;color:#52525b}
+  .why4 .w.bad2{border-color:var(--red-line);background:var(--red-bg)}
+  .layers{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
+  .ly{background:#fff;border:1px solid var(--line);border-top:4px solid var(--primary);border-radius:12px;padding:13px}
+  .ly.l2{border-top-color:#60a5fa} .ly.l3{border-top-color:#a5b4fc}
+  .ly.d1{border-top-color:#f59e0b} .ly.d2{border-top-color:#10b981}
+  .ly .lb{display:inline-block;font-size:10.5px;font-weight:800;color:var(--muted);letter-spacing:.06em}
+  .ly b{display:block;font-size:13.5px;margin-top:4px}
+  .ly p{margin:6px 0 0;font-size:12.5px;line-height:1.6;color:#52525b}
+  .judge{border:1px solid var(--line);border-radius:14px;background:#fff;overflow:hidden}
+  .jrow{padding:12px 13px;border-bottom:1px solid #f4f4f5}
+  .jrow:last-child{border-bottom:0}
+  .jtop{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+  .jtop .a{font-size:14px;font-weight:800}
+  .jtop .g{font-size:14px;font-weight:800;font-variant-numeric:tabular-nums}
+  .jtop .g.pos{color:#047857} .jtop .g.neg{color:#be123c}
+  .jmeta{margin-top:4px;font-size:11.5px;color:var(--muted)}
+  .jtag{display:inline-flex;margin-top:7px;border-radius:999px;padding:3px 9px;font-size:11px;font-weight:800}
+  .jtag.free{background:#d1fae5;color:#065f46}
+  .jtag.tax{background:#fee2e2;color:#991b1b}
+  .jtag.carry{background:#e0e7ff;color:#3730a3}
+  .jtag.inc{background:#fef3c7;color:#92400e}
+  .jtag.ex{background:#f4f4f5;color:#71717a}
+  .jtag.acq{background:#f1f5f9;color:#334155;border:1px solid #cbd5e1}
+  .grp{display:flex;gap:6px;overflow-x:auto;padding:0 20px 6px;margin:0 -20px}
+  .grp button{flex:none;border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 11px;font-size:12px;font-weight:700;color:#52525b}
+  .grp button.on{background:#18181b;border-color:#18181b;color:#fff}
+  .bar{height:9px;border-radius:999px;background:#e4e4e7;overflow:hidden;margin-top:8px}
+  .bar i{display:block;height:100%;background:var(--primary)}
+  .bar i.warn{background:#f59e0b}
+  .cd{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid var(--line);border-radius:12px;padding:11px 12px;background:#fff;margin-bottom:8px}
+  .cd .l{font-size:13px;font-weight:700}
+  .cd .s{font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.5}
+  .cd .r{font-size:13px;font-weight:800;text-align:right;white-space:nowrap}
+  .cd.soon{border-color:#fcd34d;background:#fffbeb}
+  .ez{background:#fff;border:1px solid var(--line);border-radius:16px;padding:20px}
+  .ezhead{text-align:center;padding:8px 0 20px;border-bottom:1px solid var(--line);margin-bottom:18px}
+  .ezq{margin:0;font-size:24px;font-weight:800;letter-spacing:-.02em}
+  .eza{margin:10px 0 0;font-size:16px;color:#52525b}
+  .eza b{color:var(--primary-600)}
+  .ezgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .ezc{position:relative;border:1px solid var(--line);border-radius:14px;padding:16px;background:#fafafa}
+  .ezn{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:999px;background:var(--primary);color:#fff;font-size:13px;font-weight:800;margin-bottom:8px}
+  .ezc > b{display:block;font-size:15px;letter-spacing:-.01em}
+  .ezc p{margin:8px 0 0;font-size:14px;line-height:1.7;color:#52525b}
+  .ezc.no{background:var(--red-bg);border-color:var(--red-line)}
+  .ezc.ok{background:var(--ok-bg);border-color:#a7f3d0}
+  .ezshock{margin:16px 0;border:2px solid #f59e0b;background:#fffbeb;border-radius:14px;padding:18px}
+  .ezshock .t{margin:0 0 8px;font-size:16px;font-weight:800;color:#92400e}
+  .ezshock p{margin:0;font-size:14.5px;line-height:1.7;color:#3f3f46}
+  .ezshock ul{margin:10px 0 0;padding-left:20px}
+  .ezshock li{font-size:14.5px;line-height:1.85;color:#3f3f46}
+  .ezshock .c{margin-top:12px;padding-top:12px;border-top:1px solid #fde68a;font-weight:600;color:#92400e}
+  .ezbonus{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
+  .ezbonus>div{border:1px dashed var(--primary-200,#b9dcff);background:var(--primary-50);border-radius:14px;padding:16px}
+  .ezbonus > div > b{display:block;font-size:14.5px;color:var(--primary-600)}
+  .ezbonus p{margin:7px 0 0;font-size:14px;line-height:1.7;color:#52525b}
+  .steps{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .step{background:#fff;border:1px solid var(--line);border-radius:999px;padding:5px 11px;font-size:12.5px;font-weight:600}
+  .step.ans{background:var(--primary);border-color:var(--primary);color:#fff}
+  .arrow{color:#a1a1aa;font-size:12px}
+
+  .stage{display:grid;grid-template-columns:404px 1fr;gap:28px;align-items:start;margin-top:20px}
+  .tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+  .tab{border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 13px;font-size:13px;font-weight:700;cursor:pointer;color:#52525b}
+  .tab[aria-selected=true]{background:var(--ink);border-color:var(--ink);color:#fff}
+
+  .phone{width:390px;height:844px;background:var(--canvas);border:10px solid #18181b;border-radius:42px;overflow:hidden;position:relative;box-shadow:0 24px 60px rgb(24 24 27/.22)}
+  .phone .scroll{position:absolute;inset:0;overflow-y:auto;padding:22px 20px 4px}
+  .phone .scroll::-webkit-scrollbar{width:0}
+  .bottomdock{position:absolute;left:0;right:0;bottom:0;background:rgba(255,255,255,.97);border-top:1px solid var(--line);backdrop-filter:blur(8px)}
+  .nav{display:grid;grid-template-columns:repeat(3,1fr)}
+  .nav a{display:flex;flex-direction:column;align-items:center;gap:3px;padding:9px 0;font-size:11px;font-weight:700;color:#a1a1aa;text-decoration:none}
+  .nav a.on{color:var(--primary-600)}
+  .nav svg{width:19px;height:19px}
+  .disc{font-size:10.5px;color:#a1a1aa;padding:6px 18px 10px;display:flex;gap:8px}
+  .disc p{margin:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .disc span{font-weight:700;text-decoration:underline;flex:none}
+
+  /* phone content atoms */
+  .eyebrow{font-size:13px;font-weight:700;color:var(--primary)}
+  .h1p{font-size:26px;font-weight:800;letter-spacing:-.02em;margin:8px 0 0}
+  .period{font-size:13px;color:var(--muted);margin:5px 0 0}
+  .chip{display:inline-flex;align-items:center;border-radius:999px;padding:4px 9px;font-size:11px;font-weight:700}
+  .chip.mock{background:#f4f4f5;color:#71717a}
+  .chip.ok{background:#d1fae5;color:#065f46}
+  .chip.un{background:#e4e4e7;color:#3f3f46}
+  .chip.warn{background:#fef3c7;color:#92400e}
+  .chip.sch{background:#dbeafe;color:#1e40af}
+  .card{background:#fff;border:1px solid var(--line);border-radius:var(--card);padding:16px;box-shadow:var(--shadow)}
+  .answer{margin-top:16px;padding:18px}
+  .answer .lbl{font-size:13px;color:var(--muted)}
+  .answer .big{font-size:40px;font-weight:800;letter-spacing:-.03em;margin:4px 0 0;line-height:1.1}
+  .answer .big.na{font-size:28px;color:#71717a}
+  .answer .meta{margin:8px 0 0;font-size:12.5px;color:var(--muted);display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  .srcrow{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px;font-size:12px;color:var(--muted)}
+  .ghostbtn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:5px 9px;font-size:11.5px;font-weight:700;color:#52525b}
+
+  .sect{margin-top:22px}
+  .sect h3{font-size:15px;margin:0 0 3px}
+  .sect .note{font-size:12.5px;color:var(--muted);margin:0 0 10px}
+  .risk{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);border-radius:14px;padding:12px;background:#fff;margin-bottom:8px;text-decoration:none;color:inherit}
+  .risk.hi{border-color:var(--amber-line);background:var(--amber-bg)}
+  .risk .sev{flex:none;font-size:10px;font-weight:800;border-radius:6px;padding:3px 6px;background:#fde68a;color:#92400e}
+  .risk .sev.mid{background:#e4e4e7;color:#3f3f46}
+  .risk .sev.low{background:#f4f4f5;color:#71717a}
+  .risk .body{flex:1;min-width:0}
+  .risk .t{display:block;font-size:13.5px;font-weight:700}
+  .risk .d{display:block;font-size:12px;color:#52525b;margin-top:3px;line-height:1.5}
+  .risk .sev{white-space:nowrap}
+  .risk .go{flex:none;font-size:12px;font-weight:800;color:var(--primary-600)}
+
+  .inputcard{border:1px solid var(--primary-100);background:var(--primary-50);border-radius:14px;padding:14px;margin-bottom:8px}
+  .inputcard .t{font-size:13.5px;font-weight:700}
+  .inputcard .d{font-size:12px;color:#52525b;margin-top:3px}
+  .inputcard .why{font-size:11.5px;color:var(--primary-600);font-weight:700;margin-top:8px}
+  .rangerow{display:flex;align-items:center;gap:10px;margin-top:10px}
+  .rangerow input[type=range]{flex:1;accent-color:var(--primary)}
+  .numbox{width:66px;border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:13px;font-weight:700;text-align:right;background:#fff}
+  .unused{border:1px dashed var(--line);border-radius:12px;padding:11px;font-size:12px;color:#a1a1aa;line-height:1.6}
+
+  .cmp{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#fff}
+  .cmprow{display:grid;grid-template-columns:1fr auto;gap:8px;padding:13px;border-bottom:1px solid #f4f4f5;align-items:center}
+  .cmprow:last-child{border-bottom:0}
+  .cmprow .c1 .n{font-size:14px;font-weight:800}
+  .cmprow .c1 .m{font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.45}
+  .cmprow .c2{text-align:right}
+  .cmprow .c2 .v{font-size:17px;font-weight:800;letter-spacing:-.02em}
+  .cmprow .c2 .v.na{font-size:13px;color:#71717a}
+  .cmprow .c2 .e{font-size:11px;color:var(--muted);margin-top:2px}
+  .fxbar{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;margin:0 0 10px}
+  .fxbar select{border:1px solid var(--line);border-radius:8px;padding:5px 8px;font-weight:700;background:#fff}
+  .todo{background:var(--amber-bg);border:1px solid var(--amber-line);color:var(--amber-ink);border-radius:8px;padding:4px 8px;font-size:11px;font-weight:700}
+
+  .ledger{border:1px solid var(--line);border-radius:14px;background:#fff;overflow:hidden}
+  .ledger div{display:flex;justify-content:space-between;padding:11px 13px;border-bottom:1px solid #f4f4f5;font-size:13px}
+  .ledger div:last-child{border-bottom:0}
+  .ledger b{font-weight:800}
+  .branch{border:1px solid var(--line);border-radius:14px;padding:12px;background:#fff;margin-bottom:8px}
+  .branch .t{font-size:13px;font-weight:800}
+  .branch .d{font-size:12px;color:#52525b;margin-top:4px;line-height:1.5}
+
+  /* before phone */
+  .bkn{display:flex;flex-wrap:wrap;gap:6px}
+  .bk{border:1px solid var(--line);border-radius:999px;padding:5px 10px;font-size:12px;font-weight:700;background:#fff;color:#3f3f46}
+  .bk.on{background:var(--primary);border-color:var(--primary);color:#fff}
+  .setrow{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:10px}
+  .setrow .lb{font-size:12.5px;font-weight:700;color:#3f3f46}
+  .setbtn{border:1px solid var(--line);border-radius:8px;padding:5px 9px;font-size:12px;color:#52525b;background:#fff}
+  .setbtn.on{border-color:var(--primary);color:var(--primary-600)}
+  .foldline{border-top:2px dashed #f43f5e;margin:16px -20px;padding:6px 20px 0;font-size:11px;font-weight:800;color:#f43f5e}
+
+  .annot{position:sticky;top:24px}
+  .an{background:#fff;border:1px solid var(--line);border-left:3px solid var(--primary);border-radius:0 12px 12px 0;padding:13px 15px;margin-bottom:10px}
+  .an h4{margin:0 0 5px;font-size:13.5px}
+  .an p{margin:0;font-size:13px;line-height:1.6;color:#52525b}
+  .an code{background:#f4f4f5;border-radius:4px;padding:1px 5px;font-size:11.5px}
+  .an.kill{border-left-color:#f43f5e}
+  .an.new{border-left-color:#10b981}
+  .tagrow{display:flex;gap:5px;flex-wrap:wrap;margin-top:8px}
+  .tag{font-size:11px;font-weight:700;background:#f4f4f5;color:#52525b;border-radius:6px;padding:3px 7px}
+  .tag.n{background:#d1fae5;color:#065f46}
+  .tag.k{background:#ffe4e6;color:#9f1239}
+  .hide{display:none}
+  .srcnote{margin-top:28px;font-size:12.5px;color:var(--muted);line-height:1.7;background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px}
+  .srcnote b{color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>세금 화면 재설계 — 프로세스 제안</h1>
+  <p class="sub">
+    현재 화면은 <b>설정 7개를 통과해야 숫자가 나오는 계산기</b>입니다. 사용자의 일은 계산이 아니라 <b>“내 숫자를 믿을 수 있는지 판단하는 것”</b>입니다.<br />
+    아래 모든 금액·문구·건수는 <code>lib/tax</code> 엔진을 <b>실제로 실행한 출력</b>입니다(내 지갑 이벤트 14건 / 제외 6건 기준). 지어낸 숫자 없음.
+  </p>
+
+  <div class="principles">
+    <div class="principle"><b>① 답이 먼저</b><p>진입 즉시 거주국·내 지갑 기준 숫자 하나. 설정 0개.</p></div>
+    <div class="principle"><b>② 신뢰도가 두 번째</b><p>“이 숫자에서 흔들리는 것”을 영향도 순으로. 각 항목이 고치러 가는 링크.</p></div>
+    <div class="principle"><b>③ 정밀화는 필요한 것만</b><p><code>requiredInputs</code>가 있는 입력만 노출. 인도는 0개.</p></div>
+    <div class="principle"><b>④ 비교는 별도 모드</b><p><code>compareRuleSets</code>를 뚫어 나란히. 라디오 버튼 아님.</p></div>
+  </div>
+
+  <h2>흐름 비교</h2>
+  <div class="flowcmp">
+    <div class="flowbox bad">
+      <h3>현재 — 답까지 7단계</h3>
+      <div class="steps">
+        <span class="step">국가 12개 중 선택</span><span class="arrow">→</span>
+        <span class="step">이벤트 출처</span><span class="arrow">→</span>
+        <span class="step">과세연도</span><span class="arrow">→</span>
+        <span class="step">한계세율</span><span class="arrow">→</span>
+        <span class="step">지갑 외 소득</span><span class="arrow">→</span>
+        <span class="step">사업자</span><span class="arrow">→</span>
+        <span class="step">디파이 소유권</span><span class="arrow">→</span>
+        <span class="step ans" style="background:#f43f5e;border-color:#f43f5e">숫자</span>
+      </div>
+    </div>
+    <div class="flowbox good">
+      <h3>제안 — 답이 0단계</h3>
+      <div class="steps">
+        <span class="step ans">숫자</span><span class="arrow">→</span>
+        <span class="step">흔들리는 것</span><span class="arrow">→</span>
+        <span class="step">필요한 입력만 (0~2개)</span><span class="arrow">→</span>
+        <span class="step">비교 (선택)</span>
+      </div>
+      <p style="margin:10px 0 0;font-size:12.5px;color:#065f46;line-height:1.55">
+        거주국은 DID 클레임에 이미 있음(<code>session.countryCode</code>) · 출처는 “내 지갑”이 기본 · 과세연도는 현재 연도
+      </p>
+    </div>
+  </div>
+
+  <h2 style="margin-top:44px">먼저, 아주 쉽게</h2>
+  <p class="h2sub">아래 기술적인 얘기를 읽기 전에 이것만 이해하면 됩니다.</p>
+
+  <div class="ez">
+    <div class="ezhead">
+      <p class="ezq">“이 거래 세금 얼마야?”</p>
+      <p class="eza">답이 없는 질문입니다. 세금은 <b>1년 통째로</b> 계산되기 때문입니다.</p>
+    </div>
+
+    <div class="ezgrid">
+      <div class="ezc">
+        <span class="ezn">1</span>
+        <b>오래 갖고 있으면 세금이 0이 됩니다</b>
+        <p>독일은 1년 넘게 보유한 코인을 팔면 <b>아무리 벌어도 세금 0원</b>입니다.<br />
+        비트코인 팔아서 <b>4,965유로</b>를 벌었는데 세금은 <b>0원</b>. 그럼 “이 거래 세금”은 0원인가요?</p>
+      </div>
+      <div class="ezc">
+        <span class="ezn">2</span>
+        <b>손해 본 거래가 다른 거래 세금을 깎습니다</b>
+        <p>A에서 100 벌고 B에서 100 잃으면 합쳐서 0 → 세금 0원.<br />
+        그럼 A의 세금은? B의 세금은? <b>나눌 방법이 없습니다.</b> 게다가 인도는 손해를 아예 안 쳐줍니다.</p>
+      </div>
+      <div class="ezc">
+        <span class="ezn">3</span>
+        <b>문턱이 있습니다</b>
+        <p>독일은 1년 수익이 <b>1,000유로 미만이면 세금 0원</b>, <b>1,001유로면 전액 과세</b>입니다.<br />
+        마지막에 한 작은 거래 하나가 <b>앞의 모든 거래를 과세로 바꿔버립니다.</b></p>
+      </div>
+    </div>
+
+    <div class="ezshock">
+      <p class="t">실제로 계산기를 돌려봤더니</p>
+      <p>예시 지갑의 독일 기준 세금 <b>1,015유로</b>가 어디서 나왔는지 거래별로 확인해봤습니다.</p>
+      <ul>
+        <li><b>판 거래 5개 → 세금 기여가 전부 0원.</b> 4,965유로를 번 매도조차 0원입니다.</li>
+        <li>세금을 만든 건 <b>스테이킹·에어드랍으로 받은 것 4개</b>였습니다.</li>
+        <li>심지어 <b>비트코인 “산” 기록을 지우면 세금이 7,914유로 늘어납니다.</b> 산 가격이 사라지면 번 돈이 그만큼 커지니까요.</li>
+      </ul>
+      <p class="c">거래 목록에 “세금” 칸을 만들었으면 <b>전부 0원으로 보이고</b>, 그럼 1,015유로가 어디서 나온 건지 화면이 설명하지 못합니다.</p>
+    </div>
+
+    <div class="ezgrid" style="grid-template-columns:1fr 1fr">
+      <div class="ezc no">
+        <b>❌ 월별 세금도 안 됩니다</b>
+        <p>영국은 세금 1년이 <b>4월 6일 ~ 다음 해 4월 5일</b>이고 호주는 <b>7월 ~ 6월</b>입니다.
+        월로 나눈 숫자는 <b>어느 나라 신고서에도 안 맞습니다.</b></p>
+      </div>
+      <div class="ezc ok">
+        <b>✅ 그래서 이렇게 보여줍니다</b>
+        <p><b>총액은 1년치 하나만.</b> 거래 목록에는 세금 대신 <b>“과세 / 비과세 / 손실” 도장</b>만 찍습니다.
+        거래별 금액은 <b>세금이 아니라 손익</b>입니다.</p>
+      </div>
+    </div>
+
+    <div class="ezbonus">
+      <div>
+        <b>덤 ① “이 거래가 없었으면 얼마 달라졌나”</b>
+        <p>세금을 억지로 나누는 대신, 빼고 다시 계산해서 차이를 보여줍니다. 이게 “건당 세금”의 진짜 버전입니다.</p>
+      </div>
+      <div>
+        <b>덤 ② “언제까지 갖고 있으면 세금 0원 되나”</b>
+        <p>“솔라나를 <b>320일만 더</b> 갖고 있으면 세금 0원” — 유일하게 <b>사용자 행동을 바꾸는</b> 정보입니다.</p>
+      </div>
+    </div>
+  </div>
+
+  <h2>표시 단위 — 건당? 월별? 기간?</h2>
+  <p class="h2sub">이건 취향 문제가 아닙니다. 아래는 <b>독일 룰셋으로 실제 계산한</b> 부담 €1,015.44를 이벤트별 한계 기여도(<code>해당 이벤트를 뺐을 때의 총액 차이</code>)로 분해한 것입니다.</p>
+
+  <div class="proof">
+    <table class="ptab">
+      <thead><tr><th>이벤트</th><th>종류</th><th>건별 손익</th><th>보유일</th><th>세금 기여</th><th></th></tr></thead>
+      <tbody>
+        <tr><td>dsp-btc-04</td><td>매도</td><td class="pos">+4,965.00</td><td>435일</td><td class="zero">0.00</td><td class="cmt">1년 초과 → §23 전액 비과세</td></tr>
+        <tr><td>dsp-btc-12</td><td>매도</td><td class="pos">+2,976.00</td><td>664일</td><td class="zero">0.00</td><td class="cmt">1년 초과 → 전액 비과세</td></tr>
+        <tr><td>dsp-eth-09</td><td>매도(교환)</td><td class="pos">+2,967.50</td><td>466일</td><td class="zero">0.00</td><td class="cmt">1년 초과 → 전액 비과세</td></tr>
+        <tr><td>dsp-arb-11</td><td>매도</td><td class="pos">+288.00</td><td>199일</td><td class="zero">0.00</td><td class="cmt">과세 대상이나 상계 후 순액 음수</td></tr>
+        <tr><td>dsp-sol-08</td><td>매도</td><td class="neg">−816.00</td><td>45일</td><td class="zero">0.00</td><td class="cmt">손실 → 이월(€528)</td></tr>
+        <tr class="hi"><td>inc-stake-03</td><td>스테이킹</td><td class="pos">+1,000.00</td><td>—</td><td class="chg">+369.25</td><td class="cmt">§22 Nr.3 기타소득</td></tr>
+        <tr class="hi"><td>inc-stake-12</td><td>스테이킹</td><td class="pos">+700.00</td><td>—</td><td class="chg">+258.48</td><td class="cmt">§22 Nr.3 기타소득</td></tr>
+        <tr class="hi"><td>inc-air-05</td><td>에어드랍</td><td class="pos">+600.00</td><td>—</td><td class="chg">+221.55</td><td class="cmt">§22 Nr.3 기타소득</td></tr>
+        <tr class="hi"><td>inc-air-06</td><td>에어드랍</td><td class="pos">+450.00</td><td>—</td><td class="chg">+166.16</td><td class="cmt">§22 Nr.3 기타소득</td></tr>
+        <tr class="inv"><td>acq-btc-01</td><td><b>매수</b></td><td>—</td><td>—</td><td class="chg neg">−7,914.50</td><td class="cmt">이 매수를 지우면 세금이 <b>늘어남</b> (취득원가 소멸)</td></tr>
+        <tr class="inv"><td>acq-eth-01</td><td><b>매수</b></td><td>—</td><td>—</td><td class="chg neg">−2,749.80</td><td class="cmt">동일</td></tr>
+        <tr class="inv"><td>acq-sol-07</td><td><b>매수</b></td><td>—</td><td>—</td><td class="chg neg">−841.15</td><td class="cmt">동일</td></tr>
+      </tbody>
+    </table>
+    <div class="pconc">
+      <p><b>매도 5건의 세금 기여가 전부 0원입니다.</b> 차익 €4,965짜리 매도의 세금이 0원이고, 실제 €1,015.44는 전부 스테이킹·에어드랍에서 나옵니다. 매수는 기여가 <b>음수</b>입니다.</p>
+      <p>거래 목록에 “세액” 컬럼을 그렸다면 이 지갑은 전부 <code>0원</code>으로 보이고, €1,015.44가 어디서 왔는지 화면이 설명하지 못합니다. <b>건당 세액은 직관과 반대이거나 아예 존재하지 않습니다.</b></p>
+    </div>
+  </div>
+
+  <div class="why4">
+    <div class="w"><b>① 거래 1건 ≠ 손익 1건</b><p>FIFO/LIFO는 lot 단위로 매칭됩니다(<code>for (const match of consumption.matches)</code>). 매도 1건이 손익 행 여러 개로 쪼개지고, <b>같은 매도 안에 과세분과 비과세분이 섞일 수 있습니다.</b></p></div>
+    <div class="w"><b>② 취득원가가 경로 의존</b><p>앞 거래를 바꾸면 뒤 거래의 손익이 전부 바뀝니다. 위 표에서 매수 1건의 기여가 <code>−7,914.50</code>인 게 그 증거입니다.</p></div>
+    <div class="w"><b>③ 상계·공제가 기간 단위</b><p>인도 §115BBH(2)는 손실 상계 자체가 불가라 손실 건의 기여가 정확히 0입니다. 독일은 상계·이월. <b>같은 거래의 “세금”이 나라마다 정의부터 다릅니다.</b></p></div>
+    <div class="w"><b>④ 임계가 비선형 계단</b><p>독일 Freigrenze €1,000은 차감형이 아니라 <b>초과 시 전액 과세</b>. 프랑스는 양도가액 총액 바닥. 마지막 1건이 앞의 전부를 과세로 뒤집으므로 건당 배분이 원리적으로 불가능합니다.</p></div>
+  </div>
+
+  <div class="why4" style="grid-template-columns:1fr 1fr">
+    <div class="w bad2"><b>월별 세액도 존재하지 않습니다</b><p>과세기간이 월 경계와 무관합니다 — 영국 4/6~4/5, 호주 7/1~6/30(<code>taxPeriod</code>). 연 단위 임계·공제를 월에 배분할 방법도 없습니다. <b>월별 합계는 어느 나라 신고 서식에도 대응하지 않는 숫자입니다.</b></p></div>
+    <div class="w bad2"><b>건별 손익조차 나라마다 다릅니다</b><p>같은 <code>dsp-eth-09</code>의 손익 — 독일 <b>2,967.50</b> / 인도 <b>3,000</b>(수수료 불인정) / 영국 <b>2,910.10</b>(Section 104 평균). 영국은 보유일수가 <code>null</code>이고 어떤 행은 <code>−10</code>일(30일 규칙)입니다.</p></div>
+  </div>
+
+  <h2 style="margin-top:40px">결론 — 3계층 + 파생 2개</h2>
+  <p class="h2sub">세액은 <b>기간에만</b> 존재합니다. 건별에는 <b>사실</b>과 <b>판정</b>만 존재합니다.</p>
+  <div class="layers">
+    <div class="ly l1"><span class="lb">L1</span><b>기간 총액 — 답</b><p>과세기간 1개, 숫자 1개. 유일하게 신고 서식에 대응하는 값.</p></div>
+    <div class="ly l2"><span class="lb">L2</span><b>판정 그룹 — 왜</b><p>과세 / 비과세 / 소득 / 상계·이월 / 제외. 룰셋이 만든 분기. 각 그룹에 건수와 합계.</p></div>
+    <div class="ly l3"><span class="lb">L3</span><b>건별 사실 — 근거</b><p>손익·취득일·보유일수·판정 라벨. <b>세액 컬럼 없음.</b> 거래 목록의 한 열로 들어감.</p></div>
+    <div class="ly d1"><span class="lb">파생</span><b>한계 기여도</b><p>“이 거래를 빼면 총액이 얼마 바뀌나”. 사용자가 “건당 세금”으로 원했던 것의 정직한 버전.</p></div>
+    <div class="ly d2"><span class="lb">파생</span><b>시간축</b><p>월별 세액이 아니라 <b>임계까지 얼마</b> + <b>보유기간 며칠 남았나</b>. 유일하게 행동을 바꾸는 시간 정보.</p></div>
+  </div>
+
+  <h2 style="margin-top:40px">거래 탭은 이렇게 — 같은 거래, 나라별로 다른 도장</h2>
+  <p class="h2sub">아래는 <b>세 나라 룰셋을 각각 실제로 돌린</b> 판정입니다. 거래는 그대로인데 도장이 바뀝니다. 아래 <b>⑨ 거래 탭</b> 탭에서 나라를 눌러보세요.</p>
+  <div class="proof">
+    <table class="ptab">
+      <thead><tr><th>거래</th><th>🇩🇪 독일</th><th>🇮🇳 인도</th><th>🇵🇹 포르투갈</th><th></th></tr></thead>
+      <tbody>
+        <tr><td>BTC 0.25 매도<br /><span class="cmt">435일 보유</span></td>
+            <td><span class="jtag free" style="margin:0">비과세</span><br /><span class="cmt">기여 0</span></td>
+            <td><span class="jtag tax" style="margin:0">과세</span><br /><span class="cmt">기여 +1,560</span></td>
+            <td><span class="jtag free" style="margin:0">비과세</span><br /><span class="cmt">기여 0</span></td>
+            <td class="cmt">독일·포르투갈은 1년 초과 면세, 인도는 보유기간 무관 flat 30%</td></tr>
+        <tr><td>ETH 3 → SOL 교환<br /><span class="cmt">466일 보유</span></td>
+            <td><span class="jtag free" style="margin:0">비과세</span><br /><span class="cmt">기여 0</span></td>
+            <td><span class="jtag tax" style="margin:0">과세</span><br /><span class="cmt">기여 +936</span></td>
+            <td><span class="jtag carry" style="margin:0">과세 이연</span><br /><span class="cmt">처분 아님</span></td>
+            <td class="cmt">포르투갈은 크립토→크립토를 처분으로 보지 않아 <b>손익 자체가 안 생깁니다</b></td></tr>
+        <tr><td>SOL 20 매도<br /><span class="cmt">손실 · 45일</span></td>
+            <td><span class="jtag carry" style="margin:0">손실 · 이월</span><br /><span class="cmt">기여 0</span></td>
+            <td><span class="jtag ex" style="margin:0">상계 불가 · 무시</span><br /><span class="cmt">기여 0</span></td>
+            <td><span class="jtag carry" style="margin:0">손실 상계</span><br /><span class="cmt">기여 −80.64</span></td>
+            <td class="cmt">포르투갈만 손실이 실제로 세금을 <b>깎습니다</b></td></tr>
+        <tr class="inv"><td>ARB 500 에어드랍<br /><span class="cmt">수령 FMV 600</span></td>
+            <td><span class="jtag inc" style="margin:0">소득</span><br /><span class="cmt">기여 +221.55</span></td>
+            <td><span class="jtag inc" style="margin:0">소득</span><br /><span class="cmt">기여 <b>0.00</b></span></td>
+            <td><span class="jtag inc" style="margin:0">소득</span><br /><span class="cmt">기여 +147.84</span></td>
+            <td class="cmt">인도는 소득으로 세금이 늘지만 <b>동시에 취득원가가 생겨</b> 나중 ARB 매도 세금이 줄어 정확히 상쇄됩니다</td></tr>
+      </tbody>
+    </table>
+    <div class="pconc">
+      <p>그래서 거래 행에 붙는 건 <b>세액이 아니라 도장</b>입니다. 금액 칸은 <b>손익</b>이고, 도장이 “이 손익이 세금 계산에서 어떻게 쓰였는지”를 말합니다.</p>
+    </div>
+  </div>
+
+  <h2>화면</h2>
+  <p class="h2sub">왼쪽은 현재 화면 재현, 오른쪽은 제안. 탭으로 단계 전환.</p>
+
+  <div class="stage">
+    <div>
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" data-screen="before" aria-selected="false">현재</button>
+        <button class="tab" role="tab" data-screen="answer" aria-selected="true">① 진입 즉시 답</button>
+        <button class="tab" role="tab" data-screen="trust" aria-selected="false">② 흔들리는 것</button>
+        <button class="tab" role="tab" data-screen="refine" aria-selected="false">③ 정밀화</button>
+        <button class="tab" role="tab" data-screen="compare" aria-selected="false">④ 비교</button>
+        <button class="tab" role="tab" data-screen="kr" aria-selected="false">⑤ 미확정(한국)</button>
+        <button class="tab" role="tab" data-screen="judge" aria-selected="false">⑥ 건별 판정 (L3)</button>
+        <button class="tab" role="tab" data-screen="marginal" aria-selected="false">⑦ 한계 기여도</button>
+        <button class="tab" role="tab" data-screen="timeline" aria-selected="false">⑧ 시간축</button>
+        <button class="tab" role="tab" data-screen="txlist" aria-selected="false">⑨ 거래 탭</button>
+        <button class="tab" role="tab" data-screen="txdetail" aria-selected="false">⑩ 거래 상세</button>
+      </div>
+      <div class="phone">
+        <div class="scroll" id="screen"></div>
+        <div class="bottomdock">
+          <nav class="nav" id="nav">
+            <a href="#" data-nav="tx"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h10" stroke-linecap="round"/></svg>거래</a>
+            <a href="#" data-nav="tax" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 4v16M6 9l-3 5h6l-3-5zM18 6l-3 5h6l-3-5z" stroke-linecap="round" stroke-linejoin="round"/></svg>세금</a>
+            <a href="#" data-nav="exp"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v11m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke-linecap="round" stroke-linejoin="round"/></svg>내보내기</a>
+          </nav>
+          <div class="disc"><p>본 서비스는 온체인 거래 내역을 정리·분류하는 계산 보조 도구이며, 세무 대리 또는…</p><span>전문</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="annot" id="annot"></div>
+  </div>
+
+  <div class="srcnote">
+    <b>데이터 출처</b> — <code>compareRuleSets(["KR","DE","IN"], { events: deriveTaxEvents(지갑 이벤트 25건).events, taxYear: 2025 })</code> 실행 결과.
+    파생 이벤트 14건, 제외 6건(<code>event-05/10/15/18/20/25</code>), 원장 경고 4건(<code>event-02/08/12/22</code> 취득가액 0).
+    문구는 <code>lib/tax/rulesets/*.ts</code>의 <code>basis</code>·<code>notes</code>·<code>requiredInputs</code>를 그대로 사용.
+  </div>
+</div>
+
+<script>
+const DATA = {
+  period: { from: "2025-01-01", to: "2025-12-31" },
+  derived: { total: 14, excluded: 6, zeroCost: 4, excludedIds: "event-05, event-10, event-15, event-18, event-20, event-25", zeroCostIds: "event-02, event-08, event-12, event-22" },
+  DE: {
+    label: "독일", cur: "€", status: "확정·시행중", statusCls: "ok", method: "FIFO (지갑별)",
+    charge: "16,247", eff: "36.93", gains: "44,000", exempt: "0", income: "0",
+    required: [{ t: "종합소득세 한계세율", d: "지갑 외 소득 포함, 14~45%", why: "이 값이 부담액 전체를 결정합니다", kind: "rate", value: 35 }],
+    unused: "신고 구분 · 디파이 소유권 이전 · 사업자 판정",
+    unusedWhy: "독일 룰셋이 참조하지 않는 입력입니다",
+    why: "1년 초과 보유 전액 비과세 · 면세한계는 초과 시 전액 과세형"
+  },
+  IN: {
+    label: "인도", cur: "₹", status: "확정·시행중", statusCls: "ok", method: "건별 취득원가 (손실 상계 불가)",
+    charge: "13,728", eff: "31.2", gains: "44,000", exempt: "0", income: "0",
+    required: [],
+    unused: "한계세율 · 지갑 외 소득 · 신고 구분 · 디파이 소유권 · 사업자 판정",
+    unusedWhy: "flat 30% + cess 4% — 지갑 밖 정보가 결과를 바꾸지 않습니다",
+    why: "손실 상계·이월 불가 · 수수료 원가 불인정 · 1% 원천징수(§194S) 예납 440"
+  },
+  KR: {
+    label: "한국", cur: "₩", status: "미확정", statusCls: "un", method: "원장 집계만 수행 (과세 규칙 미확정)",
+    charge: null, eff: null, gains: "44,000", exempt: "0", income: "0",
+    required: [{ t: "국세청 고시 확정", d: "과세 방식·세율·공제·상계 규칙", why: "사용자가 채울 수 없는 입력입니다", kind: "blocked" }],
+    unused: "", unusedWhy: "",
+    why: "과세 방식(분리/종합)·시행 시기 미확정"
+  }
+};
+
+const RISKS = [
+  { sev: "영향 큼", cls: "hi", sevCls: "", t: "취득원가 0으로 계산 · 4건", d: "원장에 매입 기록이 없어 처분가 전액을 이익으로 봤습니다. 실제보다 부담이 과대 계상됩니다.", ids: DATA.derived.zeroCostIds, go: "해당 거래" },
+  { sev: "영향 큼", cls: "hi", sevCls: "", t: "계산에서 빠짐 · 6건", d: "가격 또는 분류가 확정되지 않아 원장에 넣지 못했습니다. 확정하면 숫자가 올라갑니다.", ids: DATA.derived.excludedIds, go: "확인 필요" },
+  { sev: "영향 중", cls: "", sevCls: "mid", t: "교환을 피아트 처분으로 근사", d: "상대 자산 정보가 없어 EXCHANGE를 매도로 봤습니다. 비과세 교환 국가에서는 과대계상됩니다.", ids: "", go: "" },
+  { sev: "영향 중", cls: "", sevCls: "mid", t: "추정가(ESTIMATED) 포함", d: "체결가가 아니라 추정 시세로 평가한 이벤트가 섞여 있습니다.", ids: "", go: "" },
+  { sev: "영향 작음", cls: "", sevCls: "low", t: "가스비 미반영", d: "법정통화 환산 정보가 없어 취득원가·양도가액에 넣지 않았습니다.", ids: "", go: "" },
+  { sev: "영향 작음", cls: "", sevCls: "low", t: "자기 지갑 간 이체 제외", d: "INTERNAL_TRANSFER는 처분으로 보지 않았습니다.", ids: "", go: "" }
+];
+
+let country = "DE";
+
+function header(c) {
+  const d = DATA[c];
+  return `
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
+      <div>
+        <p class="eyebrow" style="margin:0">VeraWallet</p>
+        <p class="h1p">${d.label} 거주 · 2025</p>
+        <p class="period">과세기간 ${DATA.period.from} ~ ${DATA.period.to}</p>
+      </div>
+      <span class="chip mock">mock 데이터</span>
+    </div>`;
+}
+
+function answerCard(c) {
+  const d = DATA[c];
+  const big = d.charge === null
+    ? `<p class="big na">산출 불가</p>`
+    : `<p class="big">${d.cur}${d.charge}</p>`;
+  const meta = d.charge === null
+    ? `<span class="chip ${d.statusCls}">${d.status}</span><span>${d.method}</span>`
+    : `<span class="chip ${d.statusCls}">${d.status}</span><span>실효 ${d.eff}%</span><span>·</span><span>${d.method}</span>`;
+  return `
+    <div class="card answer">
+      <p class="lbl">예상 부담 추정</p>
+      ${big}
+      <p class="meta">${meta}</p>
+      <div class="srcrow">
+        <span>내 지갑 이벤트 ${DATA.derived.total}건 기준</span>
+        <button class="ghostbtn">예시 시나리오로 보기</button>
+      </div>
+    </div>`;
+}
+
+function riskSummary() {
+  return `
+    <div class="sect">
+      <h3>이 숫자에서 흔들리는 것</h3>
+      <p class="note">영향이 큰 순서. 탭하면 고치러 갑니다.</p>
+      <a class="risk hi" href="#"><span class="sev">영향 큼</span><span class="body"><span class="t">취득원가 0으로 계산 · 4건</span><span class="d">매입 기록이 없어 전액을 이익으로 봤습니다 — 과대 계상</span></span><span class="go">보기 →</span></a>
+      <a class="risk hi" href="#"><span class="sev">영향 큼</span><span class="body"><span class="t">계산에서 빠짐 · 6건</span><span class="d">가격·분류 미확정 — 대시보드 확인 필요 탭</span></span><span class="go">고치기 →</span></a>
+      <a class="risk" href="#"><span class="sev low">영향 중·작음</span><span class="body"><span class="t">가정 4건</span><span class="d">교환 근사 · 추정가 포함 · 가스비 미반영 · 내부 이체 제외</span></span><span class="go">펼치기 →</span></a>
+    </div>`;
+}
+
+function screenAnswer() {
+  const d = DATA[country];
+  return header(country) + answerCard(country) + riskSummary() + `
+    <div class="sect">
+      <h3>이 숫자가 이렇게 나온 이유</h3>
+      <p class="note">${d.why}</p>
+      <div class="ledger">
+        <div><span>과세 대상 손익</span><b>${d.cur}${d.gains}</b></div>
+        <div><span>비과세·면세 분리</span><b>${d.cur}${d.exempt}</b></div>
+        <div><span>수령 소득 (FMV)</span><b>${d.cur}${d.income}</b></div>
+      </div>
+      <button class="ghostbtn" style="margin-top:10px;width:100%;padding:10px">계산 내역 7줄 · 법령 근거 보기</button>
+    </div>
+    <div class="sect" style="padding-bottom:130px">
+      <h3>다른 나라면?</h3>
+      <p class="note">같은 지갑에 다른 룰셋을 적용해 나란히 비교합니다.</p>
+      <button class="ghostbtn" style="width:100%;padding:12px;border-color:#3182f6;color:#1768d4">룰셋 비교 열기</button>
+    </div>`;
+}
+
+function screenTrust() {
+  return `
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <p class="h1p" style="font-size:22px">이 숫자에서 흔들리는 것</p>
+      <span style="font-size:13px;color:#71717a">닫기</span>
+    </div>
+    <p class="period" style="margin-top:8px">${DATA.DE.cur}${DATA.DE.charge} · 지갑 이벤트 ${DATA.derived.total}건 중 ${DATA.derived.excluded}건이 계산 밖</p>
+    <div class="sect">
+      ${RISKS.map(r => `
+        <a class="risk ${r.cls}" href="#">
+          <span class="sev ${r.sevCls}">${r.sev}</span>
+          <span class="body">
+            <span class="t">${r.t}</span>
+            <span class="d">${r.d}</span>
+            ${r.ids ? `<span class="d" style="font-family:ui-monospace,monospace;font-size:11px;color:#a1a1aa">${r.ids}</span>` : ""}
+          </span>
+          ${r.go ? `<span class="go">${r.go} →</span>` : ""}
+        </a>`).join("")}
+    </div>
+    <div class="sect" style="padding-bottom:130px">
+      <div class="card" style="background:var(--primary-50);border-color:var(--primary-100)">
+        <p style="margin:0;font-size:13.5px;font-weight:800;color:#1768d4">6건을 확정하면</p>
+        <p style="margin:6px 0 0;font-size:12.5px;line-height:1.6;color:#52525b">
+          제외된 이벤트가 원장에 들어가고, 취득원가 0으로 계산된 4건에 매입 기록이 붙습니다.
+          <b>지금 숫자는 하한도 상한도 아닙니다.</b>
+        </p>
+        <button class="ghostbtn" style="margin-top:11px;width:100%;padding:10px;border-color:#3182f6;color:#1768d4">대시보드에서 6건 확정하기</button>
+      </div>
+    </div>`;
+}
+
+function screenRefine() {
+  const d = DATA[country];
+  const picker = `
+    <div class="bkn" style="margin-top:14px">
+      ${["DE","IN","KR"].map(k => `<button class="bk ${k===country?"on":""}" data-country="${k}">${DATA[k].label}</button>`).join("")}
+      <span class="bk" style="color:#a1a1aa;border-style:dashed">…9개국</span>
+    </div>`;
+  const req = d.required.length === 0
+    ? `<div class="card" style="background:var(--ok-bg);border-color:#a7f3d0">
+         <p style="margin:0;font-size:14px;font-weight:800;color:#065f46">추가 입력 불필요</p>
+         <p style="margin:6px 0 0;font-size:12.5px;line-height:1.6;color:#065f46">${d.unusedWhy}</p>
+       </div>`
+    : d.required.map(r => `
+       <div class="inputcard">
+         <p class="t" style="margin:0">${r.t}</p>
+         <p class="d" style="margin:0">${r.d}</p>
+         ${r.kind === "rate" ? `
+           <div class="rangerow">
+             <input type="range" min="14" max="45" value="${r.value}" />
+             <span class="numbox">${r.value} %</span>
+           </div>` : `
+           <p class="d" style="margin-top:8px;color:#92400e">사용자가 채울 수 없습니다 — 고시 전까지 산출 불가</p>`}
+         <p class="why">${r.why}</p>
+       </div>`).join("");
+
+  return `
+    <p class="eyebrow" style="margin:0">정밀도 올리기</p>
+    <p class="h1p" style="font-size:22px">${d.label}에 필요한 입력 ${d.required.length}개</p>
+    <p class="period">룰셋이 선언한 <code style="font-size:11px">requiredInputs</code>만 묻습니다</p>
+    ${picker}
+    <div class="sect">${req}</div>
+    ${d.unused ? `
+    <div class="sect">
+      <h3 style="font-size:13.5px;color:#71717a">이 국가에서 쓰지 않는 입력</h3>
+      <div class="unused">${d.unused}<br /><span style="color:#d4d4d8">${d.unusedWhy}</span></div>
+    </div>` : ""}
+    <div class="sect" style="padding-bottom:130px">
+      <div class="card">
+        <p style="margin:0;font-size:12.5px;color:#71717a">반영 결과</p>
+        <p style="margin:6px 0 0;font-size:26px;font-weight:800;letter-spacing:-.02em">${d.charge === null ? "산출 불가" : d.cur + d.charge}</p>
+        <p style="margin:6px 0 0;font-size:12px;color:#a1a1aa">값을 놓을 때 한 번만 재계산합니다</p>
+      </div>
+    </div>`;
+}
+
+function screenCompare() {
+  const rows = [
+    { k: "DE", m: "FIFO(지갑별) · 1년 초과 보유 전액 비과세" },
+    { k: "IN", m: "건별 원가 · 손실 상계 불가 · 수수료 불인정" },
+    { k: "KR", m: "원장 집계만 · 처분 4건 / 수령 0건" }
+  ];
+  return `
+    <p class="eyebrow" style="margin:0">룰셋 비교</p>
+    <p class="h1p" style="font-size:22px">같은 지갑, 나라별로</p>
+    <p class="period">이벤트 ${DATA.derived.total}건 · 제외 ${DATA.derived.excluded}건 (모든 국가 동일)</p>
+    <div class="sect">
+      <div class="fxbar">
+        <span style="color:#71717a">기준 통화 <select><option>각국 통화</option><option>KRW 환산</option></select></span>
+        <span class="todo">환율 출처 결정 필요</span>
+      </div>
+      <div class="cmp">
+        ${rows.map(r => {
+          const d = DATA[r.k];
+          return `<div class="cmprow">
+            <div class="c1">
+              <div class="n">${d.label} <span class="chip ${d.statusCls}" style="margin-left:4px">${d.status}</span></div>
+              <div class="m">${r.m}</div>
+            </div>
+            <div class="c2">
+              ${d.charge === null ? `<div class="v na">산출 불가</div>` : `<div class="v">${d.cur}${d.charge}</div><div class="e">실효 ${d.eff}%</div>`}
+            </div>
+          </div>`;
+        }).join("")}
+      </div>
+      <button class="ghostbtn" style="margin-top:10px;width:100%;padding:10px">+ 국가 추가 (12개국)</button>
+    </div>
+    <div class="sect" style="padding-bottom:130px">
+      <h3>왜 갈리나</h3>
+      <div class="branch"><div class="t">독일 ${DATA.DE.cur}${DATA.DE.charge}</div><div class="d">1년 초과 보유분은 전액 비과세지만 이 지갑엔 해당분이 없습니다(비과세 분리 €0). 35% + Soli 5.5% 적용.</div></div>
+      <div class="branch"><div class="t">인도 ${DATA.IN.cur}${DATA.IN.charge}</div><div class="d">flat 30% + cess 4%. 손실 상계·이월 불가, 수수료 원가 불인정. §194S 1% 원천징수 440 예납.</div></div>
+      <div class="branch"><div class="t">한국 산출 불가</div><div class="d">과세 방식·시행 시기 미확정. 원장 집계는 동일하게 수행됩니다.</div></div>
+    </div>`;
+}
+
+function screenKr() {
+  return header("KR") + `
+    <div class="card answer" style="border-color:#d4d4d8">
+      <p class="lbl">예상 부담 추정</p>
+      <p class="big na">산출 불가</p>
+      <p class="meta"><span class="chip un">미확정</span><span>과세 규칙이 확정되지 않았습니다</span></p>
+    </div>
+    <div class="sect">
+      <h3>판정 전 원장 집계</h3>
+      <p class="note">규칙이 확정되면 이 원장에 그대로 적용됩니다</p>
+      <div class="ledger">
+        <div><span>원장 기준 처분 손익</span><b>₩44,000</b></div>
+        <div><span>원장 기준 수령분 FMV</span><b>₩0</b></div>
+        <div><span>처분 건수</span><b>4건</b></div>
+        <div><span>수령 건수</span><b>0건</b></div>
+      </div>
+    </div>
+    <div class="sect">
+      <h3>확정되면 어떻게 되나</h3>
+      <p class="note">룰셋이 선언한 스위칭 벤치마크</p>
+      <div class="branch"><div class="t">스테이킹을 수령 시 과세로 확정하면</div><div class="d">독일·미국 모델을 이식합니다.</div></div>
+      <div class="branch"><div class="t">매도 시 일괄 과세면</div><div class="d">포르투갈 장기면세 모델을 이식합니다.</div></div>
+      <div class="branch"><div class="t">손실 상계를 불허하면</div><div class="d">인도 모델(flat 분리과세) 아키텍처가 이식 대상입니다.</div></div>
+      <button class="ghostbtn" style="margin-top:4px;width:100%;padding:11px;border-color:#3182f6;color:#1768d4">독일식 / 인도식으로 가정하고 보기</button>
+    </div>
+    <div class="sect" style="padding-bottom:130px">
+      <h3>미확정 항목 3개</h3>
+      <a class="risk hi" href="#"><span class="sev">미확정</span><span class="body"><span class="t">양도차익</span><span class="d">과세 방식(분리/종합)과 시행 시기가 확정되지 않았습니다</span></span><span class="go">4건 →</span></a>
+      <a class="risk hi" href="#"><span class="sev">미확정</span><span class="body"><span class="t">스테이킹·렌딩</span><span class="d">수령 시 과세인지 매도 시 일괄 과세인지 확정되지 않았습니다</span></span><span class="go">0건</span></a>
+      <a class="risk hi" href="#"><span class="sev">미확정</span><span class="body"><span class="t">손실 상계</span><span class="d">손실 상계·이월 허용 여부가 확정되지 않았습니다</span></span></a>
+    </div>`;
+}
+
+function screenBefore() {
+  const countries = ["독일 1순위","미국 1순위","인도 2순위","포르투갈 2순위","호주 3순위","영국 3순위","캐나다","스페인","프랑스","이탈리아","일본","한국"];
+  return `
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
+      <div>
+        <p class="eyebrow" style="margin:0">VeraWallet</p>
+        <p class="h1p" style="font-size:24px">국가별 룰셋 시뮬레이션</p>
+        <p class="period">같은 지갑 이력에 각국 확정 룰셋을 적용해 계산 결과가 어떻게 갈리는지 비교합니다.</p>
+      </div>
+      <span class="chip mock">mock 데이터</span>
+    </div>
+    <div class="bkn" style="margin-top:16px">
+      ${countries.map((c,i) => `<span class="bk ${i===0?"on":""}">${c}</span>`).join("")}
+    </div>
+    <div class="card" style="margin-top:16px;padding:14px">
+      <div class="setrow"><span class="lb">이벤트 출처</span><span class="setbtn on">데모 시나리오</span><span class="setbtn">내 지갑 이벤트</span></div>
+      <div class="setrow"><span class="lb">과세연도</span><span class="setbtn">2024</span><span class="setbtn on">2025</span><span class="setbtn">2026</span></div>
+      <div style="margin-bottom:10px">
+        <p style="margin:0;font-size:12.5px;font-weight:700;color:#3f3f46">한계세율 35% <span style="color:#a1a1aa;font-weight:400">(지갑 외 소득 반영)</span></p>
+        <input type="range" min="0" max="55" value="35" style="width:100%;accent-color:#3182f6;margin-top:8px" />
+      </div>
+      <div style="margin-bottom:10px">
+        <p style="margin:0 0 5px;font-size:12.5px;font-weight:700;color:#3f3f46">지갑 외 과세소득</p>
+        <div style="border:1px solid var(--line);border-radius:8px;padding:9px;font-size:13px;color:#a1a1aa">0</div>
+      </div>
+      <div style="display:flex;gap:14px;font-size:12.5px;color:#3f3f46">
+        <span>☐ 사업자로 신고</span><span>☐ 디파이 예치 시 소유권 이전 인정</span>
+      </div>
+    </div>
+    <div class="foldline">↑ 여기까지가 첫 화면 — 숫자는 아직 안 보임</div>
+    <div class="sect">
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+        <span style="font-size:18px;font-weight:800">독일 · 2025</span>
+        <span class="chip ok">확정·시행중</span>
+        <span style="font-size:12px;color:#71717a">FIFO (지갑별)</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px">
+        <div class="card" style="padding:13px"><p style="margin:0;font-size:12px;color:#71717a">과세 대상 손익</p><p style="margin:4px 0 0;font-size:16px;font-weight:800">€44,000</p></div>
+        <div class="card" style="padding:13px"><p style="margin:0;font-size:12px;color:#71717a">비과세·면세 분리</p><p style="margin:4px 0 0;font-size:16px;font-weight:800">€0</p></div>
+        <div class="card" style="padding:13px"><p style="margin:0;font-size:12px;color:#71717a">수령 소득 (FMV)</p><p style="margin:4px 0 0;font-size:16px;font-weight:800">€0</p></div>
+        <div class="card" style="padding:13px"><p style="margin:0;font-size:12px;color:#71717a">예상 부담 추정</p><p style="margin:4px 0 0;font-size:16px;font-weight:800;color:#1768d4">€16,247</p><p style="margin:3px 0 0;font-size:10.5px;color:#a1a1aa">실효 36.93%</p></div>
+      </div>
+    </div>
+    <div class="sect" style="padding-bottom:130px">
+      <h3>계산 내역</h3>
+      <div class="ledger">
+        <div><span>1년 이내 처분 손익</span><b>€44,000</b></div>
+        <div><span>1년 초과 보유 비과세분</span><b>€0</b></div>
+        <div><span>매매 면세한계 판정 (€1000)</span><b>€44,000</b></div>
+      </div>
+      <p class="note" style="margin-top:10px">▸ 항목별 확정 상태 · ▸ 지갑 밖 필요 입력 · ▸ 계산 근거와 가정 (전부 접힘)</p>
+    </div>`;
+}
+
+const GAINS = [
+  { id: "dsp-btc-04", at: "2025-04-20", sym: "BTC", qty: "0.25", proceeds: "15,000", cost: "10,015", gain: "+4,965.00", days: 435, acq: "2024-02-10", grp: "free", tag: "비과세 · 1년 초과", why: "§23 (1) Nr.2 — 보유 435일" },
+  { id: "dsp-btc-12", at: "2025-12-05", sym: "BTC", qty: "0.1", proceeds: "7,000", cost: "4,006", gain: "+2,976.00", days: 664, acq: "2024-02-10", grp: "free", tag: "비과세 · 1년 초과", why: "§23 (1) Nr.2 — 보유 664일" },
+  { id: "dsp-eth-09", at: "2025-09-10", sym: "ETH", qty: "3", proceeds: "9,000", cost: "6,007.50", gain: "+2,967.50", days: 466, acq: "2024-06-01", grp: "free", tag: "비과세 · 1년 초과", why: "교환도 처분이나 466일 보유로 비과세" },
+  { id: "dsp-arb-11", at: "2025-11-20", sym: "ARB", qty: "500", proceeds: "900", cost: "600", gain: "+288.00", days: 199, acq: "2025-05-05", grp: "tax", tag: "과세 대상", why: "§23 — 1년 이내 처분" },
+  { id: "dsp-sol-08", at: "2025-08-15", sym: "SOL", qty: "20", proceeds: "2,000", cost: "2,806", gain: "−816.00", days: 45, acq: "2025-07-01", grp: "carry", tag: "손실 · 이월", why: "§23 (3) — §23 이익과만 상계, 이월 €528" }
+];
+const INCOMES = [
+  { id: "inc-stake-03", at: "2025-03-15", sym: "ETH", amount: "+1,000.00", kind: "스테이킹", grp: "inc", tag: "기타소득", why: "§22 Nr.3 — 수령 시 FMV 인식" },
+  { id: "inc-air-05", at: "2025-05-05", sym: "ARB", amount: "+600.00", kind: "에어드랍", grp: "inc", tag: "기타소득", why: "§22 Nr.3 — 행위 대가" },
+  { id: "inc-air-06", at: "2025-06-10", sym: "OP", amount: "+450.00", kind: "에어드랍", grp: "inc", tag: "기타소득", why: "§22 Nr.3" },
+  { id: "inc-stake-12", at: "2025-12-20", sym: "ETH", amount: "+700.00", kind: "스테이킹", grp: "inc", tag: "기타소득", why: "§22 Nr.3 — 수령일부터 새 1년 시계" }
+];
+const MARGINAL = [
+  { id: "acq-btc-01", k: "매수", d: "−7,914.50", cls: "neg", n: "이 매수를 지우면 세금이 늘어납니다 — 취득원가가 사라져 손익이 커집니다" },
+  { id: "acq-eth-01", k: "매수", d: "−2,749.80", cls: "neg", n: "동일" },
+  { id: "acq-sol-07", k: "매수", d: "−841.15", cls: "neg", n: "동일" },
+  { id: "inc-stake-03", k: "스테이킹", d: "+369.25", cls: "pos", n: "실제로 세금을 만든 이벤트" },
+  { id: "inc-stake-12", k: "스테이킹", d: "+258.48", cls: "pos", n: "실제로 세금을 만든 이벤트" },
+  { id: "inc-air-05", k: "에어드랍", d: "+221.55", cls: "pos", n: "실제로 세금을 만든 이벤트" },
+  { id: "inc-air-06", k: "에어드랍", d: "+166.16", cls: "pos", n: "실제로 세금을 만든 이벤트" },
+  { id: "dsp-btc-04", k: "매도", d: "0.00", cls: "zero", n: "차익 +4,965인데 기여 0 — 1년 초과 비과세" },
+  { id: "dsp-btc-12", k: "매도", d: "0.00", cls: "zero", n: "차익 +2,976인데 기여 0 — 1년 초과 비과세" },
+  { id: "dsp-eth-09", k: "매도", d: "0.00", cls: "zero", n: "차익 +2,967.50인데 기여 0" },
+  { id: "dsp-arb-11", k: "매도", d: "0.00", cls: "zero", n: "과세 대상이나 상계 후 순액 음수" },
+  { id: "dsp-sol-08", k: "매도", d: "0.00", cls: "zero", n: "손실은 이월로 빠짐" }
+];
+let group = "all";
+
+function screenJudge() {
+  const groups = [
+    ["all", `전체 ${GAINS.length + INCOMES.length}`],
+    ["tax", "과세 1"], ["free", "비과세 3"], ["carry", "상계·이월 1"], ["inc", "소득 4"], ["ex", "제외 0"]
+  ];
+  const rows = [...GAINS, ...INCOMES].filter((r) => group === "all" || r.grp === group);
+  return `
+    <p class="eyebrow" style="margin:0">건별 판정 · L3</p>
+    <p class="h1p" style="font-size:22px">거래마다 어느 그룹인지</p>
+    <p class="period">세액 컬럼은 없습니다 — 건별 세액은 존재하지 않습니다</p>
+    <div class="grp" style="margin-top:14px">
+      ${groups.map(([k, l]) => `<button class="${group === k ? "on" : ""}" data-group="${k}">${l}</button>`).join("")}
+    </div>
+    <div class="sect" style="margin-top:12px">
+      <div class="judge">
+        ${rows.map((r) => `
+          <div class="jrow">
+            <div class="jtop">
+              <span class="a">${r.sym} ${r.qty ?? ""}${r.kind ? " · " + r.kind : ""}</span>
+              <span class="g ${(r.gain ?? r.amount).startsWith("−") ? "neg" : "pos"}">${r.gain ?? r.amount}</span>
+            </div>
+            <div class="jmeta">${r.at}${r.days !== undefined ? ` · 보유 ${r.days}일 (취득 ${r.acq})` : ""}${r.proceeds ? ` · 양도 ${r.proceeds} / 원가 ${r.cost}` : ""}</div>
+            <span class="jtag ${r.grp}">${r.tag}</span>
+            <div class="jmeta" style="margin-top:6px">${r.why}</div>
+          </div>`).join("")}
+      </div>
+    </div>
+    <div class="sect" style="padding-bottom:130px">
+      <div class="card" style="background:#eff6ff;border-color:#bfdbfe">
+        <p style="margin:0;font-size:13px;font-weight:800;color:#1d4ed8">왜 세액 컬럼이 없나</p>
+        <p style="margin:6px 0 0;font-size:12.5px;line-height:1.65;color:#3f3f46">
+          같은 <code>dsp-eth-09</code>의 손익이 독일 <b>2,967.50</b> / 인도 <b>3,000</b> / 영국 <b>2,910.10</b>으로 갈립니다.
+          영국은 보유일수가 아예 <code>null</code>입니다(Section 104 pool). 건별에 붙일 수 있는 건 <b>손익과 판정</b>까지입니다.
+        </p>
+      </div>
+    </div>`;
+}
+
+function screenMarginal() {
+  return `
+    <p class="eyebrow" style="margin:0">한계 기여도</p>
+    <p class="h1p" style="font-size:22px">이 거래를 빼면 얼마 바뀌나</p>
+    <p class="period">€1,015.44 · 이벤트별로 <code style="font-size:11px">compute</code>를 1회 더 돌린 차이</p>
+    <div class="sect">
+      ${MARGINAL.map((m) => `
+        <div class="cd ${m.cls === "pos" ? "soon" : ""}">
+          <div style="min-width:0">
+            <div class="l">${m.k} · <span style="font-family:ui-monospace,monospace;font-size:11.5px;color:#71717a">${m.id}</span></div>
+            <div class="s">${m.n}</div>
+          </div>
+          <div class="r" style="color:${m.cls === "zero" ? "#a1a1aa" : m.cls === "neg" ? "#1d4ed8" : "#92400e"}">${m.d}</div>
+        </div>`).join("")}
+    </div>
+    <div class="sect" style="padding-bottom:130px">
+      <div class="card" style="background:var(--amber-bg);border-color:var(--amber-line)">
+        <p style="margin:0;font-size:13px;font-weight:800;color:#92400e">읽는 법</p>
+        <p style="margin:6px 0 0;font-size:12.5px;line-height:1.65;color:#52525b">
+          매도 5건이 전부 <b>0.00</b>입니다. 이 지갑의 €1,015.44는 <b>전부 스테이킹·에어드랍</b>에서 나옵니다.
+          매수는 기여가 <b>음수</b>라 지우면 세금이 늘어납니다. “거래에 세액을 붙이는” 표가 왜 거짓말인지가 여기서 보입니다.
+        </p>
+      </div>
+    </div>`;
+}
+
+function screenTimeline() {
+  return `
+    <p class="eyebrow" style="margin:0">시간축</p>
+    <p class="h1p" style="font-size:22px">월별 세금이 아니라 임계까지</p>
+    <p class="period">과세기간 2025-01-01 ~ 2025-12-31 · 남은 0일</p>
+    <div class="sect">
+      <h3>임계 진행률</h3>
+      <p class="note">넘는 순간 앞의 전부가 과세로 바뀌는 지점</p>
+      <div class="card" style="padding:14px;margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;font-size:13px"><span style="font-weight:700">매매 면세한계 (Freigrenze)</span><span style="font-weight:800">€0 / €1,000</span></div>
+        <div class="bar"><i style="width:0%"></i></div>
+        <p style="margin:7px 0 0;font-size:11.5px;color:#71717a">과세 대상 손익이 상계 후 0 — 한계 미달로 <b>전액 비과세</b>. 넘기면 <b>전액</b>이 과세됩니다.</p>
+      </div>
+      <div class="card" style="padding:14px">
+        <div style="display:flex;justify-content:space-between;font-size:13px"><span style="font-weight:700">기타소득 면세한계</span><span style="font-weight:800">€2,750 / €256</span></div>
+        <div class="bar"><i class="warn" style="width:100%"></i></div>
+        <p style="margin:7px 0 0;font-size:11.5px;color:#92400e">이미 초과 — 차감형이 아니라 <b>€2,750 전액</b>이 과세됩니다. 이게 €1,015.44의 출처입니다.</p>
+      </div>
+    </div>
+    <div class="sect">
+      <h3>보유기간 임박</h3>
+      <p class="note">잔여 lot의 취득일 + 365일까지. 이것만이 “지금 뭘 하면 숫자가 바뀌는지”를 알려줍니다<br /><span style="color:#a1a1aa">※ 아래 3줄은 픽스처 취득일로 계산한 <b>개념 예시</b>입니다(잔여 수량 스냅샷 API가 아직 없음). 나머지 모든 숫자는 엔진 실행 출력.</span></p>
+      <div class="cd soon">
+        <div><div class="l">SOL 20 — 45일 보유</div><div class="s">2026-07-01 이후 처분하면 §23 전액 비과세</div></div>
+        <div class="r" style="color:#92400e">320일 남음</div>
+      </div>
+      <div class="cd">
+        <div><div class="l">ARB 500 — 199일 보유</div><div class="s">2026-05-05 이후 처분하면 전액 비과세</div></div>
+        <div class="r" style="color:#92400e">166일 남음</div>
+      </div>
+      <div class="cd">
+        <div><div class="l">BTC 잔량 — 664일 보유</div><div class="s">이미 1년 초과 — 지금 처분해도 전액 비과세</div></div>
+        <div class="r" style="color:#047857">해당 없음</div>
+      </div>
+    </div>
+    <div class="sect" style="padding-bottom:130px">
+      <div class="card" style="background:var(--red-bg);border-color:var(--red-line)">
+        <p style="margin:0;font-size:13px;font-weight:800;color:#991b1b">월별 합계를 안 쓰는 이유</p>
+        <p style="margin:6px 0 0;font-size:12.5px;line-height:1.65;color:#52525b">
+          과세기간이 월 경계와 무관합니다(영국 4/6~4/5, 호주 7/1~6/30). 연 단위 임계·공제를 월에 배분할 방법도 없습니다.
+          <b>월별 세액은 어느 신고 서식에도 대응하지 않습니다.</b>
+        </p>
+      </div>
+    </div>`;
+}
+
+// 거래 탭 — 이벤트 원본 1건 = 행 1개. 도장과 손익은 선택한 나라 룰셋의 실제 실행 결과.
+const TXS = [
+  { id: "acq-btc-01", at: "2024-02-10", t: "BTC 0.5 매수", sub: "Ethereum",
+    DE: { amt: "20,030", lbl: "취득가액", g: "acq", tag: "취득 · 원가 기록", m: "−7,914.50" },
+    IN: { amt: "20,000", lbl: "취득가액", g: "acq", tag: "취득 · 수수료 불인정", m: "−4,368.00" },
+    PT: { amt: "20,030", lbl: "취득가액", g: "acq", tag: "취득 · 원가 기록", m: "−6,001.52" } },
+  { id: "acq-eth-01", at: "2024-06-01", t: "ETH 10 매수", sub: "Ethereum",
+    DE: { amt: "20,025", lbl: "취득가액", g: "acq", tag: "취득 · 원가 기록", m: "−2,749.80" },
+    IN: { amt: "20,000", lbl: "취득가액", g: "acq", tag: "취득 · 수수료 불인정", m: "−1,560.00" },
+    PT: { amt: "20,025", lbl: "취득가액", g: "acq", tag: "취득 · 원가 기록", m: "0.00" } },
+  { id: "inc-stake-03", at: "2025-03-15", t: "ETH 0.4 스테이킹 수령", sub: "수령 시 시가로 소득 인식",
+    DE: { amt: "+1,000", lbl: "수령 FMV", g: "inc", tag: "소득 · 과세", m: "+369.25" },
+    IN: { amt: "+1,000", lbl: "수령 FMV", g: "inc", tag: "소득 · 과세", m: "+312.00" },
+    PT: { amt: "+1,000", lbl: "수령 FMV", g: "inc", tag: "소득 · 과세", m: "+280.00" } },
+  { id: "dsp-btc-04", at: "2025-04-20", t: "BTC 0.25 매도", sub: "435일 보유 · 2024-02-10 취득", star: true,
+    DE: { amt: "+4,965.00", lbl: "손익", g: "free", tag: "비과세 · 1년 초과", m: "0.00" },
+    IN: { amt: "+5,000.00", lbl: "손익", g: "tax", tag: "과세 · 보유기간 무관", m: "+1,560.00" },
+    PT: { amt: "+4,965.00", lbl: "손익", g: "free", tag: "비과세 · 365일 초과", m: "0.00" } },
+  { id: "inc-air-05", at: "2025-05-05", t: "ARB 500 에어드랍 수령", sub: "수령 시 시가로 소득 인식",
+    DE: { amt: "+600", lbl: "수령 FMV", g: "inc", tag: "소득 · 과세", m: "+221.55" },
+    IN: { amt: "+600", lbl: "수령 FMV", g: "inc", tag: "소득 · 과세", m: "0.00" },
+    PT: { amt: "+600", lbl: "수령 FMV", g: "inc", tag: "소득 · 과세", m: "+147.84" } },
+  { id: "inc-air-06", at: "2025-06-10", t: "OP 300 에어드랍 수령", sub: "사전 이력 없는 최초 배분",
+    DE: { amt: "+450", lbl: "수령 FMV", g: "inc", tag: "소득 · 과세", m: "+166.16" },
+    IN: { amt: "+450", lbl: "수령 FMV", g: "inc", tag: "소득 · 과세", m: "+140.40" },
+    PT: { amt: "+450", lbl: "수령 FMV", g: "inc", tag: "소득 · 과세", m: "+126.00" } },
+  { id: "acq-sol-07", at: "2025-07-01", t: "SOL 50 매수", sub: "Ethereum",
+    DE: { amt: "7,015", lbl: "취득가액", g: "acq", tag: "취득 · 원가 기록", m: "−841.15" },
+    IN: { amt: "7,000", lbl: "취득가액", g: "acq", tag: "취득 · 수수료 불인정", m: "−624.00" },
+    PT: { amt: "7,015", lbl: "취득가액", g: "acq", tag: "취득 · 원가 기록", m: "−637.84" } },
+  { id: "dsp-sol-08", at: "2025-08-15", t: "SOL 20 매도", sub: "45일 보유 · 손실", star: true,
+    DE: { amt: "−816.00", lbl: "손익", g: "carry", tag: "손실 · 이월", m: "0.00" },
+    IN: { amt: "−800.00", lbl: "손익", g: "ex", tag: "상계 불가 · 무시", m: "0.00" },
+    PT: { amt: "−816.00", lbl: "손익", g: "carry", tag: "손실 · 상계", m: "−80.64" } },
+  { id: "acq-sol-08", at: "2025-08-25", t: "SOL 20 매수", sub: "10일 만의 재매수",
+    DE: { amt: "2,110", lbl: "취득가액", g: "acq", tag: "취득 · 원가 기록", m: "0.00" },
+    IN: { amt: "2,100", lbl: "취득가액", g: "acq", tag: "취득 · 수수료 불인정", m: "0.00" },
+    PT: { amt: "2,110", lbl: "취득가액", g: "acq", tag: "취득 · 원가 기록", m: "0.00" } },
+  { id: "dsp-eth-09", at: "2025-09-10", t: "ETH 3 → SOL 25 교환", sub: "466일 보유", star: true,
+    DE: { amt: "+2,967.50", lbl: "손익", g: "free", tag: "비과세 · 1년 초과", m: "0.00" },
+    IN: { amt: "+3,000.00", lbl: "손익", g: "tax", tag: "과세 · 교환도 처분", m: "+936.00" },
+    PT: { amt: "—", lbl: "손익 없음", g: "carry", tag: "과세 이연 · 처분 아님", m: "0.00" } },
+  { id: "dsp-arb-11", at: "2025-11-20", t: "ARB 500 매도", sub: "199일 보유",
+    DE: { amt: "+288.00", lbl: "손익", g: "tax", tag: "과세 · 1년 이내", m: "0.00" },
+    IN: { amt: "+300.00", lbl: "손익", g: "tax", tag: "과세", m: "+93.60" },
+    PT: { amt: "+288.00", lbl: "손익", g: "tax", tag: "과세 · 365일 이내", m: "0.00" } },
+  { id: "dsp-btc-12", at: "2025-12-05", t: "BTC 0.1 매도", sub: "664일 보유",
+    DE: { amt: "+2,976.00", lbl: "손익", g: "free", tag: "비과세 · 1년 초과", m: "0.00" },
+    IN: { amt: "+3,000.00", lbl: "손익", g: "tax", tag: "과세", m: "+936.00" },
+    PT: { amt: "+2,976.00", lbl: "손익", g: "free", tag: "비과세 · 365일 초과", m: "0.00" } },
+  { id: "inc-stake-12", at: "2025-12-20", t: "ETH 0.2 스테이킹 수령", sub: "수령 시 시가로 소득 인식",
+    DE: { amt: "+700", lbl: "수령 FMV", g: "inc", tag: "소득 · 과세", m: "+258.48" },
+    IN: { amt: "+700", lbl: "수령 FMV", g: "inc", tag: "소득 · 과세", m: "+218.40" },
+    PT: { amt: "+700", lbl: "수령 FMV", g: "inc", tag: "소득 · 과세", m: "+196.00" } }
+];
+const TOTALS = { DE: "€1,015.44", IN: "₹4,383.60", PT: "€770.00" };
+const CNAME = { DE: "독일", IN: "인도", PT: "포르투갈" };
+const GLABEL = { acq: "취득", inc: "소득", tax: "과세", free: "비과세", carry: "이월·이연", ex: "무시·제외" };
+let txGroup = "all";
+
+function screenTxList() {
+  const c = ["DE", "IN", "PT"].includes(country) ? country : "DE";
+  const counts = {};
+  TXS.forEach((t) => { counts[t[c].g] = (counts[t[c].g] ?? 0) + 1; });
+  const chips = [["all", `전체 ${TXS.length}`], ...Object.keys(GLABEL).filter((k) => counts[k]).map((k) => [k, `${GLABEL[k]} ${counts[k]}`])];
+  const rows = TXS.filter((t) => txGroup === "all" || t[c].g === txGroup);
+  return `
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
+      <div>
+        <p class="eyebrow" style="margin:0">거래</p>
+        <p class="h1p" style="font-size:26px">거래 ${TXS.length}건</p>
+      </div>
+      <span class="chip mock">mock 데이터</span>
+    </div>
+    <div class="cd" style="margin-top:12px;background:#f4f4f5;border-color:#e4e4e7">
+      <div><div class="l">${CNAME[c]} 룰셋으로 판정 중</div><div class="s">나라를 바꾸면 아래 도장이 전부 바뀝니다</div></div>
+      <div style="display:flex;gap:5px">
+        ${["DE", "IN", "PT"].map((k) => `<button class="bk ${k === c ? "on" : ""}" data-country="${k}" style="padding:5px 9px;font-size:11.5px">${CNAME[k]}</button>`).join("")}
+      </div>
+    </div>
+    <div class="cd" style="border-color:#bfdbfe;background:#eff6ff">
+      <div><div class="l" style="color:#1d4ed8">${CNAME[c]} 기준 올해 세금</div><div class="s">아래 거래들을 1년 통째로 계산한 결과</div></div>
+      <div class="r" style="font-size:17px;color:#1d4ed8">${TOTALS[c]}</div>
+    </div>
+    <div class="grp" style="margin-top:12px">
+      ${chips.map(([k, l]) => `<button class="${txGroup === k ? "on" : ""}" data-txgroup="${k}">${l}</button>`).join("")}
+    </div>
+    <div class="sect" style="margin-top:12px;padding-bottom:130px">
+      <div class="judge">
+        ${rows.map((t) => {
+          const j = t[c];
+          return `<div class="jrow">
+            <div class="jtop">
+              <span class="a">${t.t}</span>
+              <span class="g ${j.amt.startsWith("−") ? "neg" : j.amt.startsWith("+") ? "pos" : ""}" style="${j.amt === "—" ? "color:#a1a1aa" : ""}">${j.amt}</span>
+            </div>
+            <div class="jmeta" style="display:flex;justify-content:space-between"><span>${t.at} · ${t.sub}</span><span>${j.lbl}</span></div>
+            <span class="jtag ${j.g}">${j.tag}</span>
+          </div>`;
+        }).join("")}
+      </div>
+      <p class="note" style="margin-top:10px">금액 칸은 <b>세금이 아니라 손익·취득가·수령액</b>입니다. 세금은 맨 위 한 줄에만 있습니다.</p>
+    </div>`;
+}
+
+function screenTxDetail() {
+  const c = ["DE", "IN", "PT"].includes(country) ? country : "DE";
+  const t = TXS.find((x) => x.id === "dsp-btc-04");
+  const j = t[c];
+  const basis = {
+    DE: "§23 (1) Nr.2 EStG — 1년 초과 보유 후 처분은 금액과 무관하게 전액 비과세",
+    IN: "§115BBH — 보유기간과 무관하게 30% + cess 4%. 수수료는 취득원가로 인정되지 않습니다",
+    PT: "365일 초과 보유분은 비과세. 단기분만 28% 분리과세"
+  }[c];
+  return `
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <p class="h1p" style="font-size:20px">거래 상세</p>
+      <span style="font-size:13px;color:#71717a">닫기</span>
+    </div>
+    <div style="margin-top:14px">
+      <p style="margin:0;font-size:22px;font-weight:800;letter-spacing:-.02em">BTC 0.25 매도</p>
+      <p class="period" style="margin-top:4px">2025-04-20 · Ethereum</p>
+      <span class="jtag ${j.g}" style="margin-top:10px">${j.tag}</span>
+      <span style="margin-left:6px;font-size:11.5px;color:#71717a">${CNAME[c]} 기준</span>
+    </div>
+    <div class="sect">
+      <h3>손익은 이렇게 나왔습니다</h3>
+      <div class="ledger">
+        <div><span>양도가액</span><b>15,000</b></div>
+        <div><span>취득가액 (2024-02-10 매수분)</span><b>−${c === "IN" ? "10,000" : "10,015"}</b></div>
+        ${c === "IN" ? `<div><span style="color:#92400e">매도 수수료 20 (인도는 불인정)</span><b style="color:#92400e">0</b></div>` : `<div><span>매도 수수료</span><b>−20</b></div>`}
+        <div style="background:#fafafa"><span style="font-weight:800">손익</span><b style="font-size:15px">${j.amt}</b></div>
+      </div>
+    </div>
+    <div class="sect">
+      <h3>이 손익이 세금에서 어떻게 쓰였나</h3>
+      <div class="card" style="padding:14px">
+        <p style="margin:0;font-size:13px;line-height:1.7;color:#3f3f46">보유 <b>435일</b> → ${basis}</p>
+      </div>
+      <div class="cd" style="margin-top:8px;${j.m === "0.00" ? "" : "border-color:#fcd34d;background:#fffbeb"}">
+        <div><div class="l">이 거래가 없었다면</div><div class="s">${j.m === "0.00" ? "총액이 그대로입니다 — 세금에 영향 없음" : `총액이 ${j.m.replace("+", "")}만큼 줄어듭니다`}</div></div>
+        <div class="r" style="color:${j.m === "0.00" ? "#a1a1aa" : "#92400e"}">${j.m}</div>
+      </div>
+    </div>
+    <div class="sect" style="padding-bottom:130px">
+      <h3>다른 나라였다면</h3>
+      <div class="cmp">
+        ${["DE", "IN", "PT"].map((k) => `
+          <div class="cmprow">
+            <div class="c1"><div class="n">${CNAME[k]}</div><div class="m">손익 ${t[k].amt}</div></div>
+            <div class="c2"><span class="jtag ${t[k].g}" style="margin:0">${t[k].tag}</span><div class="e" style="margin-top:4px">세금 기여 ${t[k].m}</div></div>
+          </div>`).join("")}
+      </div>
+      <p class="note" style="margin-top:10px">같은 거래인데 독일은 세금 0원, 인도는 1,560. <b>거래 자체에 세액을 못 박을 수 없는 이유</b>입니다.</p>
+    </div>`;
+}
+
+const ANNOT = {
+  before: [
+    { cls: "kill", h: "설정 7개가 답을 가림", p: "국가 칩 12개 + 노브 5개가 첫 화면을 다 먹습니다. 점선 아래로 스크롤해야 숫자가 나옵니다." },
+    { cls: "kill", h: "기본값이 내 지갑이 아님", p: "<code>useState(\"scenario\")</code> — “세금 확인”하러 온 사람이 처음 보는 건 데모 픽스처입니다." },
+    { cls: "kill", h: "거주국을 다시 물음", p: "<code>useState(\"DE\")</code> 하드코딩. DID 클레임에 <code>countryCode</code>가 이미 있는데 안 씁니다." },
+    { cls: "kill", h: "“비교”라고 써놓고 라디오", p: "12개국 단일 선택. 비교를 사용자 단기기억에 외주 줬습니다. <code>compareRuleSets</code>는 구현돼 있는데 테스트에서만 호출됩니다." },
+    { cls: "kill", h: "가장 중요한 경고가 접힘", p: "취득원가 0으로 계산된 4건이 “계산 근거와 가정” <code>&lt;details&gt;</code> 안에 묻혀 있습니다. €44,000의 신뢰도를 좌우하는 정보입니다." }
+  ],
+  answer: [
+    { cls: "new", h: "설정 0개, 답 1개", p: "거주국(세션) + 내 지갑 + 기본 프로필로 계산한 숫자 하나. 나머지는 전부 이 숫자의 근거로 강등." },
+    { cls: "new", h: "과세기간을 실제 날짜로", p: "영국 4/6~, 호주 7/1~ 처럼 국가마다 다릅니다. “2025” 버튼만으로는 뭘 뜻하는지 모릅니다." },
+    { cls: "new", h: "출처를 한 줄로 못박음", p: "“내 지갑 이벤트 14건 기준” + 예시 시나리오는 명시적 토글로 강등. mock 칩 하나로 뭉개지 않습니다." },
+    { cls: "", h: "카드 4장 → 답 1개 + 근거", p: "과세 대상 손익 / 비과세 / 수령 소득은 동급이 아니라 <b>왜 이 숫자인지</b>의 재료입니다. 답 아래로 내립니다." }
+  ],
+  trust: [
+    { cls: "new", h: "이게 이 제품의 핵심 화면", p: "온체인 세금 계산의 진짜 문제는 세율이 아니라 <b>데이터 결손</b>입니다. 결손을 영향도 순으로 세워 보여줍니다." },
+    { cls: "new", h: "엔진이 이미 다 뱉고 있음", p: "<code>excludedEventIds</code>, <code>ledger.warnings</code>, <code>assumptions</code>, <code>openQuestions</code> — 전부 응답에 있습니다. 화면이 접어둔 것뿐입니다." },
+    { cls: "new", h: "각 항목이 행동으로 연결", p: "제외 6건 → 대시보드 확인 필요 탭. 취득원가 0 → 해당 거래 4건. <code>derive.ts</code> 주석이 “화면의 확인 필요와 같은 집합”이라고 명시하는데 링크가 없었습니다." },
+    { cls: "", h: "정직한 문장", p: "“지금 숫자는 하한도 상한도 아닙니다” — 제외분이 늘리고, 취득원가 0이 줄입니다. 방향이 양쪽이라 그렇게 씁니다." }
+  ],
+  refine: [
+    { cls: "new", h: "필요한 것만 묻는다", p: "독일 1개, 미국 2개, 영국 2개, <b>인도·포르투갈 0개</b>. 각 룰셋의 <code>requiredInputs</code> 그대로입니다. 국가 칩을 눌러보세요." },
+    { cls: "new", h: "안 쓰는 입력은 명시적으로 죽임", p: "숨기지 않고 “이 국가에서 쓰지 않음”으로 보여줍니다. 사라지면 “왜 없지?”가 되고, 살아있으면 “왜 있지?”가 됩니다." },
+    { cls: "new", h: "누락된 입력 복구", p: "<code>filingStatus</code>(미국 구간 결정), <code>carriedLosses</code>(독일 상계)는 계산에 쓰이는데 UI가 없어 기본값 고정이었습니다." },
+    { cls: "", h: "슬라이더는 놓을 때 1회", p: "지금은 쿼리키에 profile 전체가 들어가 드래그 픽셀마다 요청합니다. 백엔드 붙으면 그대로 터집니다." }
+  ],
+  compare: [
+    { cls: "new", h: "이게 제품의 차별점", p: "라디오 버튼이 아니라 나란히. <code>compareRuleSets</code>를 포트·API로 뚫으면 됩니다 — 엔진은 이미 있습니다." },
+    { cls: "new", h: "차이의 <b>이유</b>가 본문", p: "금액만 나열하면 비교가 아닙니다. “독일은 1년 초과 비과세인데 이 지갑엔 해당 없음” 같은 문장이 실제 정보입니다." },
+    { cls: "kill", h: "통화 문제는 미해결", p: "€ / ₹ / ₩ 를 나란히 놓으면 대소 비교가 성립하지 않습니다. 환율 소스·기준일을 정해야 합니다 — <b>결정 필요</b>." },
+    { cls: "", h: "제외 건수는 국가 공통", p: "원장은 같고 룰셋만 다릅니다. 헤더에 한 번만 적으면 됩니다." }
+  ],
+  kr: [
+    { cls: "kill", h: "지금은 ₩0 카드 3장", p: "한국은 totals가 전부 ZERO라 <b>“세금 0원”으로 오독</b>됩니다. (어제 이 부분은 패널로 교체해 고쳤습니다)" },
+    { cls: "new", h: "미확정을 막다른 길이 아니라 분기점으로", p: "원장 집계는 이미 계산됩니다 — 처분 손익 ₩44,000, 처분 4건. 이걸 먼저 보여주고 “확정되면 이렇게 된다”로 잇습니다." },
+    { cls: "new", h: "스위칭 벤치마크가 이미 응답에 있음", p: "한국 룰셋 <code>notes</code>가 “수령 시 과세면 독일·미국 모델, 매도 시 일괄이면 포르투갈 모델”이라고 말합니다. 접힌 목록이 아니라 화면 본문이어야 합니다." },
+    { cls: "new", h: "미확정 항목에 건수 연결", p: "<code>affectedEventIds</code>에 양도차익 4건이 들어있습니다. 건수만 찍지 말고 열어줍니다." }
+  ],
+  judge: [
+    { cls: "new", h: "L3 = 사실 + 판정, 세액 없음", p: "건별로 확정할 수 있는 건 손익·취득일·보유일수·<b>어느 그룹에 들어갔는지</b>까지입니다. 여기까지는 <code>GainRow</code>에 전부 계산돼 있습니다." },
+    { cls: "new", h: "이건 세금 화면이 아니라 거래 목록의 열", p: "지금 대시보드는 분류 배지와 원화 금액만 보여주고 <b>세금 판정을 전혀 안 보여줍니다</b>. L3는 세금 화면이 아니라 거래 목록에 붙어야 합니다." },
+    { cls: "new", h: "그룹 필터가 곧 룰셋 설명", p: "과세 1 / 비과세 3 / 상계·이월 1 / 소득 4. 이 분포 자체가 “독일 룰셋이 내 지갑에 어떻게 작동했는지”입니다." },
+    { cls: "kill", h: "지금은 API로 못 냄", p: "<code>finalizeEstimate</code>가 <code>ledger.gains</code>·<code>income</code>을 버립니다. <code>TaxEstimate</code>에 안 실려서 <b>L3를 그릴 데이터가 응답에 없습니다</b>. 선행 작업." },
+    { cls: "", h: "거래 1건이 행 여러 개가 될 수 있음", p: "lot 매칭이라 <code>for (const match of consumption.matches)</code>가 행을 쪼갭니다. 같은 매도 안에 과세분·비과세분이 섞이면 행 2개로 나눠 그려야 합니다." }
+  ],
+  marginal: [
+    { cls: "new", h: "“건당 세금”의 정직한 버전", p: "세액을 배분하는 게 아니라 <b>“빼면 얼마 바뀌나”</b>를 보여줍니다. 비선형이라 배분은 불가능하지만 델타는 항상 정의됩니다." },
+    { cls: "kill", h: "직관과 정반대라는 게 핵심", p: "매도 5건 전부 0.00, 매수가 −7,914.50. 거래 목록에 세액 컬럼을 그렸으면 <b>전부 0원으로 보이고 €1,015.44의 출처를 설명 못 합니다</b>." },
+    { cls: "new", h: "계산은 이미 가능", p: "<code>computeTaxEstimate</code>를 이벤트 제외하고 1회 더 돌리면 됩니다. 위 숫자가 실제 그 방식으로 나온 값입니다." },
+    { cls: "", h: "비용은 O(n)회 재계산", p: "이벤트 수만큼 재실행이라 서버에서 배치로 뽑거나, 사용자가 특정 거래를 열었을 때 1건만 계산하는 게 현실적입니다." }
+  ],
+  timeline: [
+    { cls: "new", h: "시간축의 용도는 세액이 아니라 임계", p: "“이번 달 세금”은 존재하지 않지만 <b>“한계까지 얼마 남았나”</b>는 존재하고, 그게 유일하게 행동을 바꿉니다." },
+    { cls: "new", h: "보유기간 임박이 킬러 기능", p: "독일 365일·호주 12개월은 <b>건별 판정</b>입니다. <code>holdingDays</code>가 이미 원장에 있으니 “320일 뒤 처분하면 전액 비과세”를 바로 낼 수 있습니다." },
+    { cls: "new", h: "€1,015.44의 출처가 한 줄로 보임", p: "기타소득 면세한계 €256을 €2,750이 넘겼고, 차감형이 아니라 전액 과세라 부담이 생겼습니다. 게이지 2개가 계산 내역 7줄보다 빠릅니다." },
+    { cls: "kill", h: "월별 합계는 안 만듦", p: "영국 4/6~4/5, 호주 7/1~6/30. 월 경계와 과세기간이 다르고 연 단위 임계를 월에 쪼갤 방법이 없습니다." }
+  ],
+  txlist: [
+    { cls: "new", h: "거래 행에 붙는 건 세액이 아니라 <b>도장</b>", p: "취득 / 소득 / 과세 / 비과세 / 이월·이연 / 무시·제외. 금액 칸은 <b>손익·취득가·수령액</b>입니다. 세금은 맨 위 파란 줄 하나뿐입니다." },
+    { cls: "new", h: "나라 버튼을 눌러보세요", p: "거래는 그대로인데 도장이 전부 바뀝니다. BTC 매도가 독일에선 <b>비과세</b>, 인도에선 <b>과세</b>. 이게 이 제품이 파는 것입니다." },
+    { cls: "new", h: "필터가 곧 룰셋 요약", p: "취득 4 / 소득 4 / 비과세 3 / 과세 1 / 이월 1 — 이 분포가 “이 룰셋이 내 지갑에 어떻게 작동했는지”입니다. 나라를 바꾸면 분포도 바뀝니다." },
+    { cls: "kill", h: "지금 대시보드엔 이게 하나도 없음", p: "현재는 <code>수신/송금</code> 분류 배지와 원화 금액뿐입니다. 세금 판정도, 손익도, 보유일수도 없습니다. <b>거래 탭과 세금 탭이 완전히 분리돼 있는 상태</b>입니다." },
+    { cls: "", h: "매수도 목록에 남습니다", p: "매수는 세금이 0이지만 <b>취득원가를 만드는 행</b>이라 지우면 세금이 늘어납니다. “세금 없음”이 아니라 “취득 · 원가 기록”으로 찍습니다." }
+  ],
+  txdetail: [
+    { cls: "new", h: "손익이 어떻게 나왔는지 4줄로", p: "양도가액 − 취득가액 − 수수료 = 손익. 어느 매수분과 매칭됐는지(2024-02-10)까지 보여줘야 사용자가 검증할 수 있습니다." },
+    { cls: "new", h: "인도로 바꾸면 수수료 줄이 바뀝니다", p: "인도는 수수료를 원가로 인정하지 않아 같은 거래의 손익이 4,965 → 5,000이 됩니다. 계산 규칙 차이가 <b>줄 단위로</b> 보입니다." },
+    { cls: "new", h: "“이 거래가 없었다면” 한 줄", p: "세액을 배분하는 대신 델타를 보여줍니다. 독일은 0.00(영향 없음), 인도는 +1,560.00." },
+    { cls: "new", h: "“다른 나라였다면”이 결정타", p: "같은 거래 하나에 세 나라 도장을 나란히. <b>거래에 세액을 못 박을 수 없는 이유</b>가 한 화면에서 증명됩니다." }
+  ]
+};
+
+function render(name) {
+  const map = { before: screenBefore, answer: screenAnswer, trust: screenTrust, refine: screenRefine, compare: screenCompare, kr: screenKr, judge: screenJudge, marginal: screenMarginal, timeline: screenTimeline, txlist: screenTxList, txdetail: screenTxDetail };
+  const navFor = name === "txlist" || name === "txdetail" ? "tx" : "tax";
+  document.querySelectorAll("#nav a").forEach((a) => a.classList.toggle("on", a.dataset.nav === navFor));
+  document.getElementById("screen").innerHTML = map[name]();
+  document.getElementById("screen").scrollTop = 0;
+  document.getElementById("annot").innerHTML = ANNOT[name].map(a =>
+    `<div class="an ${a.cls}"><h4>${a.h}</h4><p>${a.p}</p></div>`).join("");
+  document.querySelectorAll(".bk[data-country]").forEach(b =>
+    b.addEventListener("click", () => { country = b.dataset.country; render(name); }));
+  document.querySelectorAll(".grp button[data-group]").forEach(b =>
+    b.addEventListener("click", () => { group = b.dataset.group; render(name); }));
+  document.querySelectorAll(".grp button[data-txgroup]").forEach(b =>
+    b.addEventListener("click", () => { txGroup = b.dataset.txgroup; render(name); }));
+}
+
+document.querySelectorAll(".tab").forEach(tab => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach(t => t.setAttribute("aria-selected", String(t === tab)));
+    if (!["refine", "kr", "txlist", "txdetail"].includes(tab.dataset.screen)) country = "DE";
+    if (!["txlist", "txdetail"].includes(tab.dataset.screen)) txGroup = "all";
+    render(tab.dataset.screen);
+  });
+});
+render("answer");
+</script>
+</body>
+</html>
