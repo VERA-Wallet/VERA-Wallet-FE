@@ -3,7 +3,9 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { formatFiat } from "@/lib/format";
+import { assetLabel, explorerTxUrl, formatDate, formatFiat } from "@/lib/format";
+import { isoDay } from "@/lib/period";
+import { taxYearFor } from "@/lib/tax/engine";
 
 describe("금액 표기는 값을 숨기지 않는다", () => {
   it("통화 관례 자릿수를 따른다", () => {
@@ -97,5 +99,57 @@ describe("금액 표기가 값을 바꾸지 않는다", () => {
     }
     // 앞뒤 공백은 정상 값으로 받는다.
     expect(formatFiat(" 1015.44 ", "EUR")).toBe("€1,015.44");
+  });
+});
+
+describe("자산 이름은 아는 만큼만 말한다", () => {
+  const base = { chain_id: 1, asset_type: "ERC20" as const, token_id: null, asset_symbol: null };
+
+  it("심볼을 알면 그것으로 부른다", () => {
+    expect(assetLabel({ ...base, asset_symbol: "USDC" })).toBe("USDC");
+    expect(assetLabel({ ...base, asset_type: "NATIVE", asset_symbol: "ETH" })).toBe("ETH");
+  });
+
+  it("NFT는 컬렉션 심볼과 토큰 번호를 함께 둔다", () => {
+    // 심볼만 두면 같은 컬렉션의 다른 개체가 화면에서 구분되지 않는다.
+    expect(assetLabel({ ...base, asset_type: "ERC721", token_id: "102", asset_symbol: "BAYC" })).toBe("BAYC #102");
+  });
+
+  it("모르면 지어내지 않고 모른다는 표시를 쓴다", () => {
+    expect(assetLabel(base)).toBe("ERC20");
+    expect(assetLabel({ ...base, asset_type: "ERC721", token_id: "102" })).toBe("#102");
+    // 네이티브는 심볼이 없어도 체인으로 결정된다.
+    expect(assetLabel({ ...base, asset_type: "NATIVE" })).toBe("ETH");
+    expect(assetLabel({ ...base, asset_type: "NATIVE", chain_id: 137 })).toBe("POL");
+  });
+});
+
+describe("날짜 표기는 계산과 같은 시간대를 쓴다", () => {
+  // 계산은 전부 UTC다. 표시만 로컬이면 KST(UTC+9) 사용자는 12/31 밤 거래를 다음 해로 읽는다.
+  const boundary = "2025-12-31T20:00:00.000Z";
+
+  it("과세연도 경계 거래를 엔진과 같은 날로 찍는다", () => {
+    // UTC를 못 박았으므로 어느 시간대에서 돌려도 같은 답이 나와야 한다.
+    expect(formatDate(boundary)).toBe("2025. 12. 31.");
+    expect(isoDay(boundary)).toBe("2025-12-31");
+    // 화면이 "2026. 1. 1."이라 하는데 엔진이 2025년으로 계산하면 두 이야기가 된다.
+    expect(taxYearFor("KR", boundary)).toBe(2025);
+  });
+
+  it("자정 직후도 같은 규칙을 따른다", () => {
+    expect(formatDate("2026-01-01T00:30:00.000Z")).toBe("2026. 1. 1.");
+    expect(taxYearFor("KR", "2026-01-01T00:30:00.000Z")).toBe(2026);
+  });
+});
+
+describe("트랜잭션 해시는 원본을 확인할 수 있어야 한다", () => {
+  it("아는 체인은 익스플로러로 연결한다", () => {
+    expect(explorerTxUrl(1, "0xabc")).toBe("https://etherscan.io/tx/0xabc");
+    expect(explorerTxUrl(42161, "0xabc")).toBe("https://arbiscan.io/tx/0xabc");
+  });
+
+  it("모르는 체인은 죽은 링크 대신 null을 준다", () => {
+    // 링크를 걸어두고 404로 보내면 "확인시켜준다"는 약속만 하고 지키지 않는 것이다.
+    expect(explorerTxUrl(999999, "0xabc")).toBeNull();
   });
 });

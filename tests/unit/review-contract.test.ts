@@ -4,7 +4,7 @@ import { deriveTaxEvents } from "@/lib/tax/derive";
 import { createNormalizedEventFixtures } from "@/lib/mock/fixtures";
 import { MockEventStore } from "@/lib/mock/store";
 import { MockTaxEngine } from "@/lib/mock/tax-engine";
-import { isLowConfidence, needsReview, reviewReason, taxExclusionReason } from "@/lib/review";
+import { assetFlow, isLowConfidence, needsReview, reviewReason, taxExclusionReason } from "@/lib/review";
 import type { NormalizedEvent } from "@/lib/schema/normalized-event";
 
 const base = createNormalizedEventFixtures()[0];
@@ -178,6 +178,40 @@ describe("분류 배지와 판정 도장이 어긋나지 않는가", () => {
       // RECEIVE → ACQUIRE, SEND/EXCHANGE → DISPOSE. 그 외 분류는 파생되지 않는다.
       expect(tax.kind, `${tax.id}(${classification})`).toBe(classification === "RECEIVE" ? "ACQUIRE" : "DISPOSE");
       expect(["RECEIVE", "SEND", "EXCHANGE"]).toContain(classification);
+    }
+  });
+
+  it("쓴 것·얻은 것의 갈래가 세무 파생과 정확히 같다", () => {
+    // 화면이 direction으로 색을 칠하면 같은 거래를 두고 목록은 "얻음", 원장은 "처분"이라 말한다.
+    const sendButIn: NormalizedEvent = {
+      ...healthy,
+      id: "send-in",
+      direction: "IN",
+      classification: "UNKNOWN",
+      user_override: { classification: "SEND", reason: "확정", overridden_at: "2025-02-01T00:00:00.000Z" },
+    };
+    expect(assetFlow(sendButIn)).toBe("out");
+    expect(assetFlow({ ...healthy, direction: "OUT", classification: "RECEIVE" })).toBe("in");
+    expect(assetFlow({ ...healthy, classification: "EXCHANGE" })).toBe("out");
+    // 처분이 아니거나 계산에 들어가지 않는 건은 어느 쪽도 아니다.
+    expect(assetFlow({ ...healthy, classification: "INTERNAL_TRANSFER" })).toBe("neutral");
+    expect(assetFlow({ ...healthy, classification: "UNKNOWN", user_override: null })).toBe("neutral");
+  });
+
+  it("픽스처 전 건에서 흐름과 파생 종류가 일치한다", () => {
+    const all = createNormalizedEventFixtures();
+    const derived = deriveTaxEvents(all);
+    const kinds = new Map(derived.events.map((tax) => [tax.id, tax.kind]));
+    for (const event of all) {
+      const flow = assetFlow(event);
+      // 계산에서 빠진 건은 원장에 없다. 그래도 자산이 오간 방향은 사실이라 부호는 붙는다.
+      if (taxExclusionReason(event) !== null) continue;
+      if (flow === "neutral") {
+        // 부호 없는 건은 원장에도 없다.
+        expect(kinds.has(event.id), event.id).toBe(false);
+        continue;
+      }
+      expect(kinds.get(event.id), `${event.id}(${flow})`).toBe(flow === "in" ? "ACQUIRE" : "DISPOSE");
     }
   });
 });

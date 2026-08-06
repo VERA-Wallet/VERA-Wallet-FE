@@ -69,6 +69,7 @@ export function toRuleSetSummary(ruleset: RuleSetDefinition): RuleSetSummary {
     aggregateAdjustment: resolveAdjustment(ruleset, { taxYear: new Date().getFullYear(), profile: DEFAULT_PROFILE }),
     demoPriority: ruleset.demoPriority,
     status: ruleset.status,
+    effectiveTaxYear: ruleset.effectiveTaxYear,
     topics: ruleset.topics,
     method: ruleset.ledger.method,
   };

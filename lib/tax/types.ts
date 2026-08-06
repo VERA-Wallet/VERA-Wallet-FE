@@ -9,6 +9,9 @@ export type CountryCode = "DE" | "US" | "IN" | "PT" | "GB" | "AU" | "FR" | "IT" 
  * SCHEDULED   확정·시행예정 (개정 확정, 시행일 도래 전)
  * PARTIAL     부분확정 (체계는 있으나 산정 지침 미비)
  * UNDETERMINED 미확정 (명문 규정 부재)
+ *
+ * 추정 결과(`TaxEstimate.status`)에 실린 `SCHEDULED`는 **이 과세기간이 시행일 전**이라는 뜻이며,
+ * 그때 totals는 전부 0이다. 규칙을 몰라서 0인 `UNDETERMINED`와 구분한다(`lib/tax/status.ts`).
  */
 export type ConfirmationStatus = "CONFIRMED" | "SCHEDULED" | "PARTIAL" | "UNDETERMINED";
 
@@ -327,6 +330,14 @@ export type RuleContext = {
   /** 과세기간 [from, to). 영국(4/6~)·호주(7/1~)처럼 역년과 다른 국가가 있어 명시한다. */
   period: { from: string; to: string };
   excludedEventIds: string[];
+  /**
+   * "시행됐다고 가정하고" 계산하는가.
+   *
+   * 시행일이 미래인 룰셋(한국 2027-01-01)은 현재 과세기간에 부담이 존재하지 않는다.
+   * 그 사실을 지우지 않으면서 "시행되면 이렇게 보인다"를 볼 수 있어야 하므로,
+   * 가정 여부를 **입력으로** 받는다. 켠 쪽(화면)이 그 사실을 계속 말할 책임을 진다.
+   */
+  assumeEffective: boolean;
 };
 
 /** 화면이 입력 칸을 그릴 때 쓰는 프로필 필드 키. */
@@ -340,8 +351,8 @@ export type ProfileField = keyof TaxpayerProfile;
  */
 export type AggregateAdjustment = "offset" | "inclusion" | "discount" | "allowance" | "floor" | "ignored" | "none";
 
-/** 조정 방식이 과세연도·프로필로 갈릴 때 참조하는 입력. */
-export type AdjustmentContext = { taxYear: number; profile: TaxpayerProfile };
+/** 조정 방식이 과세연도·프로필·시행 가정으로 갈릴 때 참조하는 입력. */
+export type AdjustmentContext = { taxYear: number; profile: TaxpayerProfile; assumeEffective?: boolean };
 
 export type RuleSetDefinition = {
   code: CountryCode;
@@ -353,6 +364,13 @@ export type RuleSetDefinition = {
   /** PDF PART 2 데모 구현 추천 순위. null = 벤치마크 대상. */
   demoPriority: 1 | 2 | 3 | null;
   status: ConfirmationStatus;
+  /**
+   * 이 룰셋이 처음 적용되는 과세연도. 미선언 = 이미 시행 중.
+   *
+   * 시행일이 미래면 화면은 그 해를 **미리 고를 수 있어야** 한다.
+   * 선택 창을 시계로만 만들면(올해-3 ~ 올해) 한국 사용자는 2027년 계산을 영영 볼 수 없다.
+   */
+  effectiveTaxYear?: number;
   /**
    * 이 룰셋이 실제로 계산에 쓰는 프로필 필드.
    *

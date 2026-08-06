@@ -12,6 +12,7 @@ import type { TaxEventSource } from "@/lib/ports/tax-engine";
 import type { RuleSetSummary } from "@/lib/tax/types";
 import { round, sum } from "@/lib/tax/decimal";
 import { canonicalCountryCode } from "@/lib/tax/rulesets";
+import { noChargeHeadline, omitsCharge } from "@/lib/tax/status";
 import type {
   ConfirmationStatus,
   JudgmentGroup,
@@ -47,9 +48,19 @@ const TOPIC_LABEL: Record<RuleTopic, string> = {
   LOSS_OFFSET: "손실 상계",
 };
 
-/** 과세연도 선택 창. 고정 배열이면 해가 바뀌는 순간 "올해"를 못 고른다. */
-function taxYearWindow(current: number): number[] {
-  return [current - 3, current - 2, current - 1, current];
+/**
+ * 과세연도 선택 창. 고정 배열이면 해가 바뀌는 순간 "올해"를 못 고른다.
+ * 마지막 거래가 이 창보다 오래됐다면 그 해도 함께 넣는다 —
+ * 목록에 없으면 사용자는 자기 거래가 있는 해로 돌아갈 방법이 없다.
+ *
+ * 미래 연도는 **시계로는 절대 만들지 않는다**. 룰셋이 시행 예정 연도를 선언했을 때만
+ * 그 해를 넣는다(한국 2027) — 그러지 않으면 시행 후 계산을 볼 방법이 없다.
+ */
+function taxYearWindow(current: number, latestActivity?: number, effective?: number): number[] {
+  const years = new Set([current - 3, current - 2, current - 1, current]);
+  if (latestActivity !== undefined) years.add(latestActivity);
+  if (effective !== undefined) years.add(effective);
+  return [...years].sort((left, right) => left - right);
 }
 
 /**
@@ -204,14 +215,19 @@ const FALLBACK_COUNTRY = "DE";
 export function TaxSimulator({
   countryCode,
   currentYear = new Date().getFullYear(),
-}: { countryCode?: string; currentYear?: number } = {}) {
+  latestActivityYear,
+}: { countryCode?: string; currentYear?: number; latestActivityYear?: number } = {}) {
   // DID가 주는 UK 같은 별칭을 여기서 한 번 표준화한다.
   const [country, setCountry] = useState(() => canonicalCountryCode(countryCode ?? "") ?? FALLBACK_COUNTRY);
   // 연도는 서버가 정한 값 하나만 쓴다. state와 버튼 목록이 서로 다른 시계를 읽으면
   // 자정을 넘긴 순간 선택된 버튼이 사라지고, SSR과 hydration도 갈린다.
-  const [taxYear, setTaxYear] = useState(currentYear);
+  // "올해"로 고정하면 올해 거래가 없는 지갑은 진입하자마자 12개 룰셋이 전부 "계산할 거래 없음"을 말한다.
+  // 그건 비교가 아니라 빈 화면이다. 마지막 거래가 있는 해를 알면 거기서 연다.
+  const [taxYear, setTaxYear] = useState(latestActivityYear ?? currentYear);
   // 기본은 내 지갑이다. 데모 시나리오는 명시적으로 고를 때만 쓴다.
   const [source, setSource] = useState<TaxEventSource>("wallet");
+  // 시행 전 룰셋(한국 2027)을 "시행됐다고 가정하고" 볼지. 기본은 사실 — 가정은 사용자가 켠다.
+  const [assumeEffective, setAssumeEffective] = useState(false);
   // 슬라이더는 드래그 중 화면만 따라가고(draft), 손을 뗄 때 한 번만 계산에 커밋한다.
   const [marginalRatePercent, setMarginalRatePercent] = useState("35");
   const [marginalRateDraft, setMarginalRateDraft] = useState("35");
@@ -238,6 +254,8 @@ export function TaxSimulator({
     country,
     taxYear,
     source,
+    // 시행 전 룰셋을 "시행됐다고 가정하고" 보는 중이면 그 사실도 요청에 실린다.
+    ...(assumeEffective ? { assumeEffective: true } : {}),
     // 화면이 "이 국가에서 쓰지 않음"이라 했으면 실제로도 보내지 않는다.
     // 선언을 표시용 메타데이터로만 두면 보이지 않는 값이 답을 바꿔도 아무도 모른다.
     // `selected`가 없으면 아래 enabled가 false라 이 값은 요청되지 않는다.
@@ -287,6 +305,16 @@ export function TaxSimulator({
     result !== undefined && !result.judgments.some((row) => row.inPeriod && row.group !== "acquire");
   const groups = result && !hasNothingToCompute ? groupJudgments(result) : [];
 
+  // 올해가 아닌 해로 열렸다면 그 이유를 말한다.
+  // 말하지 않으면 사용자는 화면이 왜 작년을 보여주는지 모른 채 옛 결과를 올해 답으로 읽는다.
+  const openedOnPastYear =
+    latestActivityYear !== undefined && latestActivityYear !== currentYear && taxYear === latestActivityYear;
+  // 시행일이 아직 오지 않은 룰셋(한국 2027)은 그 해를 미리 고를 수 있어야 한다.
+  // 고를 수 없으면 사용자는 "시행되면 얼마인가"를 이 화면에서 끝내 알 수 없다.
+  const effectiveTaxYear = selected?.effectiveTaxYear;
+  const previewingEffectiveYear =
+    effectiveTaxYear !== undefined && effectiveTaxYear > currentYear && taxYear >= effectiveTaxYear;
+
   return (
     <main className="min-h-dvh px-5 py-8">
       <header data-surface="tax-simulator" className="flex items-start justify-between gap-3">
@@ -298,6 +326,16 @@ export function TaxSimulator({
           {/* 설명은 실제 상태에서 파생한다. 정적 문장으로 두면 데모를 지갑이라 하고,
               아직 계산하지 않은 화면을 "적용한 결과"라고 단정한다. */}
           <p className="mt-2 text-sm text-zinc-500">{headerNote}</p>
+          {openedOnPastYear ? (
+            <p className="mt-1 text-sm text-zinc-500">
+              {currentYear}년에는 계산할 거래가 없어 마지막 거래가 있는 {latestActivityYear}년으로 열었습니다.
+            </p>
+          ) : null}
+          {previewingEffectiveYear ? (
+            <p className="mt-1 text-sm text-zinc-500">
+              아직 시행 전인 {effectiveTaxYear}년 기준으로 미리 계산했습니다. 시행일이 지나야 확정된 답이 됩니다.
+            </p>
+          ) : null}
         </div>
         <MockProvenanceChip />
       </header>
@@ -362,17 +400,52 @@ export function TaxSimulator({
             </div>
             {/* 과세기간은 화면이 다시 계산하면 안 된다. 영국 4/6~·호주 7/1~ 때문에 역년과 다르다. */}
             <p className="mt-1 text-sm text-zinc-500">과세기간 {halfOpenPeriodLabel(result.period)}</p>
-            {result.status === "UNDETERMINED" ? (
-              // 미확정 국가는 totals가 전부 0이다. 그대로 카드로 깔면 "낼 게 없다"로 읽힌다 — 상태 자체를 답으로 내보인다.
+            {/* 가정을 켠 동안에는 그 사실이 답 바로 옆에 계속 있어야 한다.
+                켤 때 한 번만 말하고 지우면, 남는 것은 근거 없는 큰 금액뿐이다. */}
+            {assumeEffective ? (
+              <div className="mt-3 flex items-start justify-between gap-3 rounded-card border border-amber-200 bg-amber-50 p-3">
+                <p className="text-sm leading-6 text-amber-900">
+                  시행 가정으로 보는 중입니다. 아래 금액은 {result.taxYear}년 거래에 {result.countryLabel} 시행 규칙을
+                  적용했다고 가정한 값이며, 실제 부담이 아닙니다.
+                </p>
+                <button
+                  type="button"
+                  aria-pressed={true}
+                  className="shrink-0 rounded-lg border border-amber-300 px-2.5 py-1 text-xs font-semibold text-amber-900"
+                  onClick={() => setAssumeEffective(false)}
+                >
+                  가정 끄기
+                </button>
+              </div>
+            ) : null}
+            {result !== undefined && omitsCharge(result.status) ? (
+              // 부담을 산출하지 않은 국가는 totals가 전부 0이다. 그대로 카드로 깔면 "낼 게 없다"로 읽힌다 — 이유 자체를 답으로 내보인다.
               <div className="mt-3 rounded-card border border-zinc-300 bg-white p-4 shadow-card">
                 <p className="text-sm text-zinc-500">예상 부담 추정</p>
-                <p data-testid="estimated-charge" className="mt-1 text-2xl font-bold text-zinc-500">산출 불가</p>
+                <p data-testid="estimated-charge" className="mt-1 text-2xl font-bold text-zinc-500">
+                  {noChargeHeadline(result.status)}
+                </p>
                 <p className="mt-2 text-sm leading-6 text-zinc-600">
-                  과세 규칙이 확정되지 않아 금액을 산출하지 않습니다.{" "}
+                  {result.status === "SCHEDULED"
+                    ? `${result.taxYear}년 발생분은 시행일 전이라 과세 대상이 아닙니다. `
+                    : "과세 규칙이 확정되지 않아 금액을 산출하지 않습니다. "}
                   {hasNothingToCompute
                     ? "이 기간에는 집계할 원장 거래도 없습니다."
-                    : "아래 계산 내역은 판정 전 원장 집계이며, 규칙이 확정되면 같은 원장에 그대로 적용됩니다."}
+                    : result.status === "SCHEDULED"
+                      ? "아래 계산 내역은 시행 전 원장 집계이며, 시행 후에는 같은 원장에 그대로 규칙이 적용됩니다."
+                      : "아래 계산 내역은 판정 전 원장 집계이며, 규칙이 확정되면 같은 원장에 그대로 적용됩니다."}
                 </p>
+                {/* 시행 전이라는 사실을 답으로 내보인 자리에서, 그 가정을 켜는 문도 함께 연다. */}
+                {result.status === "SCHEDULED" && !hasNothingToCompute ? (
+                  <button
+                    type="button"
+                    aria-pressed={false}
+                    className="mt-3 rounded-lg border border-primary-500 px-3 py-1.5 text-sm font-semibold text-primary-600"
+                    onClick={() => setAssumeEffective(true)}
+                  >
+                    시행 가정으로 보기
+                  </button>
+                ) : null}
               </div>
             ) : hasNothingToCompute ? (
               // 답이 0원인 것과 셀 것이 없는 것은 다른 사실이다.
@@ -632,7 +705,7 @@ export function TaxSimulator({
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-medium text-zinc-700">과세연도</span>
-          {taxYearWindow(currentYear).map((year) => (
+          {taxYearWindow(currentYear, latestActivityYear, effectiveTaxYear).map((year) => (
             <button
               key={year}
               type="button"
@@ -641,6 +714,10 @@ export function TaxSimulator({
               onClick={() => setTaxYear(year)}
             >
               {year}
+              {/* 미래 연도를 아무 표시 없이 끼워 넣으면 사용자는 이미 지난 해로 읽는다. */}
+              {year === effectiveTaxYear && year > currentYear ? (
+                <span className="ml-1 text-xs text-zinc-500">시행</span>
+              ) : null}
             </button>
           ))}
         </div>

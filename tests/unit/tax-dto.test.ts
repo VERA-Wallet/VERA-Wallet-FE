@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { taxEstimateSchema } from "@/lib/http/tax-dto";
 import { computeTaxEstimate } from "@/lib/tax/engine";
 import { RULE_SET_ORDER } from "@/lib/tax/rulesets";
+import { FIXTURE_TAX_YEAR } from "@/tests/fixtures/tax-year";
 import { createTaxScenarioEvents } from "@/lib/mock/tax-fixtures";
 
 describe("DTO가 엔진 결과를 조용히 버리지 않는가", () => {
@@ -13,7 +14,7 @@ describe("DTO가 엔진 결과를 조용히 버리지 않는가", () => {
       const engine = computeTaxEstimate({
         country: code,
         taxYear: 2025,
-        events: createTaxScenarioEvents(),
+        events: createTaxScenarioEvents(FIXTURE_TAX_YEAR),
       });
       const parsed = taxEstimateSchema.parse(engine);
       expect(parsed, code).toEqual(engine);

@@ -1,11 +1,19 @@
 import { describe, expect, it } from "vitest";
 
+import { FIXTURE_TAX_YEAR } from "@/tests/fixtures/tax-year";
 import { createNormalizedEventFixtures } from "@/lib/mock/fixtures";
 import { createTaxScenarioEvents } from "@/lib/mock/tax-fixtures";
 import { deriveTaxEvents } from "@/lib/tax/derive";
 import type { TaxEvent } from "@/lib/tax/types";
 import { computeTaxEstimate } from "@/lib/tax/engine";
-import { LIMITATION_MESSAGE, LIMITATION_ORDER, classifyLimitation } from "@/lib/tax/limitations";
+import {
+  COST_METHOD_SUFFIX,
+  DEEMED_COST_SUFFIX,
+  LIMITATION_MESSAGE,
+  LIMITATION_ORDER,
+  RECEIPT_COST_SUFFIX,
+  classifyLimitation,
+} from "@/lib/tax/limitations";
 import { MockTaxEngine } from "@/lib/mock/tax-engine";
 import { RULE_SET_ORDER } from "@/lib/tax/rulesets";
 
@@ -13,7 +21,7 @@ describe("계산의 한계 분류", () => {
   it("생산자가 내는 모든 문구가 other로 새지 않는다", () => {
     // 문구를 한 글자 고치면 조용히 "그 밖의 한계"로 강등되는 게 이 설계의 유일한 실패 모드다.
     // derive가 실제로 만들어내는 문구 전부를 통과시켜 확인한다.
-    const { assumptions } = deriveTaxEvents(createNormalizedEventFixtures());
+    const { assumptions } = deriveTaxEvents(createNormalizedEventFixtures(FIXTURE_TAX_YEAR));
     expect(assumptions.length).toBeGreaterThan(0);
     for (const message of assumptions) {
       expect(classifyLimitation(message), message).not.toBe("other");
@@ -28,6 +36,10 @@ describe("계산의 한계 분류", () => {
     expect(classifyLimitation(LIMITATION_MESSAGE.EXCHANGE_APPROXIMATION)).toBe("approximation");
     expect(classifyLimitation("가격 확인 필요 상태인 이벤트는 계산에서 제외했습니다.")).toBe("excluded");
     expect(classifyLimitation("dsp-btc-04: 원장에 없는 수량 1 BTC — 취득가액 0으로 계산했습니다.")).toBe("zero_basis");
+    // 법정 취득가액·원가법 대신 대체값으로 계산한 줄은 "근사"다. other로 새면 화면이 한계를 숨긴다.
+    expect(classifyLimitation(`시행일 전 취득분을 소비한 처분 3건 —${DEEMED_COST_SUFFIX}`)).toBe("approximation");
+    expect(classifyLimitation(`판정 보류 수령분 2건 —${RECEIPT_COST_SUFFIX}`)).toBe("approximation");
+    expect(classifyLimitation(`취득가액 산정 —${COST_METHOD_SUFFIX}`)).toBe("approximation");
   });
 
   it("모르는 문구는 숨기지 않고 other로 내보인다", () => {
@@ -42,7 +54,7 @@ describe("계산의 한계 분류", () => {
 
   it("영향 순으로 줄을 세운다", () => {
     for (const country of RULE_SET_ORDER) {
-      const result = computeTaxEstimate({ country, taxYear: 2025, events: createTaxScenarioEvents() });
+      const result = computeTaxEstimate({ country, taxYear: FIXTURE_TAX_YEAR, events: createTaxScenarioEvents(FIXTURE_TAX_YEAR) });
       const ranks = result.limitations.map((row) => LIMITATION_ORDER.indexOf(row.kind));
       expect([...ranks].sort((a, b) => a - b), country).toEqual(ranks);
       // 룰셋 설명(notes)은 한계가 아니다. 섞이면 "이 답이 흔들리는 지점"이 규칙 해설로 찬다.
@@ -51,7 +63,7 @@ describe("계산의 한계 분류", () => {
   });
 
   it("이벤트 id가 붙은 경고만 id를 갖는다", () => {
-    const result = computeTaxEstimate({ country: "DE", taxYear: 2025, events: createTaxScenarioEvents() });
+    const result = computeTaxEstimate({ country: "DE", taxYear: FIXTURE_TAX_YEAR, events: createTaxScenarioEvents(FIXTURE_TAX_YEAR) });
     for (const row of result.limitations) {
       // id를 지어내면 없는 거래로 사용자를 보낸다.
       for (const id of row.eventIds) expect(row.message.startsWith(`${id}:`), row.message).toBe(true);
@@ -63,8 +75,8 @@ describe("지갑 경로가 한계를 빠뜨리지 않는가", () => {
   it("어댑터가 파생 한계를 응답에 싣는다", async () => {
     // 엔진만 부르면 파생 단계(제외·근사·미반영)가 통째로 사라진다.
     // 테스트 하네스가 어댑터를 흉내 내다 이 병합을 빠뜨린 전례가 있다.
-    const engine = new MockTaxEngine(() => createNormalizedEventFixtures());
-    const result = await engine.estimate({ country: "DE", taxYear: 2025, source: "wallet" });
+    const engine = new MockTaxEngine(() => createNormalizedEventFixtures(FIXTURE_TAX_YEAR));
+    const result = await engine.estimate({ country: "DE", taxYear: FIXTURE_TAX_YEAR, source: "wallet" });
     const kinds = new Set(result.limitations.map((row) => row.kind));
 
     expect(result.limitations.length).toBeGreaterThan(0);
@@ -77,8 +89,8 @@ describe("지갑 경로가 한계를 빠뜨리지 않는가", () => {
   });
 
   it("제외된 이벤트는 id를 달고 올라온다", async () => {
-    const engine = new MockTaxEngine(() => createNormalizedEventFixtures());
-    const result = await engine.estimate({ country: "DE", taxYear: 2025, source: "wallet" });
+    const engine = new MockTaxEngine(() => createNormalizedEventFixtures(FIXTURE_TAX_YEAR));
+    const result = await engine.estimate({ country: "DE", taxYear: FIXTURE_TAX_YEAR, source: "wallet" });
     for (const row of result.limitations.filter((item) => item.kind === "excluded")) {
       // id 없이 "빠졌습니다"만 말하면 사용자가 어느 거래인지 못 찾는다.
       expect(row.eventIds.length, row.message).toBeGreaterThan(0);

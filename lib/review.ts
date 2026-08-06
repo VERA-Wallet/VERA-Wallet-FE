@@ -52,3 +52,23 @@ export function needsReview(event: NormalizedEvent): boolean {
 export function reviewReason(event: NormalizedEvent): string {
   return taxExclusionReason(event) ?? "신뢰도 낮음";
 }
+
+/** 자산이 지갑으로 들어왔는가(`in`), 나갔는가(`out`), 어느 쪽도 아닌가(`neutral`). */
+export type AssetFlow = "in" | "out" | "neutral";
+
+/**
+ * 화면이 "쓴 것"과 "얻은 것"을 가르는 기준.
+ *
+ * `direction`이 아니라 **유효 분류**로 정한다. 둘은 갈릴 수 있고(체인상 IN이지만 사용자가 SEND로 확정),
+ * 세무 파생(`deriveTaxEvents`)은 분류를 따른다 — 화면만 direction을 보면 같은 거래를 두고
+ * 목록은 "얻음", 원장은 "처분"이라 말하게 된다.
+ *
+ * 갈래는 파생과 정확히 같다: RECEIVE → 취득 / SEND·EXCHANGE → 처분 /
+ * 자기 지갑 간 이체·미확정 → 어느 쪽도 아님(처분이 아니거나 계산에 들어가지 않는다).
+ */
+export function assetFlow(event: NormalizedEvent): AssetFlow {
+  const classification = effectiveClassification(event);
+  if (classification === "RECEIVE") return "in";
+  if (classification === "SEND" || classification === "EXCHANGE") return "out";
+  return "neutral";
+}

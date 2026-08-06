@@ -22,6 +22,11 @@ export type EstimateInput = {
   profile?: Partial<TaxpayerProfile>;
   /** 가격 미확인 등으로 상위 파이프라인이 제외한 이벤트. 결과에 그대로 실어 보낸다. */
   excludedEventIds?: string[];
+  /**
+   * 시행일이 아직 오지 않은 룰셋을 "시행됐다고 가정하고" 계산한다.
+   * 기본값 false — 가정은 요청한 쪽이 명시하고, 켠 쪽이 그 사실을 계속 말할 책임을 진다.
+   */
+  assumeEffective?: boolean;
 };
 
 export class UnknownRuleSetError extends Error {
@@ -119,6 +124,7 @@ export function computeTaxEstimate(input: EstimateInput): TaxEstimate {
     taxYear: input.taxYear,
     period,
     excludedEventIds: input.excludedEventIds ?? [],
+    assumeEffective: input.assumeEffective ?? false,
   };
 
   const estimate = ruleset.compute(context);

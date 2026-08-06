@@ -270,7 +270,11 @@ export function buildJudgments(
   const noTaxableGains = isZero(estimate.totals.taxableGains);
   // 행 합계보다 집계 과세분이 작으면 그 차이만큼 상계·공제된 것이다.
   const reduced = !noTaxableGains && lt(estimate.totals.taxableGains, taxableSum);
-  const adjustment = resolveAdjustment(ruleset, { taxYear: context.taxYear, profile: context.profile });
+  const adjustment = resolveAdjustment(ruleset, {
+    taxYear: context.taxYear,
+    profile: context.profile,
+    assumeEffective: context.assumeEffective,
+  });
   const guarded = drafts.map((draft) => {
     if (draft.group !== "taxable") return draft;
     if (noTaxableGains) {

@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
-import { assetLabel, formatTokenAmount } from "@/lib/format";
+import { assetLabel, formatSignedTokenAmount } from "@/lib/format";
 import { createNormalizedEventFixtures } from "@/lib/mock/fixtures";
 import type { NormalizedEvent } from "@/lib/schema/normalized-event";
 
@@ -14,7 +14,7 @@ vi.mock("@/lib/composition-root.client", () => ({
 
 // 목록 행은 원시 단위가 아니라 decimals를 반영한 표시 수량으로 렌더링된다.
 function rowLabel(event: NormalizedEvent) {
-  return `${formatTokenAmount(event.raw_amount, event.decimals)} · ${assetLabel(event)}`;
+  return `${formatSignedTokenAmount(event)} · ${assetLabel(event)}`;
 }
 
 function setup(result: unknown, history: unknown[] = []) {

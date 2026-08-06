@@ -19,7 +19,11 @@ function assetKey(event: NormalizedEvent): string {
   return `${event.chain_id}:${event.asset_contract ?? "native"}${event.token_id ? `:${event.token_id}` : ""}`;
 }
 
+/** 원장·판정 줄에 찍히는 자산 이름. 심볼을 모르면 계약 주소 앞자리로 대체한다. */
 function symbolOf(event: NormalizedEvent): string {
+  if (event.asset_symbol) {
+    return event.token_id ? `${event.asset_symbol} #${event.token_id}` : event.asset_symbol;
+  }
   return event.asset_contract ? `${event.asset_type}:${event.asset_contract.slice(0, 10)}` : `CHAIN-${event.chain_id}`;
 }
 

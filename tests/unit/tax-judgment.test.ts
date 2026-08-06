@@ -6,12 +6,13 @@ import { getRuleSet, RULE_SET_ORDER } from "@/lib/tax/rulesets";
 import type { JudgmentRow, TaxEvent } from "@/lib/tax/types";
 import { defaultIncomeVerdict } from "@/lib/tax/judgment";
 import { sub, sum } from "@/lib/tax/decimal";
+import { FIXTURE_TAX_YEAR } from "@/tests/fixtures/tax-year";
 import { createTaxScenarioEvents } from "@/lib/mock/tax-fixtures";
 
-const events = createTaxScenarioEvents();
+const events = createTaxScenarioEvents(FIXTURE_TAX_YEAR);
 
 function judgmentsOf(country: string): Map<string, JudgmentRow[]> {
-  const estimate = computeTaxEstimate({ country, events, taxYear: 2025 });
+  const estimate = computeTaxEstimate({ country, events, taxYear: FIXTURE_TAX_YEAR });
   const byEvent = new Map<string, JudgmentRow[]>();
   for (const row of estimate.judgments) {
     byEvent.set(row.eventId, [...(byEvent.get(row.eventId) ?? []), row]);
@@ -63,10 +64,23 @@ describe("건별 판정 — 같은 거래가 나라별로 다르게 찍힌다", 
     expect(swap[0].quantity).not.toBe("0");
   });
 
-  it("한국은 규칙 미확정이라 판정 보류(pending)다 — 인도의 법적 상계 금지(ignored)와 구분한다", () => {
-    expect(groupOf("KR", "dsp-btc-04")).toBe("pending");
-    expect(groupOf("KR", "inc-stake-03")).toBe("pending");
+  it("한국은 시행일 전이라 과세 대상 아님으로 찍힌다 — 인도의 법적 상계 금지(ignored)와 구분한다", () => {
+    // 2027-01-01 이후 양도·대여분부터 과세된다. 2025년 처분은 규칙 미확정이 아니라 대상이 아니다.
+    expect(groupOf("KR", "dsp-btc-04")).toBe("exempt");
+    expect(groupOf("KR", "inc-stake-03")).toBe("exempt");
     expect(groupOf("IN", "dsp-sol-08")).toBe("ignored");
+  });
+
+  it("한국은 시행 후에도 양도·대여 외 수령분만 판정을 보류한다", () => {
+    const after = computeTaxEstimate({ country: "KR", events: createTaxScenarioEvents(2027), taxYear: 2027 });
+    const groupsOf = (eventId: string) =>
+      after.judgments.filter((row) => row.eventId === eventId && row.leg !== "receive").map((row) => row.group);
+    // 스테이킹·에어드랍은 양도도 대여도 아니라 조문이 없다 — 규칙이 있는 처분과 같은 도장을 찍으면 거짓이다.
+    expect(groupsOf("inc-stake-03")).toEqual(["pending"]);
+    expect(groupsOf("inc-air-05")).toEqual(["pending"]);
+    // 처분은 판정이 내려진다(이 시나리오 금액은 기본공제 250만원 안이라 비과세로 갈린다).
+    expect(groupsOf("dsp-btc-04")).toEqual(["exempt"]);
+    expect(groupsOf("dsp-sol-08")).toEqual(["carry"]);
   });
 
   it("매수는 세금이 0이어도 취득 판정으로 목록에 남는다", () => {
@@ -292,7 +306,7 @@ describe("손익이 어떻게 나왔는지를 숨기지 않는다", () => {
 
   it("소득·취득 행에는 손익 근거를 붙이지 않는다", () => {
     // 손익이 아닌 행에 "양도가액 − 취득가액"을 보이면 없는 계산을 지어내는 것이다.
-    const result = computeTaxEstimate({ country: "DE", taxYear: 2025, events: createTaxScenarioEvents() });
+    const result = computeTaxEstimate({ country: "DE", taxYear: FIXTURE_TAX_YEAR, events: createTaxScenarioEvents(FIXTURE_TAX_YEAR) });
     for (const row of result.judgments) {
       if (row.amountKind === "gain") continue;
       expect(row.breakdown, `${row.eventId} ${row.amountKind}`).toBeUndefined();

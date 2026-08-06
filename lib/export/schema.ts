@@ -21,6 +21,9 @@ export const EXPORT_COLUMNS = [
   "price_status",
   "fiat_value",
   "fiat_currency",
+  // 새 칸은 끝에 붙인다. 중간에 끼우면 열 위치로 읽는 소비자가 조용히 다른 값을 읽는다.
+  "asset_symbol",
+  "asset_verified",
 ] as const;
 
 export type ExportColumn = (typeof EXPORT_COLUMNS)[number];
@@ -48,5 +51,8 @@ export function eventToRow(event: NormalizedEvent): ExportRow {
     price_status: event.price_status,
     fiat_value: event.price_status === "UNKNOWN" ? "" : event.fiat_value ?? "",
     fiat_currency: event.fiat_currency,
+    // 심볼을 모르면 빈 칸이다. "UNKNOWN" 같은 글자를 넣으면 그런 이름의 토큰과 구분되지 않는다.
+    asset_symbol: event.asset_symbol ?? "",
+    asset_verified: event.asset_verified ? "true" : "false",
   };
 }

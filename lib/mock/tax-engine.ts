@@ -1,6 +1,6 @@
 import "server-only";
 
-import { createTaxScenarioEvents } from "@/lib/mock/tax-fixtures";
+import { createTaxScenarioEvents, scenarioScaleFor } from "@/lib/mock/tax-fixtures";
 import type { NormalizedEvent } from "@/lib/schema/normalized-event";
 import { deriveTaxEvents } from "@/lib/tax/derive";
 import { computeMarginalContributions, computeTaxEstimate, taxPeriodFor } from "@/lib/tax/engine";
@@ -22,11 +22,14 @@ export class MockTaxEngine implements TaxEnginePort {
 
   async estimate(input: TaxEstimateRequest): Promise<TaxEstimate> {
     if (input.source === "scenario") {
-      const events = createTaxScenarioEvents();
+      // 연도를 넘기지 않으면 어느 해를 골라도 데모 시계의 해만 계산돼 나머지 해가 "계산할 거래 없음"이 된다.
+      // 금액 자릿수는 룰셋 통화에 맞춘다 — 원화 기본공제 250만원이 만 단위 거래를 전부 삼키지 않도록.
+      const events = createTaxScenarioEvents(input.taxYear, scenarioScaleFor(input.country));
       const estimateInput = {
         country: input.country,
         taxYear: input.taxYear,
         profile: input.profile,
+        assumeEffective: input.assumeEffective,
         events,
       };
       const estimate = computeTaxEstimate(estimateInput);
@@ -53,6 +56,7 @@ export class MockTaxEngine implements TaxEnginePort {
       country: input.country,
       taxYear: input.taxYear,
       profile: input.profile,
+      assumeEffective: input.assumeEffective,
       events: derived.events,
       excludedEventIds: derived.excludedEventIds.filter((id) => inPeriod.has(id)),
     };

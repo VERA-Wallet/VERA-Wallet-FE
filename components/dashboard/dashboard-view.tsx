@@ -1,22 +1,27 @@
 "use client";
 
-import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { BottomSheet } from "@/components/ui/bottom-sheet";
+import { ExchangeLinkSummary } from "@/components/dashboard/exchange-link-summary";
+import { FlowChart } from "@/components/dashboard/flow-chart";
+import { ChainIcon } from "@/components/ui/chain-icon";
+import { AssetMark } from "@/components/ui/asset-mark";
 import { CLASSIFICATION_LABEL, ClassificationBadge } from "@/components/ui/classification-badge";
-import { isGroundedPeriod, periodLabel } from "@/lib/period";
+import { isGroundedPeriod, isoDay, periodLabel } from "@/lib/period";
 import { fresh, freshNotice, type FreshState } from "@/lib/queries/fresh";
 import { AMOUNT_KIND_LABEL, GROUP_SHORT_LABEL, JudgmentBadge } from "@/components/ui/judgment-badge";
 import { MockProvenanceChip } from "@/components/ui/mock-provenance-chip";
 import { SummaryCard } from "@/components/ui/summary-card";
-import { assetLabel, chainLabel, formatDate, formatFiat, formatFiatExact, formatTokenAmount, shortHash } from "@/lib/format";
+import { assetLabel, chainLabel, explorerTxUrl, formatDate, formatFiat, formatFiatExact, formatSignedTokenAmount, formatTokenAmount, nativeSymbol, shortHash, UTC_NOTICE } from "@/lib/format";
 import { eventSummaryQueryKey, useEventDetail, useEventList, useEventSummary, useReclassify } from "@/lib/queries/events";
 import { useTaxEstimate } from "@/lib/queries/tax";
 import { useJudgments } from "@/lib/queries/judgments";
-import { effectiveClassification, needsReview, reviewReason } from "@/lib/review";
+import { assetFlow, effectiveClassification, needsReview, reviewReason } from "@/lib/review";
+import type { AssetFlow } from "@/lib/review";
 import { isNegative, isZero } from "@/lib/tax/decimal";
 import { taxYearFor } from "@/lib/tax/engine";
+import { omitsCharge } from "@/lib/tax/status";
 import type { Classification, NormalizedEvent } from "@/lib/schema/normalized-event";
 import type { JudgmentGroup, JudgmentRow, TaxEstimate } from "@/lib/tax/types";
 
@@ -28,6 +33,16 @@ type Tab = "all" | "review";
 const classifications: Classification[] = ["RECEIVE", "SEND", "EXCHANGE", "INTERNAL_TRANSFER", "UNKNOWN"];
 
 const DIRECTION_LABEL: Record<NormalizedEvent["direction"], string> = { IN: "받음", OUT: "보냄" };
+
+/**
+ * 쓴 것과 얻은 것의 색. 색만으로는 구분하지 못하는 사용자가 있으므로 부호(`+`/`-`)와 늘 함께 쓴다.
+ * 어느 쪽도 아닌 건(자기 지갑 간 이체·미확정)은 기본색이다 — 색을 붙이면 처분이라고 단정하는 셈이다.
+ */
+const FLOW_TEXT_CLASS: Record<AssetFlow, string> = {
+  in: "text-emerald-700",
+  out: "text-rose-700",
+  neutral: "text-zinc-900",
+};
 
 const COMPARISON_COUNTRIES = ["DE", "IN", "PT"] as const;
 
@@ -160,14 +175,14 @@ function EventDetails({
       source: "wallet",
       includeMarginal: true,
     },
-    // 산출 불가 룰셋(한국 등)은 부담 자체를 계산하지 않는다. 그 0을 차분해 "영향 없음"이라 하면 거짓이다.
+    // 부담을 산출하지 않는 룰셋(규칙 미확정·시행 전)은 그 0을 차분해 "영향 없음"이라 하면 거짓이다.
     // 중복 레코드도 id로 키가 잡히는 결과를 물려받으면 안 된다.
-    (taxYearGrounded ?? true) && estimate !== undefined && estimate.status !== "UNDETERMINED" && !isDuplicate,
+    (taxYearGrounded ?? true) && estimate !== undefined && !omitsCharge(estimate.status) && !isDuplicate,
   );
   const gainRows = (judgmentRows ?? []).filter((row) => row.amountKind === "gain");
   const marginalFresh = fresh(
     marginalEstimate,
-    taxYearGrounded === false || estimate === undefined || estimate.status === "UNDETERMINED" || isDuplicate === true,
+    taxYearGrounded === false || estimate === undefined || omitsCharge(estimate.status) || isDuplicate === true,
   );
   const marginalContribution = marginalFresh.data?.marginalContributions?.[event.id];
   const currency = estimate?.currency ?? marginalFresh.data?.currency ?? "KRW";
@@ -201,9 +216,12 @@ function EventDetails({
       {saved && !conflictMessage ? <p role="status" className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">분류를 저장했습니다.</p> : null}
 
       <div className="mt-4 flex items-baseline justify-between gap-3">
-        <p className="text-2xl font-bold tracking-tight text-zinc-900">
-          {formatTokenAmount(event.raw_amount, event.decimals)} <span className="text-base font-semibold text-zinc-500">{assetLabel(event)}</span>
-        </p>
+        <div className="flex min-w-0 items-center gap-2">
+          <AssetMark event={event} size={36} />
+          <p className={`min-w-0 truncate text-2xl font-bold tracking-tight ${FLOW_TEXT_CLASS[assetFlow(event)]}`}>
+            {formatSignedTokenAmount(event)} <span className="text-base font-semibold text-zinc-500">{assetLabel(event)}</span>
+          </p>
+        </div>
         <ClassificationBadge classification={effectiveClassification(event)} />
       </div>
       <p className="mt-1 text-sm text-zinc-500">
@@ -212,12 +230,36 @@ function EventDetails({
       </p>
 
       <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
-        <div><dt className="text-zinc-500">트랜잭션</dt><dd className="mt-1 font-mono text-xs font-medium text-zinc-900">{shortHash(event.tx_hash)}</dd></div>
-        <div><dt className="text-zinc-500">체인</dt><dd className="mt-1 font-medium text-zinc-900">{chainLabel(event.chain_id)}</dd></div>
+        {/* 해시를 글자로만 두면 사용자가 원본 거래를 확인할 방법이 없다.
+            우리가 모르는 체인이면 링크를 걸지 않는다 — 죽은 링크는 확인시켜주는 척만 한다. */}
+        <div>
+          <dt className="text-zinc-500">트랜잭션</dt>
+          <dd className="mt-1 font-mono text-xs font-medium text-zinc-900">
+            {explorerTxUrl(event.chain_id, event.tx_hash)
+              ? <a className="underline" href={explorerTxUrl(event.chain_id, event.tx_hash)!} target="_blank" rel="noreferrer noopener">{shortHash(event.tx_hash)}</a>
+              : shortHash(event.tx_hash)}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-zinc-500">체인</dt>
+          <dd className="mt-1 flex items-center gap-1.5 font-medium text-zinc-900">
+            <ChainIcon chainId={event.chain_id} />
+            {chainLabel(event.chain_id)}
+          </dd>
+        </div>
         <div><dt className="text-zinc-500">방향</dt><dd className="mt-1 font-medium text-zinc-900">{DIRECTION_LABEL[event.direction]}</dd></div>
-        <div><dt className="text-zinc-500">자산 타입</dt><dd className="mt-1 font-medium text-zinc-900">{event.asset_type}</dd></div>
+        {/* 심볼은 사칭할 수 있다. 대조 결과를 자산 정보 옆에 붙여 이름만 믿지 않게 한다. */}
+        <div>
+          <dt className="text-zinc-500">자산 타입</dt>
+          <dd className="mt-1 font-medium text-zinc-900">
+            {event.asset_type} · {event.asset_verified ? "검증됨" : "미검증 토큰"}
+          </dd>
+        </div>
         <div><dt className="text-zinc-500">신뢰도</dt><dd className="mt-1 font-medium text-zinc-900">{Math.round(event.confidence * 100)}%</dd></div>
         <div><dt className="text-zinc-500">이력</dt><dd className="mt-1 font-medium text-zinc-900">{event.user_override ? `사용자 확정 · ${formatDate(event.user_override.overridden_at)}` : "자동 분류"}</dd></div>
+        {/* 가스는 체인 네이티브 수량이라 법정통화 환산 없이는 원가·양도가액에 넣을 수 없다
+            (LIMITATION_MESSAGE.GAS_FEE). 위 손익 근거의 `− 수수료`가 왜 0인지 여기서만 답할 수 있다. */}
+        <div><dt className="text-zinc-500">가스</dt><dd className="mt-1 font-medium text-zinc-900">{formatTokenAmount(event.gas_fee_native, 0)} {nativeSymbol(event.chain_id)}</dd></div>
       </dl>
       {gainRows.length > 0 ? (
         <section className="mt-4 rounded-lg bg-zinc-50 p-3">
@@ -298,6 +340,14 @@ function EventDetails({
             {judgmentRows.map((row, index) => (
               <div key={`${row.eventId}-${row.leg}-${index}`} className="text-zinc-700">
                 <JudgmentBadge group={row.group} label={row.label} />
+                {/* 손익 행은 위 "손익은 이렇게 나왔습니다"가 산술 근거까지 보인다 — 여기서 또 쓰면 같은 값이 두 번 나온다.
+                    취득·수령·이연에는 그 표가 없으므로, 금액이 세금이 아니라 무엇인지 밝힐 곳이 여기뿐이다. */}
+                {row.amountKind !== "gain" ? (
+                  <p className="mt-1 text-zinc-700">
+                    {AMOUNT_KIND_LABEL[row.amountKind]} · {isZero(row.amount) ? "원가 없음" : formatFiat(row.amount, currency)}
+                    {row.inPeriod ? "" : " · 기간 밖(원가 추적용)"}
+                  </p>
+                ) : null}
                 <p className="mt-1 text-zinc-500">{row.basis}</p>
               </div>
             ))}
@@ -369,7 +419,6 @@ function EventRow({
   judgmentError,
   judgmentDisabled,
   isDuplicate,
-  estimate,
 }: {
   record: EventRecord;
   onSelect: () => void;
@@ -380,7 +429,6 @@ function EventRow({
   /** 기준 기간이 없어 판정을 아예 계산하지 않은 상태. "확인 중"과 구분해야 한다. */
   judgmentDisabled?: boolean;
   isDuplicate: boolean;
-  estimate: TaxEstimate | undefined;
 }) {
   const { event } = record;
   // `이동 · 처분 아님`은 분류가 아니라 **판정** 주장이다. 판정이 보류면 이것도 단정하지 않는다.
@@ -390,63 +438,61 @@ function EventRow({
   return (
     <button type="button" className="rounded-card border border-zinc-200 bg-white p-4 text-left shadow-card active:bg-zinc-50" onClick={onSelect}>
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate font-semibold text-zinc-900">
-            {formatTokenAmount(event.raw_amount, event.decimals)} · {assetLabel(event)}
-          </p>
-          <p className="mt-1 text-sm text-zinc-500">{formatDate(event.block_timestamp)} · {chainLabel(event.chain_id)}</p>
-        </div>
-        <div className="flex flex-col items-end gap-1">
-          <ClassificationBadge classification={effectiveClassification(event)} />
-          {event.price_status === "UNKNOWN"
-            ? <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">가격 확인 필요</span>
-            : (
-              <span className="flex flex-col items-end">
-                <span className="text-xs font-medium text-zinc-500">거래액</span>
-                <span className="text-sm font-medium text-zinc-700">{formatFiat(event.fiat_value, event.fiat_currency)}</span>
-              </span>
-            )}
-        </div>
-      </div>
-      <div className="mt-3 flex flex-wrap gap-2 text-xs">
-          {needsReview(event) && event.price_status !== "UNKNOWN"
-            ? <span className="rounded-full bg-amber-100 px-2.5 py-1 font-semibold text-amber-800">{reviewReason(event)}</span>
-            : null}
-          {event.price_status === "ESTIMATED" ? <span className="rounded-full bg-zinc-100 px-2.5 py-1 font-semibold text-zinc-600">추정가</span> : null}
-          {event.user_override ? <span className="rounded-full bg-blue-100 px-2.5 py-1 font-semibold text-blue-800">수동 분류됨</span> : null}
-          {isDuplicate
-            ? <JudgmentBadge group="excluded" label="중복 id · 확인 필요" />
-            : isExcluded
-              ? <JudgmentBadge group="excluded" label="계산 제외 · 확인 필요" />
-              : isInternalTransfer
-                ? <JudgmentBadge group="deferred" label="이동 · 처분 아님" />
-                : rows.length > 0
-                  ? rows.map((row, index) => <JudgmentBadge key={`${row.eventId}-${row.leg}-${index}`} group={row.group} label={row.label} />)
-                  : inPeriod === false
-                    ? <JudgmentBadge group="deferred" label="기간 밖 · 이번 계산에 없음" />
-                    : inPeriod === null
-                      // estimate가 아직 없다. "결과 없음"이라 단정하면 로딩·오류 중에 거짓이 된다.
-                      ? <JudgmentBadge
-                          group="pending"
-                          label={
-                            judgmentDisabled
-                              ? "판정 미계산 · 기준 기간 확인 필요"
-                              : judgmentError
-                                ? "판정 불러오기 실패"
-                                : "판정 확인 중"
-                          }
-                        />
-                      : <JudgmentBadge group="excluded" label="계산 결과 없음 · 확인 필요" />}
-      </div>
-      {estimate ? rows.map((row, index) => (
-        <p key={`${row.eventId}-${row.leg}-${index}`} className="mt-2 text-sm text-zinc-600">
-          {AMOUNT_KIND_LABEL[row.amountKind]} · {Number(row.amount) === 0 ? "원가 없음" : formatFiat(row.amount, estimate.currency)}
-          {row.inPeriod ? "" : " · 기간 밖(원가 추적용)"}
-          {row.holdingDays !== null ? ` · 보유 ${row.holdingDays}일` : row.lots > 1 ? " · 보유기간 취득분마다 다름" : ""}
-          {row.acquiredAt ? ` · ${formatDate(row.acquiredAt)} 취득` : ""}
-          {row.lots > 1 ? ` · 취득분 ${row.lots}건` : ""}
+        <p className="flex min-w-0 items-center gap-1.5 truncate text-sm text-zinc-500">
+          <ChainIcon chainId={event.chain_id} />
+          {chainLabel(event.chain_id)}
         </p>
-      )) : null}
+        <ClassificationBadge classification={effectiveClassification(event)} />
+      </div>
+      {/* 목록은 온체인 사실만 말한다. 법정통화 금액·손익·보유기간은 상세에서
+          계산 근거(양도가액 − 취득가액 − 수수료)와 함께 보여야 검증이 된다.
+          카드에 숫자만 흘리면 취득가액 0 때문에 부풀려진 값을 근거 없이 단정하게 된다. */}
+      {/* 카드를 식별하는 줄. e2e가 `p:first-child` 같은 순서에 기대면 레이아웃을 바꿀 때마다 깨진다. */}
+      {/* 나간 자산과 들어온 자산을 부호와 색으로 가른다. 기준은 direction이 아니라 유효 분류다
+          (`assetFlow`) — 세무 파생과 갈리면 목록은 "얻음", 원장은 "처분"이라고 말하게 된다. */}
+      <div className="mt-2 flex items-center gap-2">
+        {/* 마크는 라벨 밖에 둔다. 안에 넣으면 카드 제목 텍스트가 마크 글자까지 삼킨다. */}
+        <AssetMark event={event} size={28} />
+        <p data-event-label className={`min-w-0 truncate text-lg font-bold ${FLOW_TEXT_CLASS[assetFlow(event)]}`}>
+          {formatSignedTokenAmount(event)} · {assetLabel(event)}
+        </p>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+        {/* 확인 필요 사유는 `lib/review.ts` 하나만 말한다. 가격·분류를 각자 판정하면
+            카드가 "가격 확인 필요"라 하고 세금 화면은 "분류 확인 필요"라고 갈린다. */}
+        {needsReview(event)
+          ? <span className="rounded-full bg-amber-100 px-2.5 py-1 font-semibold text-amber-800">{reviewReason(event)}</span>
+          : null}
+        {/* 자산 딱지. 심볼은 사칭할 수 있으므로 대조 결과를 이름 옆에서 말한다.
+            추정가·수동 분류는 이 거래를 **어떻게 처리했는가**의 문제라 상세에서만 말한다 —
+            목록에 다 깔면 정작 읽어야 할 판정 도장이 배지 더미에 묻힌다. */}
+        {event.asset_verified
+          ? <span className="rounded-full bg-emerald-100 px-2.5 py-1 font-semibold text-emerald-800">검증됨</span>
+          : <span className="rounded-full bg-amber-100 px-2.5 py-1 font-semibold text-amber-800">미검증 토큰</span>}
+        {isDuplicate
+          ? <JudgmentBadge group="excluded" label="중복 id · 확인 필요" />
+          : isExcluded
+            ? <JudgmentBadge group="excluded" label="계산 제외 · 확인 필요" />
+            : isInternalTransfer
+              ? <JudgmentBadge group="deferred" label="이동 · 처분 아님" />
+              : rows.length > 0
+                ? rows.map((row, index) => <JudgmentBadge key={`${row.eventId}-${row.leg}-${index}`} group={row.group} label={row.label} />)
+                : inPeriod === false
+                  ? <JudgmentBadge group="deferred" label="기간 밖 · 이번 계산에 없음" />
+                  : inPeriod === null
+                    // estimate가 아직 없다. "결과 없음"이라 단정하면 로딩·오류 중에 거짓이 된다.
+                    ? <JudgmentBadge
+                        group="pending"
+                        label={
+                          judgmentDisabled
+                            ? "판정 미계산 · 기준 기간 확인 필요"
+                            : judgmentError
+                              ? "판정 불러오기 실패"
+                              : "판정 확인 중"
+                        }
+                      />
+                    : <JudgmentBadge group="excluded" label="계산 결과 없음 · 확인 필요" />}
+      </div>
     </button>
   );
 }
@@ -455,6 +501,8 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<Tab>("all");
   const [group, setGroup] = useState<JudgmentGroup | "excluded" | null>(null);
+  // 체인 필터. null = 전체. 목록에 없는 체인이 걸리면 아래에서 무시한다.
+  const [chain, setChain] = useState<number | null>(null);
   // 선택은 **식별자만** 들고 있는다. 클릭 시점 스냅샷을 들고 있으면
   // 목록을 다시 불러온 뒤 시트가 사라진 거래나 옛 버전을 계속 보여준다.
   const [selectedKey, setSelectedKey] = useState<{ eventId: string; occurrence: number } | null>(null);
@@ -537,18 +585,33 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
     if (judgments.excluded.has(item.record.event.id)) groups.add("excluded");
     return groups;
   };
+  const matchesChain = (item: AnnotatedRecord, chain: number | null) =>
+    chain === null || item.record.event.chain_id === chain;
+  const matchesGroup = (item: AnnotatedRecord, target: JudgmentGroup | "excluded" | null) =>
+    target === null || groupsOf(item).has(target);
   const groupExistsInTab = group === null || tabItems.some((item) => groupsOf(item).has(group));
   const activeGroup = judgments.isError || judgmentsPending || !groupExistsInTab ? null : group;
-  const displayedItems = activeGroup ? tabItems.filter((item) => groupsOf(item).has(activeGroup)) : tabItems;
-  // 칩 건수는 **지금 탭에서 실제로 필터가 남길 카드 수**여야 한다.
-  // 전체 목록 기준으로 세면 확인 필요 탭에서 칩 건수와 카드 수가 어긋난다.
+  // 고른 체인이 이 탭에 없으면 필터를 유지할 근거가 없다.
+  // 유지하면 빈 목록만 남고 사용자는 자기가 건 필터 때문인지 거래가 없는 건지 알 수 없다.
+  const activeChain = chain !== null && tabItems.some((item) => matchesChain(item, chain)) ? chain : null;
+  const displayedItems = tabItems.filter((item) => matchesChain(item, activeChain) && matchesGroup(item, activeGroup));
+  // 칩 건수는 **지금 눌렀을 때 남을 카드 수**다. 그래서 자기 자신을 뺀 나머지 필터를 적용한 뒤 센다.
+  // 전체 목록 기준으로 세면 다른 필터가 걸린 상태에서 칩 건수와 카드 수가 어긋난다.
   const groupCounts = new Map<JudgmentGroup | "excluded", number>();
   // 판정을 다시 계산하는 중이면 칩도 보류한다.
   // 카드가 "판정 확인 중"인데 칩이 "취득 10"이라 하면 화면이 두 이야기를 한다.
-  for (const item of judgmentsPending || judgments.isError ? [] : tabItems) {
+  for (const item of judgmentsPending || judgments.isError ? [] : tabItems.filter((row) => matchesChain(row, activeChain))) {
     for (const key of groupsOf(item)) groupCounts.set(key, (groupCounts.get(key) ?? 0) + 1);
   }
   const groups = [...groupCounts.entries()];
+  // 체인 칩은 판정과 무관하게 온체인 사실이라 판정 조회 상태와 관계없이 셀 수 있다.
+  const chainCounts = new Map<number, number>();
+  for (const item of tabItems.filter((row) => matchesGroup(row, activeGroup))) {
+    const id = item.record.event.chain_id;
+    chainCounts.set(id, (chainCounts.get(id) ?? 0) + 1);
+  }
+  // 체인이 하나뿐이면 고를 것이 없다 — 누를 수 없는 칩 한 줄은 자리만 차지한다.
+  const chainFilters = chainCounts.size > 1 ? [...chainCounts.entries()].sort((left, right) => left[0] - right[0]) : [];
   const estimate = judgments.estimate;
   const selected = selectedKey
     ? annotated.find((item) => item.record.event.id === selectedKey.eventId && item.occurrence === selectedKey.occurrence) ?? null
@@ -570,56 +633,11 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
         </div>
         <MockProvenanceChip />
       </header>
-      <section className="mt-4 rounded-card border border-zinc-200 bg-white px-4 py-3 shadow-card" aria-label="판정 기준">
-        {/* 우선순위는 모든 표면에서 같다: disabled → error → pending → ready.
-            기준 기간이 없으면 애초에 요청하지 않았으므로 옛 오류를 현재 상태로 말하면 안 된다. */}
-        {referencePeriod === null ? (
-          <p className="text-sm text-zinc-500">기준 기간을 확인하지 못해 판정을 계산하지 않았습니다.</p>
-        ) : judgments.isError ? (
-          <p role="alert" className="text-sm text-zinc-500">
-            판정 기준을 불러오지 못했습니다.{" "}
-            <button type="button" className="font-semibold underline" onClick={() => void judgments.refetch()}>다시 시도</button>
-          </p>
-        ) : judgmentsPending || !estimate ? (
-          // 재조회 중이면 옛 총액을 최신인 척 보이지 않는다.
-          <p className="text-sm text-zinc-500">판정 기준을 불러오는 중입니다.</p>
-        ) : (
-          <>
-            <p className="text-xs font-medium text-zinc-500">{estimate.countryLabel} 룰셋으로 판정 중</p>
-            <div className="mt-1 flex items-baseline justify-between gap-3">
-              <p className="text-sm font-semibold text-zinc-900">{estimate.taxYear}년 세금</p>
-              {/* 세금 금액은 화면에서 이 한 줄에만 존재한다. 거래 행에는 판정 도장만 찍는다. */}
-              <p className="text-lg font-bold text-zinc-900">
-                {estimate.status === "UNDETERMINED"
-                  ? "산출 불가"
-                  : Number(estimate.totals.estimatedCharge) === 0
-                    ? "부담 없음"
-                    : formatFiat(estimate.totals.estimatedCharge, estimate.currency)}
-              </p>
-            </div>
-            {estimate.status === "UNDETERMINED" ? (
-              <p className="mt-1 text-xs text-zinc-500">과세 방식·시행 시기가 확정되지 않아 부담을 추정하지 않습니다.</p>
-            ) : null}
-            {/* 금액을 보여주는 곳이면 그 금액의 한계도 같은 자리에서 말해야 한다.
-                세금 탭에만 두면 대시보드만 보는 사용자는 근사인 줄 모른다. */}
-            {estimate.limitations.length > 0 ? (
-              <div className="mt-2 border-t border-zinc-100 pt-2">
-                <p className="text-xs font-medium text-zinc-500">이 금액이 흔들리는 지점 {estimate.limitations.length}건</p>
-                <ul className="mt-1 grid gap-1">
-                  {estimate.limitations.slice(0, 2).map((limitation, index) => (
-                    <li key={`${limitation.kind}-${index}`} className="text-xs leading-5 text-zinc-600">
-                      {limitation.message}
-                    </li>
-                  ))}
-                </ul>
-                <Link href="/tax" className="mt-1 inline-flex text-xs font-semibold text-primary-600 underline">
-                  전부 보기
-                </Link>
-              </div>
-            ) : null}
-          </>
-        )}
-      </section>
+      {/* 이 화면은 지갑 이력이 그린 선까지만 말한다. 세금 금액·판정 기준·계산의 한계는
+          세금 탭 한 곳에서만 답한다 — 두 화면이 각자 금액을 말하면 어느 쪽이 최신인지 알 수 없다. */}
+      <FlowChart events={items.map((item) => item.event)} state={eventsFresh.state} truncated={events.data?.truncated === true} />
+
+      <ExchangeLinkSummary />
 
       <section className="mt-6 grid gap-3">
         {/* 계산에 들어간 이벤트가 없으면 "0"은 손익이 아니라 계산할 것이 없었다는 뜻이다. */}
@@ -665,13 +683,40 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
             <span aria-hidden="true" className={`rounded-full px-1.5 py-0.5 text-xs font-semibold ${reviewItems.length > 0 ? "bg-amber-100 text-amber-800" : "bg-zinc-100 text-zinc-500"}`}>{reviewItems.length}</span>
           </button>
         </div>
+        {/* 체인 필터. 여러 체인을 한 목록에 섞어 두면 "이 체인에서 무슨 일이 있었나"를 볼 방법이 없다.
+            판정 필터와 독립이라 둘을 겹쳐 걸 수 있고, 각 칩의 건수는 상대 필터를 적용한 뒤의 수다. */}
+        {chainFilters.length > 0 ? (
+          <div className="mt-3 flex gap-2 overflow-x-auto pb-1" aria-label="체인 필터">
+            <button
+              type="button"
+              aria-pressed={activeChain === null}
+              className={`shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold ${activeChain === null ? "bg-primary-500 text-white" : "bg-zinc-100 text-zinc-600"}`}
+              onClick={() => setChain(null)}
+            >
+              전체 체인
+            </button>
+            {chainFilters.map(([chainId, count]) => (
+              <button
+                key={chainId}
+                type="button"
+                aria-pressed={activeChain === chainId}
+                className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold ${activeChain === chainId ? "bg-primary-500 text-white" : "bg-zinc-100 text-zinc-600"}`}
+                // 누른 칩을 다시 누르면 풀린다. 두 필터가 겹쳐 걸리는 이상 되돌릴 문이 칩 자체에 있어야 한다.
+                onClick={() => setChain(chain === chainId ? null : chainId)}
+              >
+                <ChainIcon chainId={chainId} />
+                {chainLabel(chainId)} <span aria-hidden="true">{count}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
         {!judgments.isLoading && groups.length > 0 ? (
           <div className="mt-3 flex gap-2 overflow-x-auto pb-1" aria-label="판정 필터">
             <button type="button" aria-pressed={activeGroup === null} className={`shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold ${activeGroup === null ? "bg-primary-500 text-white" : "bg-zinc-100 text-zinc-600"}`} onClick={() => setGroup(null)}>
               전체
             </button>
             {groups.map(([item, count]) => (
-              <button key={item} type="button" aria-pressed={activeGroup === item} className={`shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold ${activeGroup === item ? "bg-primary-500 text-white" : "bg-zinc-100 text-zinc-600"}`} onClick={() => setGroup(item)}>
+              <button key={item} type="button" aria-pressed={activeGroup === item} className={`shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold ${activeGroup === item ? "bg-primary-500 text-white" : "bg-zinc-100 text-zinc-600"}`} onClick={() => setGroup(group === item ? null : item)}>
                 {GROUP_SHORT_LABEL[item]} <span aria-hidden="true">{count}</span>
               </button>
             ))}
@@ -693,9 +738,16 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
               : "목록을 갱신하는 중입니다. 아래 내용은 마지막으로 받은 상태입니다."}
           </p>
         ) : null}
-        {judgments.isError ? (
+        {/* 판정 상태는 목록 옆에서 말한다. 우선순위는 모든 표면에서 같다: disabled → error.
+            기준 기간이 없으면 애초에 요청하지 않았으므로 옛 오류를 현재 상태로 말하면 안 된다. */}
+        {referencePeriod === null ? (
+          <p role="status" className="mt-3 rounded-card border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-600">
+            기준 기간을 확인하지 못해 판정을 계산하지 않았습니다.
+          </p>
+        ) : judgments.isError ? (
           <p role="status" className="mt-3 rounded-card border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-            세금 판정을 불러오지 못해 각 거래의 도장을 확정하지 못했습니다. 아래 목록의 확인 필요 항목은 거래 자체의 문제만 반영합니다.
+            세금 판정을 불러오지 못해 각 거래의 도장을 확정하지 못했습니다. 아래 목록의 확인 필요 항목은 거래 자체의 문제만 반영합니다.{" "}
+            <button type="button" className="font-semibold underline" onClick={() => void judgments.refetch()}>다시 시도</button>
           </p>
         ) : null}
         <div className="mt-3 grid gap-3">
@@ -709,10 +761,20 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
           {!events.isLoading && !events.isError && displayedItems.length === 0 ? (
             <p className="text-sm text-zinc-500">{tab === "review" ? "확인이 필요한 거래가 없습니다." : "표시할 거래가 없습니다."}</p>
           ) : null}
-          {displayedItems.map(({ record, occurrence, isDuplicate }) => {
+          {displayedItems.map(({ record, occurrence, isDuplicate }, index) => {
+            // 날짜는 UTC 하루 단위로 한 번만 찍는다. 모든 줄에 같은 날짜를 반복하면
+            // 정작 읽어야 할 "그날 무슨 일이 있었나"가 안 보인다.
+            const day = isoDay(record.event.block_timestamp);
+            const previousDay =
+              index > 0 ? isoDay(displayedItems[index - 1].record.event.block_timestamp) : null;
             return (
+              <Fragment key={`${record.event.id}#${occurrence}`}>
+                {day === previousDay ? null : (
+                  <h3 className="mt-2 text-sm font-semibold text-zinc-500 first:mt-0">
+                    {day ? formatDate(record.event.block_timestamp) : "날짜 미상"}
+                  </h3>
+                )}
                 <EventRow
-                  key={`${record.event.id}#${occurrence}`}
                   record={record}
                   onSelect={() => setSelectedKey({ eventId: record.event.id, occurrence })}
                   rows={isDuplicate || judgmentsPending ? [] : judgments.rowsOf(record.event.id)}
@@ -721,11 +783,14 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
                   judgmentError={judgments.isError}
                   judgmentDisabled={referencePeriod === null}
                   isDuplicate={isDuplicate}
-                  estimate={estimate}
                 />
+              </Fragment>
             );
           })}
         </div>
+        {/* 시간대는 화면 전체가 한 번만 약속한다. 줄마다 "UTC"를 붙이면 읽히지 않고,
+            아예 안 밝히면 사용자가 자기 시간대로 읽어 과세연도 경계에서 다른 날로 이해한다. */}
+        <p className="mt-3 text-xs text-zinc-400">{UTC_NOTICE}</p>
       </section>
 
       {selectedKey && !selected && !events.isLoading && !annotated.some((item) => item.record.event.id === selectedKey.eventId) ? (

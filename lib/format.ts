@@ -1,3 +1,4 @@
+import { assetFlow } from "@/lib/review";
 import type { NormalizedEvent } from "@/lib/schema/normalized-event";
 
 const CHAIN_LABEL: Record<number, string> = {
@@ -43,14 +44,44 @@ export function formatTokenAmount(rawAmount: string, decimals: number): string {
   return `${sign}${group(integerPart)}${fraction ? `.${fraction}` : ""}`;
 }
 
-export function assetLabel(event: Pick<NormalizedEvent, "asset_type" | "chain_id" | "token_id">): string {
-  if (event.asset_type === "NATIVE") return NATIVE_SYMBOL[event.chain_id] ?? "NATIVE";
-  if (event.asset_type === "ERC20") return "ERC20";
-  return event.token_id ? `#${event.token_id}` : event.asset_type;
+/**
+ * 목록·상세가 자산을 부르는 이름.
+ *
+ * 심볼을 알면 그것을 쓴다. 모르면 지어내지 않고 자산 타입으로 대체한다 —
+ * "ERC20"·"#102"는 이름이 아니라 **이름을 모른다는 표시**다.
+ * NFT는 심볼만으로 개체가 특정되지 않으므로 컬렉션 심볼과 토큰 번호를 함께 둔다.
+ */
+export function assetLabel(
+  event: Pick<NormalizedEvent, "asset_type" | "chain_id" | "token_id" | "asset_symbol">,
+): string {
+  const symbol = event.asset_symbol;
+  if (event.asset_type === "NATIVE") return symbol ?? NATIVE_SYMBOL[event.chain_id] ?? "NATIVE";
+  if (event.token_id) return symbol ? `${symbol} #${event.token_id}` : `#${event.token_id}`;
+  return symbol ?? event.asset_type;
+}
+
+/**
+ * 방향까지 담은 수량 표기. 나간 자산은 `-`, 들어온 자산은 `+`.
+ *
+ * 색만으로 구분하면 색을 구분하지 못하는 사용자에게는 아무 정보가 아니다 — 부호를 함께 둔다.
+ * 어느 쪽도 아닌 건(자기 지갑 간 이체·미확정)은 부호를 붙이지 않는다. 붙이면 처분이라고 단정하는 셈이다.
+ */
+export function formatSignedTokenAmount(event: NormalizedEvent): string {
+  const amount = formatTokenAmount(event.raw_amount, event.decimals);
+  const flow = assetFlow(event);
+  return flow === "in" ? `+${amount}` : flow === "out" ? `-${amount}` : amount;
 }
 
 export function chainLabel(chainId: number): string {
   return CHAIN_LABEL[chainId] ?? `chain ${chainId}`;
+}
+
+/**
+ * 체인의 기축 통화 심볼. 가스비는 `gas_fee_native`라 자산 타입과 무관하게
+ * 체인만으로 단위가 정해진다 — `assetLabel`은 NATIVE 자산일 때만 이 값을 준다.
+ */
+export function nativeSymbol(chainId: number): string {
+  return NATIVE_SYMBOL[chainId] ?? "NATIVE";
 }
 
 /**
@@ -180,8 +211,35 @@ function groupDigits(integer: string, group: string): string {
   return integer.replace(/\B(?=(\d{3})+(?!\d))/g, group);
 }
 
+/**
+ * 날짜 표기의 단일 규칙 — **항상 UTC**.
+ *
+ * 계산은 전부 UTC다: `taxYearFor`는 `getUTCFullYear`, `isoDay`는 ISO 접두사,
+ * 룰셋의 보유기간 판정은 `getUTC*`를 쓴다. 표시만 로컬 시간대로 두면
+ * `2025-12-31T20:00Z` 거래가 KST 화면에서 `2026. 1. 1.`로 보이는데
+ * 엔진은 2025년으로 계산한다 — 과세연도 경계에서 화면이 계산과 다른 말을 한다.
+ *
+ * 시간대를 못 박은 대가로 화면은 그 사실을 한 번 밝혀야 한다(`UTC_NOTICE`).
+ */
 export function formatDate(timestamp: string): string {
-  return new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium" }).format(new Date(timestamp));
+  return new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeZone: "UTC" }).format(new Date(timestamp));
+}
+
+/** 날짜를 UTC로 찍는다는 고지. 문구가 두 벌이면 화면마다 다른 약속을 하게 된다. */
+export const UTC_NOTICE = "모든 날짜는 UTC 기준입니다.";
+
+/** 체인별 익스플로러 트랜잭션 URL. 없는 체인은 링크를 걸지 않는다(죽은 링크를 만들지 않는다). */
+const EXPLORER_TX_URL: Record<number, string> = {
+  1: "https://etherscan.io/tx/",
+  10: "https://optimistic.etherscan.io/tx/",
+  137: "https://polygonscan.com/tx/",
+  8453: "https://basescan.org/tx/",
+  42161: "https://arbiscan.io/tx/",
+};
+
+export function explorerTxUrl(chainId: number, txHash: string): string | null {
+  const base = EXPLORER_TX_URL[chainId];
+  return base ? `${base}${txHash}` : null;
 }
 
 

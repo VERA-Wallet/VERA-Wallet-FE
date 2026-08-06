@@ -26,7 +26,13 @@ export type JudgmentLookup = {
   inPeriod: (at: string) => boolean | null;
 };
 
-export function useJudgments(countryCode: string, taxYear: number, enabled = true): JudgmentLookup {
+export function useJudgments(
+  countryCode: string,
+  taxYear: number,
+  enabled = true,
+): JudgmentLookup {
+  // 내역 화면은 사실만 그린다 — "시행됐다고 가정하고 보기"는 부담 금액을 답하는 세금 탭에만 있다.
+  // 두 화면이 각자 가정을 켜면 같은 지갑을 두고 어느 쪽 숫자가 사실인지 알 수 없다.
   const estimate = useTaxEstimate({ country: countryCode, taxYear, source: "wallet" }, enabled);
   const freshEstimate = fresh(estimate, !enabled);
 

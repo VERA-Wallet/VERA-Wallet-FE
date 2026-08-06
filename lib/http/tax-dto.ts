@@ -53,6 +53,8 @@ export const ruleSetSummarySchema: z.ZodType<RuleSetSummary> = z.object({
     ]),
   ),
   status: confirmationStatus,
+  /** 시행 예정 룰셋만 싣는다. 화면이 그 해를 과세연도 선택 창에 넣는 근거다. */
+  effectiveTaxYear: z.number().int().optional(),
   topics: z.array(topicRuleSchema),
   method: z.string().min(1),
 });
@@ -125,4 +127,5 @@ export const taxEstimateRequestSchema: z.ZodType<TaxEstimateRequest> = z.object(
     })
     .optional(),
   includeMarginal: z.boolean().optional(),
+  assumeEffective: z.boolean().optional(),
 });

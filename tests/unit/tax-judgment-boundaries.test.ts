@@ -6,6 +6,7 @@ import { runLedger } from "@/lib/tax/ledger";
 import { deriveTaxEvents } from "@/lib/tax/derive";
 import { createNormalizedEventFixtures } from "@/lib/mock/fixtures";
 import type { IncomeKind, JudgmentRow, LedgerPolicy, TaxEvent } from "@/lib/tax/types";
+import { FIXTURE_TAX_YEAR } from "@/tests/fixtures/tax-year";
 import { createTaxScenarioEvents } from "@/lib/mock/tax-fixtures";
 import { lt, sum } from "@/lib/tax/decimal";
 import { resolveAdjustment } from "@/lib/tax/judgment";
@@ -106,10 +107,22 @@ describe("판정 그룹이 서로 다른 사유를 뭉개지 않는가", () => {
     expect(rowsFor("IN", loss, "dsp")[0].group).toBe("ignored");
   });
 
-  it("한국은 규칙이 없어 판정 자체를 못 하는 pending이다", () => {
+  it("한국의 시행 전 손실은 과세 대상 자체가 아니라 exempt다", () => {
     const rows = rowsFor("KR", loss, "dsp");
-    expect(rows[0].group).toBe("pending");
+    expect(rows[0].group).toBe("exempt");
+    // 법으로 상계가 금지된 인도(ignored)와도, 규칙을 모르는 보류(pending)와도 다르다.
     expect(rows[0].group).not.toBe("ignored");
+    expect(rows[0].group).not.toBe("pending");
+  });
+
+  it("한국의 시행 후 손실은 연간 통산 대상(carry)이고 이월되지 않는다", () => {
+    const after = [
+      acquire("acq", "2027-02-01T00:00:00.000Z", "SOL", "10", "1000"),
+      dispose("dsp", "2027-03-01T00:00:00.000Z", "SOL", "10", "400"),
+    ];
+    const estimate = computeTaxEstimate({ country: "KR", events: after, taxYear: 2027 });
+    expect(estimate.judgments.find((row) => row.eventId === "dsp")?.group).toBe("carry");
+    expect(estimate.lossCarryforward).toBe("0");
   });
 
   it("캐나다의 30일 내 재매수 손실은 부인되어 denied다", () => {
@@ -946,7 +959,7 @@ describe("부분 상계와 판정 건수", () => {
   it("어느 룰셋에서도 기간 안 이벤트가 무판정으로 사라지지 않는다", () => {
     // 예전에 호주 AIRDROP_INITIAL이 income도 acquire도 아니어서 이벤트가 통째로 사라졌다(AU 9 vs 타국 13).
     // 나라마다 과세기간이 다르므로 "같은 건수"가 아니라 "각 나라의 기간 안 이벤트가 전부 판정된다"를 본다.
-    const events = createTaxScenarioEvents();
+    const events = createTaxScenarioEvents(FIXTURE_TAX_YEAR);
     for (const country of RULE_SET_ORDER) {
       for (const taxYear of [2024, 2025]) {
         const result = computeTaxEstimate({ country, taxYear, events });

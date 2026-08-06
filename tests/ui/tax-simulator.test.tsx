@@ -4,7 +4,8 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { TaxSimulator } from "@/components/tax/tax-simulator";
-import { createTaxScenarioEvents } from "@/lib/mock/tax-fixtures";
+import { FIXTURE_TAX_YEAR } from "@/tests/fixtures/tax-year";
+import { createTaxScenarioEvents, scenarioScaleFor } from "@/lib/mock/tax-fixtures";
 import { computeTaxEstimate } from "@/lib/tax/engine";
 import { listRuleSetSummaries } from "@/lib/tax/rulesets";
 import { taxEstimateSchema, ruleSetListSchema } from "@/lib/http/tax-dto";
@@ -26,11 +27,17 @@ vi.mock("@/lib/composition-root.client", () => ({
 ports.listRuleSets.mockImplementation(async () => ruleSetListSchema.parse(listRuleSetSummaries()));
 // 더블이 source를 무시하면 요청은 지갑인데 응답은 시나리오가 된다.
 // wallet은 실제 어댑터를, scenario는 시나리오 엔진을 태워 두 경로를 갈라 둔다.
-const walletEngine = new MockTaxEngine(() => createNormalizedEventFixtures());
+const walletEngine = new MockTaxEngine(() => createNormalizedEventFixtures(FIXTURE_TAX_YEAR));
 const defaultEstimate = async (input: TaxEstimateRequest) =>
   input.source === "wallet"
     ? taxEstimateSchema.parse(await walletEngine.estimate(input))
-    : taxEstimateSchema.parse(computeTaxEstimate({ ...input, events: createTaxScenarioEvents() }));
+    : taxEstimateSchema.parse(
+        // 어댑터와 같은 규칙으로 만든다 — 연도·통화 자릿수가 갈리면 화면 테스트가 실제와 다른 것을 검증한다.
+        computeTaxEstimate({
+          ...input,
+          events: createTaxScenarioEvents(input.taxYear, scenarioScaleFor(input.country)),
+        }),
+      );
 ports.estimate.mockImplementation(defaultEstimate);
 
 /**
@@ -41,7 +48,7 @@ async function renderSimulator() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const view = render(
     <QueryClientProvider client={client}>
-      <TaxSimulator />
+      <TaxSimulator currentYear={FIXTURE_TAX_YEAR} />
     </QueryClientProvider>,
   );
   await selectTaxYear(2025);
@@ -89,16 +96,73 @@ describe("TaxSimulator", () => {
     expect(screen.getByText(/실효 31.2%/)).toBeInTheDocument();
   });
 
-  it("미확정 국가는 금액 대신 판단 필요 항목을 제시한다", async () => {
+  it("시행 전 국가는 금액 대신 과세 대상 아님과 판단 필요 항목을 제시한다", async () => {
     await renderSimulator();
     await screen.findByText("독일 · 2025");
 
     await userEvent.click(screen.getByRole("button", { name: /한국/ }));
 
     await screen.findByText("한국 · 2025");
-    expect(screen.getByTestId("estimated-charge").textContent).toBe("산출 불가");
-    expect(within(screen.getByLabelText("계산 요약")).getByText("미확정")).toBeInTheDocument();
+    // 2027-01-01 시행이라 2025년 발생분은 "계산했더니 0원"이 아니라 과세 대상 자체가 아니다.
+    expect(screen.getByTestId("estimated-charge").textContent).toBe("과세 대상 아님");
+    expect(within(screen.getByLabelText("계산 요약")).getByText("확정·시행예정")).toBeInTheDocument();
     expect(screen.getByText("판단이 필요한 항목")).toBeInTheDocument();
+  });
+
+  it("시행 가정을 켜면 지금 데이터로 시행 후 부담을 보여주고, 가정임을 계속 말한다", async () => {
+    await renderSimulator();
+    await screen.findByText("독일 · 2025");
+    await userEvent.click(screen.getByRole("button", { name: /한국/ }));
+    await screen.findByText("한국 · 2025");
+    expect(screen.getByTestId("estimated-charge").textContent).toBe("과세 대상 아님");
+
+    fireEvent.click(screen.getByRole("button", { name: "시행 가정으로 보기" }));
+
+    // 2025년 데모 시나리오에 2027 시행 규칙을 그대로 적용한 값.
+    await waitFor(() =>
+      expect(screen.getByTestId("estimated-charge").textContent).toContain("₩1,733,710"),
+    );
+    // 큰 금액 옆에 가정이라는 사실이 계속 있어야 한다.
+    expect(screen.getByText(/시행 가정으로 보는 중입니다/)).toBeInTheDocument();
+    // 방식 라벨도 가정임을 밝힌다 — 내보낸 결과만 봐도 알 수 있어야 한다.
+    expect(within(screen.getByLabelText("계산 요약")).getByText(/선입선출법 · 2027 시행 가정/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "가정 끄기" }));
+    await waitFor(() => expect(screen.getByTestId("estimated-charge").textContent).toBe("과세 대상 아님"));
+  });
+
+  it("시행 예정 룰셋은 시행 연도를 미리 골라 실제 부담을 본다", async () => {
+    await renderSimulator();
+    await screen.findByText("독일 · 2025");
+    const details = screen.getByText("계산 조건 바꾸기").closest("details")!;
+    details.open = true;
+    // 미래 연도를 시계로 만들지는 않는다 — 시행 예정 연도가 없는 국가에는 없어야 한다.
+    expect(screen.queryByRole("button", { name: /2027/ })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /한국/ }));
+    await screen.findByText("한국 · 2025");
+    fireEvent.click(await screen.findByRole("button", { name: /2027/ }));
+
+    await screen.findByText("한국 · 2027");
+    // 시행 후 규칙이 실제로 돌아간다: 과세표준 7,880,500 × 20% + 지방소득세 10%
+    await waitFor(() =>
+      expect(screen.getByTestId("estimated-charge").textContent).toContain("₩1,733,710"),
+    );
+    // 미래 연도를 아무 말 없이 계산하면 사용자는 확정된 답으로 읽는다.
+    expect(screen.getByText(/아직 시행 전인 2027년 기준으로 미리 계산했습니다/)).toBeInTheDocument();
+  });
+
+  it("규칙이 미확정인 룰셋은 같은 0을 '산출 불가'라 부른다", async () => {
+    // 시행 전(SCHEDULED)과 규칙 미확정(UNDETERMINED)은 둘 다 totals가 0이지만 이유가 다르다.
+    ports.estimate.mockImplementation(async (input: TaxEstimateRequest) => ({
+      ...(await defaultEstimate(input)),
+      status: "UNDETERMINED" as const,
+    }));
+    await renderSimulator();
+
+    await screen.findByText("독일 · 2025");
+    expect(screen.getByTestId("estimated-charge").textContent).toBe("산출 불가");
+    expect(document.body.textContent).toContain("과세 규칙이 확정되지 않아 금액을 산출하지 않습니다.");
   });
 
   it("한계세율 입력이 계산에 반영된다", async () => {
@@ -144,7 +208,7 @@ describe("TaxSimulator", () => {
 });
 
 describe("TaxSimulator 제외 배너", () => {
-  const base = createNormalizedEventFixtures()[0];
+  const base = createNormalizedEventFixtures(FIXTURE_TAX_YEAR)[0];
 
   afterEach(() => {
     ports.estimate.mockImplementation(defaultEstimate);
@@ -177,7 +241,7 @@ describe("TaxSimulator 제외 배너", () => {
     // "답이 설정보다 앞"만 보면 중간 순서가 뒤집혀도 통과한다.
     // 흔들리는 지점이 계산 내역 뒤로 밀리면 신뢰도보다 세부가 먼저 오는 화면이 된다.
     // 판정 행과 한계가 모두 있는 상태여야 순서를 잴 수 있다.
-    await renderWithWallet(createNormalizedEventFixtures());
+    await renderWithWallet(createNormalizedEventFixtures(FIXTURE_TAX_YEAR));
     await screen.findByLabelText("흔들리는 것");
     await screen.findByLabelText("판정 그룹");
 
@@ -286,7 +350,7 @@ describe("TaxSimulator 제외 배너", () => {
     // 어댑터를 그대로 통과시켜 source 전환과 assumptions→notes 경로를 실제로 검증한다.
     ports.estimate.mockImplementation(async (input: { country: string; taxYear: number; source?: string }) => {
       if (input.source !== "wallet") {
-        return taxEstimateSchema.parse(computeTaxEstimate({ ...input, events: createTaxScenarioEvents() }));
+        return taxEstimateSchema.parse(computeTaxEstimate({ ...input, events: createTaxScenarioEvents(FIXTURE_TAX_YEAR) }));
       }
       const derived = deriveTaxEvents([
         { ...base, id: "dup" },
@@ -359,6 +423,44 @@ describe("세금 탭이 답 우선 3계층인가", () => {
     // 헤더가 "올해"라고 남으면 지난 해 결과를 올해라고 단정하는 것이다.
     expect(screen.getByText("2025년 세금")).toBeInTheDocument();
     expect(screen.queryByText("올해 세금")).not.toBeInTheDocument();
+  });
+
+  it("올해 거래가 없으면 마지막 거래가 있는 해로 열고 그 이유를 말한다", async () => {
+    // 늘 "올해"로 열면 올해 거래가 없는 지갑은 진입하자마자 12개 룰셋이 전부 0원을 말한다.
+    // 그건 비교가 아니라 빈 화면이다.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TaxSimulator currentYear={2026} latestActivityYear={2025} />
+      </QueryClientProvider>,
+    );
+
+    await screen.findByText("독일 · 2025");
+    expect(screen.getByText("2025년 세금")).toBeInTheDocument();
+    expect(screen.queryByText("올해 세금")).not.toBeInTheDocument();
+    // 이유를 말하지 않으면 사용자는 지난 해 결과를 올해 답으로 읽는다.
+    expect(screen.getByText(/2026년에는 계산할 거래가 없어/)).toBeInTheDocument();
+
+    const details = screen.getByText("계산 조건 바꾸기").closest("details")!;
+    details.open = true;
+    expect(screen.getByRole("button", { name: "2025" })).toHaveAttribute("aria-pressed", "true");
+    // 올해로 돌아갈 문은 남아 있어야 한다.
+    expect(screen.getByRole("button", { name: "2026" })).toBeInTheDocument();
+  });
+
+  it("마지막 거래 연도가 선택 창 밖이어도 그 해를 고를 수 있다", async () => {
+    // 창을 [올해-3, 올해]로 고정하면 오래 쉰 지갑은 자기 거래가 있는 해로 돌아갈 방법이 없다.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TaxSimulator currentYear={2026} latestActivityYear={2020} />
+      </QueryClientProvider>,
+    );
+
+    const details = (await screen.findByText("계산 조건 바꾸기")).closest("details")!;
+    details.open = true;
+    expect(screen.getByRole("button", { name: "2020" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "2026" })).toBeInTheDocument();
   });
 
   it("다른 나라를 고르면 거주국 결과라고 하지 않는다", async () => {
@@ -493,7 +595,7 @@ describe("세금 탭이 답 우선 3계층인가", () => {
     // 엔진의 lossCarryforward는 이번 기간에서 다 쓰지 못해 **다음** 기간으로 넘길 손실이다.
     await renderSimulator();
     await screen.findByText("독일 · 2025");
-    const estimate = computeTaxEstimate({ country: "DE", taxYear: 2025, events: createTaxScenarioEvents() });
+    const estimate = computeTaxEstimate({ country: "DE", taxYear: FIXTURE_TAX_YEAR, events: createTaxScenarioEvents(FIXTURE_TAX_YEAR) });
     // 조건부 return을 두면 픽스처가 바뀌는 순간 이 계약이 조용히 검증되지 않는다.
     expect(estimate.lossCarryforward).not.toBe("0");
 
@@ -518,7 +620,7 @@ describe("세금 탭이 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <TaxSimulator />
+        <TaxSimulator currentYear={FIXTURE_TAX_YEAR} />
       </QueryClientProvider>,
     );
     await screen.findByText("계산 조건 바꾸기");
@@ -558,7 +660,7 @@ describe("세금 탭이 답 우선 3계층인가", () => {
   it("판정 그룹이 답을 이루는 금액을 실제로 보여준다", async () => {
     await renderSimulator();
     await screen.findByText("독일 · 2025");
-    const estimate = computeTaxEstimate({ country: "DE", taxYear: 2025, events: createTaxScenarioEvents() });
+    const estimate = computeTaxEstimate({ country: "DE", taxYear: FIXTURE_TAX_YEAR, events: createTaxScenarioEvents(FIXTURE_TAX_YEAR) });
     const section = screen.getByLabelText("판정 그룹");
 
     // 조건부 단언은 그룹이 있으면 아무것도 검사하지 않는다. 항상 값을 대조한다.
@@ -664,7 +766,7 @@ describe("세금 탭이 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <TaxSimulator />
+        <TaxSimulator currentYear={FIXTURE_TAX_YEAR} />
       </QueryClientProvider>,
     );
 
@@ -706,7 +808,7 @@ describe("세금 탭이 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <TaxSimulator countryCode="UK" />
+        <TaxSimulator countryCode="UK" currentYear={FIXTURE_TAX_YEAR} />
       </QueryClientProvider>,
     );
     await selectTaxYear(2025);
@@ -726,7 +828,7 @@ describe("세금 탭이 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <TaxSimulator />
+        <TaxSimulator currentYear={FIXTURE_TAX_YEAR} />
       </QueryClientProvider>,
     );
 
@@ -906,14 +1008,14 @@ describe("세금 탭이 답 우선 3계층인가", () => {
     fireEvent.click(screen.getByRole("button", { name: /한국/ }));
     await screen.findByText("한국 · 2025");
 
-    // 한국의 판정 보류에는 손익 행과 수령 FMV 행이 함께 있다.
+    // 한국의 시행 전 "과세 대상 아님"에는 손익 행과 수령 FMV 행이 함께 있다.
     // 둘을 더한 수는 아무것도 아니므로 줄을 나눠야 한다.
     const section = screen.getByLabelText("판정 그룹");
     const rows = [...section.querySelectorAll("li")].map((node) => node.textContent ?? "");
-    const pending = rows.filter((row) => row.includes("판정 보류"));
-    expect(pending.length).toBeGreaterThan(1);
-    expect(pending.some((row) => row.includes("손익"))).toBe(true);
-    expect(pending.some((row) => row.includes("수령 FMV"))).toBe(true);
+    const notTaxable = rows.filter((row) => row.includes("과세 대상 아님"));
+    expect(notTaxable.length).toBeGreaterThan(1);
+    expect(notTaxable.some((row) => row.includes("손익"))).toBe(true);
+    expect(notTaxable.some((row) => row.includes("수령 FMV"))).toBe(true);
     // 섞어 더한 합계는 화면 어디에도 없어야 한다.
     expect(section.textContent).not.toContain("13,130.5");
   });
@@ -934,7 +1036,9 @@ describe("세금 탭이 답 우선 3계층인가", () => {
     await screen.findByText("독일 · 2025");
     expect(screen.getByTestId("estimated-charge").textContent).toContain("1,015.44");
 
-    // 거래가 없는 해로 옮긴다. 취득 원가는 기간 밖에서도 남지만 그건 "이번 기간의 답"이 아니다.
+    // 데모 시나리오는 어느 해를 골라도 그 해의 거래를 만든다 — 비어 있는 쪽은 내 지갑이다.
+    // 취득 원가는 기간 밖에서도 남지만 그건 "이번 기간의 답"이 아니다.
+    fireEvent.click(screen.getByRole("button", { name: "내 지갑 이벤트" }));
     await selectTaxYear(2023);
     await waitFor(() => expect(screen.getByTestId("estimated-charge")).toHaveTextContent("계산할 거래 없음"));
     const body = document.body.textContent ?? "";
@@ -956,7 +1060,7 @@ describe("세금 탭이 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <TaxSimulator />
+        <TaxSimulator currentYear={FIXTURE_TAX_YEAR} />
       </QueryClientProvider>,
     );
     await selectTaxYear(2025);

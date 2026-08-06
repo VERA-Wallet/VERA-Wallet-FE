@@ -100,7 +100,7 @@ test.describe.serial("G003 dashboard and export contract red team", () => {
     // 픽스처에 이미 수동 분류된 이벤트가 있어, 전역 배지 단언은 선택 카드가 안 바뀌어도 통과한다.
     // 선택한 카드를 식별해 그 카드에서만 확인한다.
     const selectedCard = cards.first();
-    const selectedLabel = (await selectedCard.locator("p").first().innerText()).trim();
+    const selectedLabel = (await selectedCard.locator("[data-event-label]").innerText()).trim();
     await selectedCard.click();
     await expect(page.getByText("거래 상세").last()).toBeVisible();
     const classification = page.locator("#classification");
@@ -112,15 +112,16 @@ test.describe.serial("G003 dashboard and export contract red team", () => {
     await page.getByRole("button", { name: "적용" }).click();
     await expect(classification).toHaveValue(changedClassification);
     await page.getByRole("button", { name: "닫기", exact: true }).click();
-    // 선택한 그 카드가 실제로 수동 분류 배지를 얻었는지 본다.
+    // 수동 분류 표시는 목록이 아니라 상세가 말한다 — 목록에는 온체인 사실과 판정 도장만 둔다.
     const editedCard = cards.filter({ hasText: selectedLabel }).first();
-    await expect(editedCard.getByText("수동 분류됨", { exact: true })).toBeVisible();
     await editedCard.click();
     await expect(page.getByText("거래 상세").last()).toBeVisible();
+    const manualOverride = page.getByText(/^사용자 확정 · /).first();
+    await expect(manualOverride).toBeVisible();
     await page.locator("main").screenshot({ path: dashboardPath, type: "jpeg", quality: 85 });
     transcript.act({ type: "screenshot", selector: "main" });
-    transcript.assert("Reclassification updates badge and manual override state", true, "#classification");
-    record(cases, "dashboard-reclassification", "Bottom sheet applies one of five classifications and marks manual override", changedClassification, { classification: await classification.inputValue(), manualBadge: await editedCard.getByText("수동 분류됨", { exact: true }).count(), card: selectedLabel }, await classification.inputValue() === changedClassification && await editedCard.getByText("수동 분류됨", { exact: true }).count() > 0);
+    transcript.assert("Reclassification updates detail history and manual override state", true, "#classification");
+    record(cases, "dashboard-reclassification", "Bottom sheet applies one of five classifications and marks manual override", changedClassification, { classification: await classification.inputValue(), manualOverride: await manualOverride.count(), card: selectedLabel }, await classification.inputValue() === changedClassification && await manualOverride.count() > 0);
     await page.getByRole("button", { name: "닫기", exact: true }).click();
 
     const stale = items[1] ?? items[0];

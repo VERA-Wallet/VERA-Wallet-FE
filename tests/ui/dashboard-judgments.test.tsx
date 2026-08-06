@@ -3,19 +3,27 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DashboardView } from "@/components/dashboard/dashboard-view";
-import { assetLabel, formatFiat, formatTokenAmount } from "@/lib/format";
+import { assetLabel, chainLabel, formatDate, formatFiat, formatSignedTokenAmount, formatTokenAmount, nativeSymbol, UTC_NOTICE } from "@/lib/format";
+import { isoDay } from "@/lib/period";
+import { FIXTURE_TAX_YEAR } from "@/tests/fixtures/tax-year";
 import { createNormalizedEventFixtures } from "@/lib/mock/fixtures";
 import { MockTaxEngine } from "@/lib/mock/tax-engine";
 import { MockEventStore } from "@/lib/mock/store";
 import { deriveTaxEvents } from "@/lib/tax/derive";
-import { effectiveClassification as effectiveClassificationOf, needsReview } from "@/lib/review";
+import { effectiveClassification as effectiveClassificationOf, needsReview, reviewReason } from "@/lib/review";
 import { computeTaxEstimate, taxYearFor } from "@/lib/tax/engine";
 import type { NormalizedEvent } from "@/lib/schema/normalized-event";
 
 // 화면에 나오면 즉시 눈에 띄도록 픽스처 금액과 겹치지 않는 값을 쓴다.
 const LEAK_SENTINEL_AMOUNT = "987654.32";
-const events = createNormalizedEventFixtures();
+const events = createNormalizedEventFixtures(FIXTURE_TAX_YEAR);
 const derived = deriveTaxEvents(events);
+// 요약 기간이 픽스처와 어긋나면 화면이 거래 없는 해를 과세연도로 잡는다.
+// 그러면 판정이 전부 비어도 테스트는 조용히 통과한다 — 기간은 픽스처에서 파생한다.
+const FIXTURE_PERIOD = {
+  from: events[0].block_timestamp,
+  to: events.at(-1)!.block_timestamp,
+};
 
 const ports = vi.hoisted(() => ({
   list: vi.fn(),
@@ -49,7 +57,7 @@ ports.getSummary.mockResolvedValue({
   taxableEventCount: 1,
   pendingReviewCount: 1,
   currency: "KRW",
-  period: { from: "2025-01-01T00:00:00.000Z", to: "2025-01-26T00:00:00.000Z" },
+  period: FIXTURE_PERIOD,
 });
 ports.getById.mockImplementation(async (id: string) => ({
   event: events.find((event) => event.id === id)!,
@@ -84,7 +92,7 @@ function resetPorts() {
     taxableEventCount: 1,
     pendingReviewCount: 1,
     currency: "KRW",
-    period: { from: "2025-01-01T00:00:00.000Z", to: "2025-01-26T00:00:00.000Z" },
+    period: FIXTURE_PERIOD,
   });
   ports.getById.mockImplementation(async (id: string) => ({
     event: events.find((event) => event.id === id)!,
@@ -103,12 +111,33 @@ afterEach(() => {
 /** 목록 재조회 → 세금 엔진 재계산 → 재렌더 한 왕복이 정착하는 데 주는 시간. */
 const SETTLE_TIMEOUT = 5000;
 
+/**
+ * 판정이 정착했는가.
+ *
+ * 예전에는 "독일 룰셋으로 판정 중"이라는 기준 카드 문구를 신호로 썼다. 그 카드는 세금 금액을
+ * 내역 화면에 두 번째로 두는 자리였고 지금은 없다. 신호는 문구가 아니라 **행의 상태**다 —
+ * 모든 카드가 "판정 확인 중"에서 벗어나면 판정이 도착한 것이다.
+ */
+async function settled() {
+  await waitFor(
+    () => {
+      const cards = [...document.querySelectorAll("section .mt-3.grid.gap-3 > button")];
+      expect(cards.length).toBeGreaterThan(0);
+      // 요약이 늦으면 잠시 "기준 기간 확인 필요"가 찍힌다. 그 중간 상태를 정착이라 읽으면
+      // 뒤따르는 단언이 아직 오지 않은 도장을 검사하게 된다.
+      expect(cards.some((card) => /판정 확인 중|판정 미계산/.test(card.textContent ?? ""))).toBe(false);
+    },
+    { timeout: SETTLE_TIMEOUT },
+  );
+}
+
 function rowLabel(event: NormalizedEvent) {
-  return `${formatTokenAmount(event.raw_amount, event.decimals)} · ${assetLabel(event)}`;
+  // 카드 제목은 부호까지 포함한다 — 쓴 것과 얻은 것을 같은 문자열로 부르면 화면이 둘을 구분하지 않는다는 뜻이다.
+  return `${formatSignedTokenAmount(event)} · ${assetLabel(event)}`;
 }
 
 describe("거래 탭이 세금 대신 판정 도장을 찍는다", () => {
-  it("판정 기준을 국가와 함께 밝히고 세금 총액은 한 줄만 둔다", async () => {
+  it("세금 금액은 내역 화면 어디에도 없다 — 그 자리에는 지갑 이력 그래프가 있다", async () => {
     // UI 계약은 엔진 구현과 분리한다. 같은 함수로 기대값을 만들면 엔진 결함이 함께 통과한다.
     const FIXED_CHARGE = "4242.42";
     ports.estimate.mockImplementation(async (input: Parameters<MockTaxEngine["estimate"]>[0]) => {
@@ -116,52 +145,137 @@ describe("거래 탭이 세금 대신 판정 도장을 찍는다", () => {
       return { ...base, totals: { ...base.totals, estimatedCharge: FIXED_CHARGE }, status: "SUPPORTED" as const };
     });
     renderDashboard("DE");
-    expect(await screen.findByText(/독일 룰셋으로 판정 중/)).toBeInTheDocument();
-    const estimate = { totals: { estimatedCharge: FIXED_CHARGE }, currency: "EUR" };
-    // 세금 숫자는 판정 기준 줄에만 존재한다. 요약 카드(손익)의 금액과 섞이면 안 된다.
-    const basis = screen.getByLabelText("판정 기준");
-    const charge = Number(estimate.totals.estimatedCharge);
-    // 통화는 국가마다 다르다(독일 €). 금액이 실제로 렌더링됐는지만 확인한다.
-    expect(basis.textContent).toContain(
-      charge === 0 ? "부담 없음" : formatFiat(estimate.totals.estimatedCharge, estimate.currency),
-    );
-    expect(basis.textContent).toContain("2025년 세금");
+    await settled();
 
-    // 한 줄 불변식은 "있다"가 아니라 "여기에만 있다"이다.
-    const chargeText = formatFiat(estimate.totals.estimatedCharge, estimate.currency);
-    if (charge !== 0) {
-      const wholePage = document.body.textContent ?? "";
-      const occurrences = wholePage.split(chargeText).length - 1;
-      expect(occurrences, `세금 금액 ${chargeText}가 화면에 ${occurrences}번 나온다`).toBe(1);
-    }
-    for (const card of [...document.querySelectorAll("section .mt-3.grid.gap-3 > button")]) {
-      expect(card.textContent ?? "", "거래 카드에 세금 금액이 새면 안 된다").not.toContain(chargeText);
-      expect(card.textContent ?? "").not.toMatch(/년 세금/);
-    }
+    // 부담·과세연도·기준 카드는 세금 탭 한 곳에서만 답한다. 내역이 같은 금액을 또 말하면
+    // 두 화면 중 어느 쪽이 최신인지 알 수 없다.
+    const body = document.body.textContent ?? "";
+    expect(body, "세금 금액이 내역 화면에 새면 안 된다").not.toContain(formatFiat(FIXED_CHARGE, "EUR"));
+    expect(body).not.toMatch(/년 세금/);
+    expect(screen.queryByLabelText("판정 기준")).not.toBeInTheDocument();
+
+    // 도장 자체는 남는다 — 금액만 사라진 것이지 판정까지 사라진 것이 아니다.
+    const cards = [...document.querySelectorAll("section .mt-3.grid.gap-3 > button")];
+    expect(cards.some((card) => /취득/.test(card.textContent ?? ""))).toBe(true);
+    // 빈자리를 남기지 않는다 — 지갑 이력이 그린 선이 그 자리에 있다.
+    expect(screen.getByLabelText("누적 순유입")).toBeInTheDocument();
   });
 
-  it("미확정 국가는 금액 대신 산출 불가를 보이고 ₩0을 찍지 않는다", async () => {
+  it("시행 전 국가에서도 내역은 부담을 말하지 않고 행 도장만 남긴다", async () => {
+    // 한국은 2027-01-01 시행이라 2025년 발생분에는 부담이 존재하지 않는다.
+    // 그 사실을 말할 자리는 세금 탭이고, 내역은 행마다 도장을 찍는다.
     const { container } = renderDashboard("KR");
-    expect(await screen.findByText("산출 불가")).toBeInTheDocument();
+    await settled();
+    expect(screen.getAllByText(/2027 시행 전/).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "시행 가정으로 보기" })).not.toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/년 세금|과세 대상 아님 · 부담|산출 불가/);
     expect(container.textContent).not.toContain("₩0");
   });
 
-  it("거래 행에 판정 도장이 붙고 금액이 세금이 아님을 라벨로 밝힌다", async () => {
+  it("목록은 자산 검증 딱지만 두고 처리 방식 배지는 상세로 보낸다", async () => {
+    renderDashboard("KR");
+    // 픽스처 첫 건은 추정가이고, event-07은 사용자가 수동 분류한 건이다.
+    const estimated = events.find((event) => event.price_status === "ESTIMATED")!;
+    const overridden = events.find((event) => event.user_override !== null)!;
+    const card = (await screen.findByText(rowLabel(estimated))).closest("button")!;
+
+    expect(within(card).getByText("검증됨")).toBeInTheDocument();
+    // 처리 방식(추정가·수동 분류)은 목록에서 빠지고 상세에서만 말한다.
+    expect(within(card).queryByText("추정가")).not.toBeInTheDocument();
+    expect(document.body.textContent ?? "").not.toContain("수동 분류됨");
+
+    fireEvent.click(screen.getByText(rowLabel(overridden)));
+    await screen.findByText("거래 상세");
+    const sheet = screen.getByText("거래 상세").closest("div")!.parentElement!;
+    expect(sheet.textContent).toContain("(추정)");
+    expect(sheet.textContent).toContain("사용자 확정");
+  });
+
+  it("목록이 토큰을 심볼로 부른다", async () => {
+    renderDashboard("KR");
+    // 8453(Base)의 ERC20 픽스처 — "ERC20"이 아니라 토큰 이름이어야 한다.
+    const token = events.find((event) => event.asset_type === "ERC20" && event.chain_id === 8453)!;
+    expect(token.asset_symbol).toBe("USDC");
+    expect(await screen.findByText(`${formatSignedTokenAmount(token)} · USDC`)).toBeInTheDocument();
+
+    // NFT는 컬렉션 심볼 + 토큰 번호.
+    const nft = events.find((event) => event.token_id !== null && event.chain_id === 42161)!;
+    expect(screen.getByText(`${formatSignedTokenAmount(nft)} · SMOL #${nft.token_id}`)).toBeInTheDocument();
+  });
+
+  it("쓴 것과 얻은 것을 부호와 색으로 가른다", async () => {
+    renderDashboard("KR");
+    const received = events.find((event) => effectiveClassificationOf(event) === "RECEIVE")!;
+    const sent = events.find((event) => effectiveClassificationOf(event) === "SEND")!;
+    const moved = events.find((event) => effectiveClassificationOf(event) === "INTERNAL_TRANSFER")!;
+
+    const labelOf = async (event: NormalizedEvent) => (await screen.findByText(rowLabel(event))).className;
+    // 색만으로 구분하면 색을 못 보는 사용자에게는 아무 정보가 아니다 — 부호가 라벨에 들어 있어야 한다.
+    expect(rowLabel(received).startsWith("+")).toBe(true);
+    expect(rowLabel(sent).startsWith("-")).toBe(true);
+    // 자기 지갑 간 이체는 처분이 아니라 부호를 붙이지 않는다.
+    expect(rowLabel(moved)).toMatch(/^\d/);
+
+    expect(await labelOf(received)).toContain("text-emerald-700");
+    expect(await labelOf(sent)).toContain("text-rose-700");
+    expect(await labelOf(moved)).toContain("text-zinc-900");
+  });
+
+  it("체인별로 걸러 보고, 판정 필터와 겹쳐 걸 수 있다", async () => {
+    const { container } = renderDashboard("KR");
+    await settled();
+    const cards = () => container.querySelectorAll("section .mt-3.grid.gap-3 > button").length;
+    const all = cards();
+
+    const chainRow = screen.getByLabelText("체인 필터");
+    fireEvent.click(within(chainRow).getByRole("button", { name: /^Base/ }));
+    const baseOnly = events.filter((event) => event.chain_id === 8453).length;
+    expect(cards()).toBe(baseOnly);
+    expect(cards()).toBeLessThan(all);
+    for (const card of container.querySelectorAll("section .mt-3.grid.gap-3 > button")) {
+      expect(card.textContent).toContain("Base");
+    }
+
+    // 같은 칩을 다시 누르면 전체로 돌아온다.
+    fireEvent.click(within(chainRow).getByRole("button", { name: /^Base/ }));
+    expect(cards()).toBe(all);
+  });
+
+  it("목록이 자산마다 표식을 붙이고, 이미지가 없는 NFT는 NFT 박스로 그린다", async () => {
+    renderDashboard("KR");
+    const token = events.find((event) => event.asset_type === "ERC20")!;
+    const nft = events.find((event) => event.token_id !== null)!;
+    const cardOf = async (event: NormalizedEvent) => (await screen.findByText(rowLabel(event))).closest("button")!;
+
+    // 픽스처에는 로고 URL이 없다(지어내지 않는다) — 대체 마크가 그 자리를 채운다.
+    expect((await cardOf(token)).querySelector('[data-asset-mark="symbol"]')).not.toBeNull();
+    const nftMark = (await cardOf(nft)).querySelector('[data-asset-mark="nft"]')!;
+    expect(nftMark.textContent).toBe("NFT");
+
+    // 마크 글자가 카드 제목에 섞이면 목록이 자산 이름을 잘못 부르게 된다.
+    expect((await screen.findByText(rowLabel(nft))).textContent).toBe(rowLabel(nft));
+  });
+
+  it("거래 행은 도장만 찍고, 금액이 세금이 아님은 상세가 라벨로 밝힌다", async () => {
     renderDashboard("DE");
-    await screen.findByText(/독일 룰셋으로 판정 중/);
+    await settled();
     // 첫 매수 이벤트는 취득 판정을 받는다.
     const acquired = events.find((event) => derived.events.some((tax) => tax.id === event.id && tax.kind === "ACQUIRE"));
     expect(acquired).toBeDefined();
     const row = screen.getByText(rowLabel(acquired!)).closest("button");
     expect(row).not.toBeNull();
-    expect(row!.textContent).toMatch(/취득/);
+    await waitFor(() => expect(row!.textContent).toMatch(/취득/), { timeout: SETTLE_TIMEOUT });
+    // 목록은 온체인 사실만 말한다. 통화 기호가 새면 사용자가 그 숫자를 세금으로 읽는다.
+    expect(row!.textContent ?? "", "거래 카드에 법정통화 금액이 새면 안 된다").not.toMatch(/[€₩$]/);
     // 금액 칸이 세금이 아니라 **취득가액**임을 밝힌다. 넷 중 아무거나 허용하면 라벨이 뒤바뀌어도 통과한다.
-    expect(row!.textContent).toContain("취득가액");
+    fireEvent.click(row!);
+    const section = (await screen.findByText("이 손익이 계산에서 어떻게 쓰였나")).parentElement!;
+    await waitFor(() => expect(section.textContent).toContain("취득가액"), { timeout: SETTLE_TIMEOUT });
   });
 
   it("계산에서 빠진 이벤트는 계산 제외 도장을 받고 확인 필요 탭과 같은 집합이다", async () => {
     renderDashboard("DE");
-    await screen.findByText(/독일 룰셋으로 판정 중/);
+    await settled();
     expect(derived.excludedEventIds.length).toBeGreaterThan(0);
     const excluded = events.find((event) => derived.excludedEventIds.includes(event.id))!;
     const row = screen.getByText(rowLabel(excluded)).closest("button");
@@ -173,7 +287,7 @@ describe("거래 탭이 세금 대신 판정 도장을 찍는다", () => {
 
   it("기존 탭 접근가능 이름과 거래 카드 구조를 유지한다", async () => {
     const { container } = renderDashboard("DE");
-    await screen.findByText(/독일 룰셋으로 판정 중/);
+    await settled();
     expect(screen.getByRole("tab", { name: "전체 거래" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "확인 필요" })).toBeInTheDocument();
     // e2e 로케이터가 의존하는 구조.
@@ -182,7 +296,7 @@ describe("거래 탭이 세금 대신 판정 도장을 찍는다", () => {
 
   it("그룹 필터가 목록을 좁힌다", async () => {
     const { container } = renderDashboard("DE");
-    await screen.findByText(/독일 룰셋으로 판정 중/);
+    await settled();
     const all = container.querySelectorAll("section .mt-3.grid.gap-3 > button").length;
     const chip = screen.getByRole("button", { name: /^계산 제외/ });
     fireEvent.click(chip);
@@ -201,7 +315,7 @@ describe("판정도 제외도 아닌 거래가 침묵하지 않는다", () => {
     expect(derived.excludedEventIds).not.toContain(internal!.id);
 
     renderDashboard("DE");
-    await screen.findByText(/독일 룰셋으로 판정 중/);
+    await settled();
     const row = screen.getByText(rowLabel(internal!)).closest("button")!;
     expect(row.textContent).toMatch(/처분 아님/);
 
@@ -222,7 +336,7 @@ describe("아키텍트가 지적한 P1 경계", () => {
 
   it("모든 거래 카드에 최소 한 개의 판정 배지가 있다 — 침묵하는 카드가 없다", async () => {
     const { container } = renderDashboard("DE");
-    await screen.findByText(/독일 룰셋으로 판정 중/);
+    await settled();
     const cards = [...container.querySelectorAll("section .mt-3.grid.gap-3 > button")];
     expect(cards.length).toBeGreaterThan(0);
     const silent = cards.filter((card) => {
@@ -262,7 +376,7 @@ describe("아키텍트가 지적한 P1 경계", () => {
         <DashboardView countryCode="DE" />
       </QueryClientProvider>,
     );
-    await screen.findByText(/독일 룰셋으로 판정 중/);
+    await settled();
     fireEvent.click(screen.getByText(rowLabel(target)));
     await screen.findByText("거래 상세");
     fireEvent.click(screen.getByRole("button", { name: "적용" }));
@@ -280,7 +394,7 @@ describe("2차 리뷰 P1 경계", () => {
     ];
     ports.list.mockResolvedValueOnce({ items: dupes, nextCursor: null });
     renderDashboard("DE");
-    await screen.findByText(/독일 룰셋으로 판정 중/);
+    await settled();
 
     const cards = screen.getAllByText(rowLabel(base)).map((node) => node.closest("button")!);
     expect(cards).toHaveLength(2);
@@ -305,7 +419,7 @@ describe("2차 리뷰 P1 경계", () => {
         <DashboardView countryCode="DE" />
       </QueryClientProvider>,
     );
-    await screen.findByText(/독일 룰셋으로 판정 중/);
+    await settled();
     fireEvent.click(screen.getByText(rowLabel(target)));
     await screen.findByText("거래 상세");
     fireEvent.click(screen.getByRole("button", { name: "적용" }));
@@ -319,7 +433,6 @@ describe("2차 리뷰 P1 경계", () => {
     const { container } = renderDashboard("DE");
     // 이벤트 목록은 도착하지만 판정은 계속 pending인 상태를 만든다.
     await screen.findByText(rowLabel(events[0]));
-    expect(screen.getByText(/판정 기준을 불러오는 중입니다/)).toBeInTheDocument();
     const cards = [...container.querySelectorAll("section .mt-3.grid.gap-3 > button")];
     expect(cards.length).toBeGreaterThan(0);
     expect(cards.some((card) => /계산 결과 없음/.test(card.textContent ?? ""))).toBe(false);
@@ -347,7 +460,7 @@ describe("중복 판정이 필터에 따라 뒤집히지 않는다", () => {
       nextCursor: null,
     });
     renderDashboard("DE");
-    await screen.findByText(/독일 룰셋으로 판정 중/);
+    await settled();
 
     fireEvent.click(screen.getByRole("tab", { name: "확인 필요" }));
     const cards = screen.getAllByText(rowLabel(clean)).map((node) => node.closest("button")!);
@@ -377,7 +490,7 @@ describe("3차 리뷰 P1 경계", () => {
       nextCursor: null,
     });
     renderDashboard("DE");
-    await screen.findByText(/독일 룰셋으로 판정 중/);
+    await settled();
     const cards = screen.getAllByText(rowLabel(highConfidenceInternal)).map((n) => n.closest("button")!);
     expect(cards[1].textContent).toMatch(/중복 id/);
     fireEvent.click(cards[1]);
@@ -398,7 +511,7 @@ describe("3차 리뷰 P1 경계", () => {
       nextCursor: null,
     });
     const { container } = renderDashboard("DE");
-    await screen.findByText(/독일 룰셋으로 판정 중/);
+    await settled();
     fireEvent.click(screen.getByRole("button", { name: /^취득/ }));
     const cards = [...container.querySelectorAll("section .mt-3.grid.gap-3 > button")];
     // 칩 건수는 고유 이벤트 기준이므로 카드도 1장이어야 한다.
@@ -410,7 +523,7 @@ describe("3차 리뷰 P1 경계", () => {
     // 재시도까지 전부 실패시켜야 isError가 뜬다.
     ports.estimate.mockRejectedValue(new Error("boom"));
     const { container } = renderDashboard("DE");
-    await screen.findByText(/판정 기준을 불러오지 못했습니다/, undefined, { timeout: 3000 });
+    await screen.findByText(/세금 판정을 불러오지 못해/, undefined, { timeout: 3000 });
     const cards = [...container.querySelectorAll("section .mt-3.grid.gap-3 > button")];
     const silentOnError = cards.filter((card) => !/판정 확인 중|판정 불러오기 실패|이동 · 처분 아님|중복 id|계산 제외|기간 밖/.test(card.textContent ?? ""));
     expect(silentOnError.map((card) => card.textContent)).toEqual([]);
@@ -433,35 +546,46 @@ describe("그룹 칩 건수가 실제 카드 수와 같은가", () => {
       nextCursor: null,
     });
     const { container } = renderDashboard("DE");
-    await screen.findByText(/독일 룰셋으로 판정 중/);
+    await settled();
 
-    // 전체 탭과 확인 필요 탭 모두에서 칩 건수 == 카드 수여야 한다.
+    // 전체 탭과 확인 필요 탭 모두에서, 체인 칩·판정 칩 어느 쪽을 눌러도 칩 건수 == 카드 수여야 한다.
     for (const tabName of ["전체 거래", "확인 필요"] as const) {
       fireEvent.click(screen.getByRole("tab", { name: tabName }));
-      const chips = [...container.querySelectorAll("button[aria-pressed]")].filter(
-        (chip) => !/^전체/.test(chip.textContent ?? ""),
-      );
-      for (const chip of chips) {
-        const label = chip.textContent ?? "";
+      // 스냅샷 NodeList를 재사용하면 리렌더로 교체된 노드를 눌러 아무 일도 일어나지 않는다.
+      // 필터가 둘로 늘어난 뒤 실제로 그 증상이 났다 — 매번 다시 조회한다.
+      const allChips = () => [
+        ...container.querySelectorAll('[aria-label="체인 필터"] button, [aria-label="판정 필터"] button'),
+      ];
+      const chipsNow = () => allChips().filter((chip) => !/^전체/.test(chip.textContent ?? ""));
+      // 필터 하나를 재는 동안 다른 하나가 걸려 있으면 안 된다. 매번 두 줄을 모두 푼다.
+      const reset = () => {
+        for (const label of ["전체 체인", "전체"]) {
+          const button = allChips().find((chip) => chip.textContent === label);
+          if (button) fireEvent.click(button);
+        }
+      };
+      for (let index = 0; index < chipsNow().length; index += 1) {
+        reset();
+        const label = chipsNow()[index].textContent ?? "";
         const expected = Number(label.match(/(\d+)\s*$/)?.[1]);
         expect(Number.isFinite(expected), `칩 라벨에 건수가 없다: ${label}`).toBe(true);
-        fireEvent.click(chip);
+        fireEvent.click(chipsNow()[index]);
         const cards = container.querySelectorAll("section .mt-3.grid.gap-3 > button").length;
         expect(cards, `${tabName} 탭 칩 "${label}"의 건수와 카드 수가 다르다`).toBe(expected);
-        fireEvent.click(chip);
       }
+      reset();
     }
   });
 
   it("판정 조회가 실패하면 그룹 필터가 조용히 빈 목록을 만들지 않는다", async () => {
     const { container } = renderDashboard("DE");
-    await screen.findByText(/독일 룰셋으로 판정 중/);
+    await settled();
     fireEvent.click(screen.getByRole("button", { name: /^취득/ }));
     expect(container.querySelectorAll("section .mt-3.grid.gap-3 > button").length).toBeGreaterThan(0);
 
     ports.estimate.mockRejectedValue(new Error("boom"));
     await client0.invalidateQueries({ queryKey: ["tax", "estimate"] });
-    await screen.findByText(/판정 기준을 불러오지 못했습니다/, undefined, { timeout: 3000 });
+    await screen.findByText(/세금 판정을 불러오지 못해/, undefined, { timeout: 3000 });
     // 필터를 유지하면 빈 목록만 남아 원인을 알 수 없다.
     expect(container.querySelectorAll("section .mt-3.grid.gap-3 > button").length).toBeGreaterThan(0);
     ports.estimate.mockImplementation(async (input: Parameters<MockTaxEngine["estimate"]>[0]) => engine.estimate(input));
@@ -478,7 +602,7 @@ describe("4차 리뷰 P1 경계 — 오래된 상태가 최신인 척하지 않�
       </QueryClientProvider>,
     );
     // 먼저 성공시켜 도장을 받는다.
-    await screen.findByText(/독일 룰셋으로 판정 중/);
+    await settled();
     expect(screen.getByText(rowLabel(target)).closest("button")!.textContent).toMatch(/취득/);
 
     // 이후 재조회를 실패시키면 옛 도장이 최신 진실인 척하면 안 된다.
@@ -489,7 +613,7 @@ describe("4차 리뷰 P1 경계 — 오래된 상태가 최신인 척하지 않�
         <DashboardView countryCode="DE" />
       </QueryClientProvider>,
     );
-    await screen.findByText(/판정 기준을 불러오지 못했습니다/, undefined, { timeout: 3000 });
+    await screen.findByText(/세금 판정을 불러오지 못해/, undefined, { timeout: 3000 });
     const card = screen.getByText(rowLabel(target)).closest("button")!;
     expect(card.textContent).toMatch(/판정 불러오기 실패/);
     expect(card.textContent).not.toMatch(/취득 · 원가 기록/);
@@ -504,7 +628,7 @@ describe("4차 리뷰 P1 경계 — 오래된 상태가 최신인 척하지 않�
         <DashboardView countryCode="DE" />
       </QueryClientProvider>,
     );
-    await screen.findByText(/독일 룰셋으로 판정 중/);
+    await settled();
     fireEvent.click(screen.getByText(rowLabel(target)));
     await screen.findByText("거래 상세");
 
@@ -537,7 +661,7 @@ describe("4차 리뷰 P1 경계 — 오래된 상태가 최신인 척하지 않�
       taxableEventCount: 1,
       pendingReviewCount: 1,
       currency: "KRW",
-      period: { from: "2025-01-01T00:00:00.000Z", to: "2025-01-26T00:00:00.000Z" },
+      period: FIXTURE_PERIOD,
     });
   });
 });
@@ -551,7 +675,7 @@ describe("5차 리뷰 P1 경계 — 열린 시트가 외부 변경을 반영한�
         <DashboardView countryCode="DE" />
       </QueryClientProvider>,
     );
-    await screen.findByText(/독일 룰셋으로 판정 중/);
+    await settled();
     fireEvent.click(screen.getByText(rowLabel(target)));
     await screen.findByText("거래 상세");
     expect((screen.getByLabelText("분류") as HTMLSelectElement).value).toBe("RECEIVE");
@@ -577,7 +701,7 @@ describe("5차 리뷰 P1 경계 — 열린 시트가 외부 변경을 반영한�
 
   it("탭에 없는 그룹 필터는 조용히 빈 목록을 만들지 않는다", async () => {
     const { container } = renderDashboard("DE");
-    await screen.findByText(/독일 룰셋으로 판정 중/);
+    await settled();
     // 취득 칩은 전체 탭에만 있고 확인 필요 탭에는 없다.
     fireEvent.click(screen.getByRole("button", { name: /^취득/ }));
     fireEvent.click(screen.getByRole("tab", { name: "확인 필요" }));
@@ -600,7 +724,7 @@ describe("자기 변경을 외부 변경으로 오인하지 않는다", () => {
         <DashboardView countryCode="DE" />
       </QueryClientProvider>,
     );
-    await screen.findByText(/독일 룰셋으로 판정 중/);
+    await settled();
     fireEvent.click(screen.getByText(rowLabel(target)));
     await screen.findByText("거래 상세");
     fireEvent.click(screen.getByRole("button", { name: "적용" }));
@@ -634,14 +758,14 @@ describe("6차 리뷰 P1 경계", () => {
         <DashboardView countryCode="DE" />
       </QueryClientProvider>,
     );
-    await screen.findByText(/독일 룰셋으로 판정 중/);
+    await settled();
     expect(screen.getByText(rowLabel(target)).closest("button")!.textContent).toMatch(/취득/);
 
     // 외부에서 분류가 바뀌어 목록만 갱신된 상태.
     // 판정 소스까지 함께 바꿔야 "정착 후에도 옛 도장이 없다"를 증명할 수 있다.
-    const updated = events.map((event) =>
-      event.id === target.id ? { ...event, classification: "SEND" as const, user_override: null } : event,
-    );
+    // 분류가 바뀌면 카드 제목의 부호도 함께 바뀐다(RECEIVE `+` → SEND `-`) — 갱신 후 라벨로 찾아야 한다.
+    const updatedTarget = { ...target, classification: "SEND" as const, user_override: null };
+    const updated = events.map((event) => (event.id === target.id ? updatedTarget : event));
     currentEvents = updated;
     ports.list.mockResolvedValue({
       items: updated.map((event) => ({ event, version: event.id === target.id ? 2 : 1 })),
@@ -654,7 +778,7 @@ describe("6차 리뷰 P1 경계", () => {
     // 단언은 그대로 두고 이 대기에만 인내심을 준다(전역으로 늘리면 무관한 실패 진단이 늦어진다).
     await waitFor(
       () => {
-        const card = screen.getByText(rowLabel(target)).closest("button")!;
+        const card = screen.getByText(rowLabel(updatedTarget)).closest("button")!;
         expect(card.textContent).not.toMatch(/판정 확인 중/);
         expect(card.textContent).not.toMatch(/취득 · 원가 기록/);
       },
@@ -670,7 +794,7 @@ describe("6차 리뷰 P1 경계", () => {
         : { items: events.slice(0, half).map((event) => ({ event, version: 1 })), nextCursor: "c1" },
     );
     const { container } = renderDashboard("DE");
-    await screen.findByText(/독일 룰셋으로 판정 중/);
+    await settled();
     // 커서를 버리면 뒷페이지 거래가 화면에서 통째로 사라진다.
     await waitFor(() =>
       expect(container.querySelectorAll("section .mt-3.grid.gap-3 > button").length).toBe(events.length),
@@ -701,7 +825,7 @@ describe("7차 리뷰 P1 경계 — 보류 중에 옛 사실을 단정하지 않
         <DashboardView countryCode="DE" />
       </QueryClientProvider>,
     );
-    await screen.findByText(/독일 룰셋으로 판정 중/);
+    await settled();
     expect(screen.getByText(rowLabel(excluded)).closest("button")!.textContent).toMatch(/계산 제외/);
 
     // 외부에서 유효 분류로 확정됐고 목록만 먼저 갱신된 상태.
@@ -740,7 +864,7 @@ describe("7차 리뷰 P1 경계 — 보류 중에 옛 사실을 단정하지 않
         <DashboardView countryCode="DE" />
       </QueryClientProvider>,
     );
-    await screen.findByText(/독일 룰셋으로 판정 중/);
+    await settled();
     invalidate.mockClear();
 
     ports.list.mockResolvedValue({
@@ -765,10 +889,12 @@ describe("판정 보류 중에는 칩도 함께 보류한다", () => {
     const cards = [...container.querySelectorAll("section .mt-3.grid.gap-3 > button")];
     expect(cards.some((card) => /판정 확인 중/.test(card.textContent ?? ""))).toBe(true);
     // 카드가 판정을 모른다는데 칩이 "취득 10"이라 하면 두 이야기다.
-    const chips = [...container.querySelectorAll("button[aria-pressed]")].filter(
+    const chips = [...container.querySelectorAll('[aria-label="판정 필터"] button[aria-pressed]')].filter(
       (chip) => !/^전체/.test(chip.textContent ?? ""),
     );
     expect(chips.map((chip) => chip.textContent)).toEqual([]);
+    // 체인은 판정이 아니라 온체인 사실이라 판정을 기다리는 동안에도 고를 수 있다.
+    expect(container.querySelector('[aria-label="체인 필터"]')).not.toBeNull();
     ports.estimate.mockImplementation(async (input: Parameters<MockTaxEngine["estimate"]>[0]) => engine.estimate(input));
   });
 });
@@ -782,7 +908,7 @@ describe("남은 WATCH 항목 회귀", () => {
         <DashboardView countryCode="DE" />
       </QueryClientProvider>,
     );
-    await screen.findByText(/독일 룰셋으로 판정 중/);
+    await settled();
     fireEvent.click(screen.getByText(rowLabel(target)));
     await screen.findByText("거래 상세");
 
@@ -824,23 +950,23 @@ describe("남은 WATCH 항목 회귀", () => {
 });
 
 describe("파생 표면 전체가 '지금 것인가'를 지킨다", () => {
-  it("판정 재조회 중에는 판정 기준 카드가 옛 총액을 단정하지 않는다", async () => {
+  it("판정 재조회 중에는 행이 옛 도장을 최신인 척 달지 않는다", async () => {
+    const target = events.find((event) => derived.events.some((tax) => tax.id === event.id))!;
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
         <DashboardView countryCode="DE" />
       </QueryClientProvider>,
     );
-    await screen.findByText(/독일 룰셋으로 판정 중/);
-    expect(screen.getByLabelText("판정 기준").textContent).toMatch(/2025년 세금/);
+    await settled();
+    const stampOf = () => screen.getByText(rowLabel(target)).closest("button")!.textContent ?? "";
+    expect(stampOf()).toMatch(/취득/);
 
-    // 재조회를 멈춰 세운다. 이때 옛 총액이 남으면 거짓이다.
+    // 재조회를 멈춰 세운다. 이때 옛 도장이 남으면 거짓이다.
     ports.estimate.mockImplementation(() => new Promise(() => {}));
     void client.invalidateQueries({ queryKey: ["tax", "estimate"] });
-    await waitFor(() =>
-      expect(screen.getByLabelText("판정 기준").textContent).toMatch(/불러오는 중/),
-    );
-    expect(screen.getByLabelText("판정 기준").textContent).not.toMatch(/년 세금/);
+    await waitFor(() => expect(stampOf()).toMatch(/판정 확인 중/));
+    expect(stampOf()).not.toMatch(/취득 · 원가 기록/);
   });
 
   it("비교 국가와 한계 기여도도 재조회 중이면 옛 값을 보이지 않는다", async () => {
@@ -850,7 +976,7 @@ describe("파생 표면 전체가 '지금 것인가'를 지킨다", () => {
         <DashboardView countryCode="DE" />
       </QueryClientProvider>,
     );
-    await screen.findByText(/독일 룰셋으로 판정 중/);
+    await settled();
     fireEvent.click(screen.getByText(rowLabel(events[0])));
     await screen.findByText("거래 상세");
     await screen.findByText("다른 나라였다면");
@@ -882,7 +1008,7 @@ describe("파생 표면 전체가 '지금 것인가'를 지킨다", () => {
         <DashboardView countryCode="DE" />
       </QueryClientProvider>,
     );
-    await screen.findByText(/독일 룰셋으로 판정 중/);
+    await settled();
     fireEvent.click(screen.getByText(rowLabel(target)));
     await screen.findByText("거래 상세");
     await screen.findByText(/예전이력/);
@@ -894,16 +1020,15 @@ describe("파생 표면 전체가 '지금 것인가'를 지킨다", () => {
 });
 
 describe("믿을 수 있는 기간이 없으면 과세연도를 단정하지 않는다", () => {
-  it("요약이 실패하면 판정 기준 카드가 연도·부담을 말하지 않는다", async () => {
+  it("요약이 실패하면 화면이 판정을 계산하지 않았다고 밝힌다", async () => {
     ports.getSummary.mockRejectedValue(new Error("boom"));
     renderDashboard("DE");
     await screen.findByText(/요약을 불러오지 못했습니다/, undefined, { timeout: 3000 });
     // 지갑 기간을 모르는데 "2026년 세금"이라 말하면 근거 없는 단정이다.
-    const basis = screen.getByLabelText("판정 기준");
-    expect(basis.textContent).not.toMatch(/년 세금/);
+    expect(document.body.textContent ?? "").not.toMatch(/년 세금/);
     // 요청조차 하지 않았으므로 "불러오는 중"이라 말하면 없는 진행을 지어내는 것이다.
     expect(screen.getByText("기준 기간을 확인하지 못해 판정을 계산하지 않았습니다.")).toBeInTheDocument();
-    expect(basis.textContent).not.toMatch(/불러오는 중/);
+    expect(screen.queryByText(/세금 판정을 불러오지 못해/)).not.toBeInTheDocument();
 
     // 카드도 같은 말을 해야 한다. 기준 카드는 "계산 안 함"인데 행이 "확인 중"이면 모순이다.
     const cards = [...document.querySelectorAll("section .mt-3.grid.gap-3 > button")];
@@ -916,8 +1041,8 @@ describe("믿을 수 있는 기간이 없으면 과세연도를 단정하지 않
   });
 });
 
-describe("부담이 0일 때도 세금 문구는 한 곳에만", () => {
-  it("'부담 없음'이 화면에 한 번만 나오고 거래 카드에는 없다", async () => {
+describe("부담이 0이어도 내역 화면은 부담을 말하지 않는다", () => {
+  it("'부담 없음'조차 내역에는 없다 — 0도 금액이다", async () => {
     // 손실만 있는 지갑을 만들어 부담을 0으로 만든다.
     // 취득만 있는 지갑은 처분·소득이 없어 부담이 반드시 0이다.
     const acquireOnly = events
@@ -926,12 +1051,12 @@ describe("부담이 0일 때도 세금 문구는 한 곳에만", () => {
     expect(acquireOnly.length, "픽스처에 취득 이벤트가 있어야 한다").toBeGreaterThan(0);
     setListEvents(acquireOnly);
     const { container } = renderDashboard("DE");
-    await screen.findByText(/독일 룰셋으로 판정 중/);
-    const basis = screen.getByLabelText("판정 기준");
-    expect(basis.textContent, "처분·소득이 없으면 부담은 0이다").toContain("부담 없음");
-    expect((document.body.textContent ?? "").split("부담 없음").length - 1).toBe(1);
+    await settled();
+    // 처분·소득이 없어 부담은 0이다. 그 0을 말할 자리는 세금 탭이고 내역에는 없다.
+    expect(container.textContent ?? "").not.toContain("부담 없음");
+    expect(container.textContent ?? "").not.toMatch(/년 세금/);
     for (const card of [...container.querySelectorAll("section .mt-3.grid.gap-3 > button")]) {
-      expect(card.textContent ?? "").not.toContain("부담 없음");
+      expect(card.textContent ?? "").toMatch(/취득/);
     }
   });
 });
@@ -944,7 +1069,7 @@ describe("한계 기여도도 재조회 중 옛 값을 보이지 않는다", () 
         <DashboardView countryCode="DE" />
       </QueryClientProvider>,
     );
-    await screen.findByText(/독일 룰셋으로 판정 중/);
+    await settled();
     fireEvent.click(screen.getByText(rowLabel(events[0])));
     await screen.findByText("거래 상세");
     await waitFor(() => expect(screen.getByText("이 거래가 없었다면")).toBeInTheDocument());
@@ -964,7 +1089,7 @@ describe("3세대 P1 경계", () => {
         <DashboardView countryCode="DE" />
       </QueryClientProvider>,
     );
-    await screen.findByText(/독일 룰셋으로 판정 중/);
+    await settled();
     const internal = events.find((event) => event.classification === "INTERNAL_TRANSFER")!;
     expect(screen.getByText(rowLabel(internal)).closest("button")!.textContent).toMatch(/처분 아님/);
 
@@ -1020,7 +1145,7 @@ describe("4세대 P1 — 비활성 쿼리의 캐시가 답을 말하지 않는�
       </QueryClientProvider>,
     );
     // 1) 정상 상태에서 상세를 열어 한계 기여도·나라별 비교 캐시를 만든다.
-    await screen.findByText(/독일 룰셋으로 판정 중/);
+    await settled();
     fireEvent.click(screen.getByText(rowLabel(events[0])));
     await screen.findByText("거래 상세");
     await waitFor(() => expect(screen.getByText("이 거래가 없었다면")).toBeInTheDocument());
@@ -1087,7 +1212,7 @@ describe("5세대 P2 — 비활성·보류를 진행 중이라 말하지 않는�
         <DashboardView countryCode="DE" />
       </QueryClientProvider>,
     );
-    await screen.findByText(/독일 룰셋으로 판정 중/);
+    await settled();
     fireEvent.click(screen.getByText(rowLabel(internal)));
     await screen.findByText(/자기 지갑 간 이체라 처분으로 보지 않았습니다/);
 
@@ -1111,12 +1236,12 @@ describe("7세대 — 복합 장애에서도 모든 표면이 같은 말을 한�
         <DashboardView countryCode="DE" />
       </QueryClientProvider>,
     );
-    await screen.findByText(/독일 룰셋으로 판정 중/);
+    await settled();
 
     // 판정 조회를 실패시키고, 이어서 기준 기간까지 잃는다.
     ports.estimate.mockRejectedValue(new Error("boom"));
     void client.invalidateQueries({ queryKey: ["tax", "estimate"] });
-    await screen.findByText(/판정 기준을 불러오지 못했습니다/, undefined, { timeout: 3000 });
+    await screen.findByText(/세금 판정을 불러오지 못해/, undefined, { timeout: 3000 });
 
     ports.getSummary.mockRejectedValue(new Error("boom"));
     void client.invalidateQueries({ queryKey: ["events", "summary"] });
@@ -1124,7 +1249,7 @@ describe("7세대 — 복합 장애에서도 모든 표면이 같은 말을 한�
 
     // 기준 기간이 없으면 애초에 요청하지 않았다. 옛 오류를 현재 상태로 말하면 안 된다.
     expect(screen.getByText("기준 기간을 확인하지 못해 판정을 계산하지 않았습니다.")).toBeInTheDocument();
-    expect(screen.queryByText(/판정 기준을 불러오지 못했습니다/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/세금 판정을 불러오지 못해/)).not.toBeInTheDocument();
 
     // 행도 같은 말을 해야 한다.
     const cards = [...document.querySelectorAll("section .mt-3.grid.gap-3 > button")];
@@ -1136,16 +1261,15 @@ describe("7세대 — 복합 장애에서도 모든 표면이 같은 말을 한�
     expect(notExplained.map((card) => card.textContent)).toEqual([]);
   });
 
-  it("캐시가 있어도 기준 기간이 없으면 기준 카드·행이 답하지 않는다", async () => {
+  it("캐시가 있어도 기준 기간이 없으면 안내·행이 답하지 않는다", async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
         <DashboardView countryCode="DE" />
       </QueryClientProvider>,
     );
-    await screen.findByText(/독일 룰셋으로 판정 중/);
-    const basisBefore = screen.getByLabelText("판정 기준").textContent ?? "";
-    expect(basisBefore).toMatch(/년 세금/);
+    await settled();
+    expect(screen.getByText(rowLabel(events[0])).closest("button")!.textContent).not.toMatch(/판정 확인 중/);
 
     vi.useFakeTimers({ shouldAdvanceTime: true, now: new Date("2026-06-15T00:00:00.000Z") });
     const placeholderYear = taxYearFor("DE", new Date().toISOString());
@@ -1162,25 +1286,22 @@ describe("7세대 — 복합 장애에서도 모든 표면이 같은 말을 한�
     await screen.findByText(/요약을 불러오지 못했습니다/, undefined, { timeout: 3000 });
 
     // 캐시가 남아 있어도 근거가 없으면 답하지 않는다.
-    const basis = screen.getByLabelText("판정 기준");
-    expect(basis.textContent).not.toMatch(/년 세금/);
-    expect(basis.textContent).toBe("기준 기간을 확인하지 못해 판정을 계산하지 않았습니다.");
+    expect(document.body.textContent ?? "").not.toMatch(/년 세금/);
+    expect(screen.getByText("기준 기간을 확인하지 못해 판정을 계산하지 않았습니다.")).toBeInTheDocument();
     const cards = [...document.querySelectorAll("section .mt-3.grid.gap-3 > button")];
     expect(cards.some((card) => /취득 · 원가 기록/.test(card.textContent ?? ""))).toBe(false);
   });
 });
 
-describe("산출 불가 국가는 한계 기여도를 답하지 않는다", () => {
+describe("부담을 산출하지 않는 룰셋은 한계 기여도를 답하지 않는다", () => {
   it("한국 상세가 '부담에 영향 없음'이라 말하지 않는다", async () => {
-    // 테스트 계정 거주국이 KR이므로 이건 기본 경로다.
+    // 테스트 계정 거주국이 KR이므로 이건 기본 경로다. 2027-01-01 시행 전이라 부담 자체가 없다.
     renderDashboard("KR");
-    await screen.findByText(/한국 룰셋으로 판정 중/);
-    expect(screen.getByLabelText("판정 기준").textContent).toContain("산출 불가");
+    await settled();
 
-    // 요약 건수는 가격·분류만 보고 센다. 룰셋이 미확정인데 "과세 대상"이라 하면 단정이다.
+    // 이 건수는 가격·분류만 보고 센 수다. 판정이 갈리기 전에 "과세 대상"이라 하면 단정이다.
     expect(screen.queryByText("과세 대상 이벤트")).not.toBeInTheDocument();
     expect(screen.getByText("계산 대상 이벤트")).toBeInTheDocument();
-    expect(document.body.textContent ?? "").toContain("과세 여부는 아직 판단하지 않았습니다");
 
     fireEvent.click(screen.getByText(rowLabel(events[0])));
     await screen.findByText("거래 상세");
@@ -1189,8 +1310,8 @@ describe("산출 불가 국가는 한계 기여도를 답하지 않는다", () =
     // 결정적 검증: 애초에 한계 기여도를 **요청하지 않아야** 한다.
     // 부재만 보면 비동기 응답이 늦게 도착하는 구현에서도 통과해버린다.
     const marginalCalls = ports.estimate.mock.calls.filter(([input]) => input?.includeMarginal === true);
-    expect(marginalCalls, "산출 불가 국가에 한계 기여도를 요청하면 안 된다").toEqual([]);
-    // 헤더가 "산출 불가"인데 상세가 "영향 없음"이라 하면 정면 모순이다.
+    expect(marginalCalls, "부담을 산출하지 않는 룰셋에 한계 기여도를 요청하면 안 된다").toEqual([]);
+    // 헤더가 "과세 대상 아님"인데 상세가 "영향 없음"이라 하면 정면 모순이다.
     expect(screen.queryByText("이 거래가 없었다면")).not.toBeInTheDocument();
     expect(screen.queryByText(/부담에 영향 없음/)).not.toBeInTheDocument();
   });
@@ -1199,7 +1320,7 @@ describe("산출 불가 국가는 한계 기여도를 답하지 않는다", () =
     // 이 건수는 가격·분류가 확정돼 계산에 들어간 수일 뿐,
     // 취득·비과세·상계 소멸까지 포함한다. "과세 대상"이라 부르면 과장이다.
     renderDashboard("DE");
-    await screen.findByText(/독일 룰셋으로 판정 중/);
+    await settled();
     expect(screen.getByText("계산 대상 이벤트")).toBeInTheDocument();
     expect(screen.queryByText("과세 대상 이벤트")).not.toBeInTheDocument();
     expect(document.body.textContent ?? "").toContain("과세 여부는 아래 판정에서 갈립니다");
@@ -1216,7 +1337,7 @@ describe("산출 불가 국가는 한계 기여도를 답하지 않는다", () =
       nextCursor: null,
     });
     renderDashboard("DE");
-    await screen.findByText(/독일 룰셋으로 판정 중/);
+    await settled();
 
     const cards = screen.getAllByText(rowLabel(target)).map((node) => node.closest("button")!);
     expect(cards).toHaveLength(2);
@@ -1239,7 +1360,7 @@ describe("없는 것을 계산된 것처럼 말하지 않는다", () => {
       taxableEventCount: 0,
       pendingReviewCount: 3,
       currency: "KRW",
-      period: { from: "2025-01-01T00:00:00.000Z", to: "2025-01-26T00:00:00.000Z" },
+      period: FIXTURE_PERIOD,
     });
     renderDashboard("DE");
     expect(await screen.findByText("계산할 거래 없음")).toBeInTheDocument();
@@ -1273,13 +1394,12 @@ describe("없는 것을 계산된 것처럼 말하지 않는다", () => {
     expect(header.textContent).toContain("기간 미정");
     expect(header.textContent).not.toMatch(/\s~\s*$/);
     // 빈 기간을 그대로 쓰면 "NaN년 세금"이 된다.
-    const basis = screen.getByLabelText("판정 기준");
-    expect(basis.textContent).not.toMatch(/NaN/);
-    expect(basis.textContent).toBe("기준 기간을 확인하지 못해 판정을 계산하지 않았습니다.");
+    expect(container.textContent ?? "").not.toMatch(/NaN/);
+    expect(screen.getByText("기준 기간을 확인하지 못해 판정을 계산하지 않았습니다.")).toBeInTheDocument();
   });
 });
 
-describe("잘못된 기간에서 헤더와 판정 기준이 갈리지 않는다", () => {
+describe("잘못된 기간에서 헤더와 판정 안내가 갈리지 않는다", () => {
   for (const period of [
     { from: "2025", to: "2025-12-31" },
     { from: "2025-02-30", to: "2025-03-31" },
@@ -1301,10 +1421,9 @@ describe("잘못된 기간에서 헤더와 판정 기준이 갈리지 않는다"
 
       const header = container.querySelector('[data-surface="dashboard-summary"]')!;
       expect(header.textContent).toContain("기간 미정");
-      // 헤더는 "기간 미정"인데 판정 기준이 "2025년 세금"이라 하면 같은 화면이 두 이야기를 한다.
-      const basis = screen.getByLabelText("판정 기준");
-      expect(basis.textContent).toBe("기준 기간을 확인하지 못해 판정을 계산하지 않았습니다.");
-      expect(basis.textContent).not.toMatch(/년 세금|NaN/);
+      // 헤더는 "기간 미정"인데 판정 안내가 "2025년 세금"이라 하면 같은 화면이 두 이야기를 한다.
+      expect(screen.getByText("기준 기간을 확인하지 못해 판정을 계산하지 않았습니다.")).toBeInTheDocument();
+      expect(container.textContent ?? "").not.toMatch(/년 세금|NaN/);
     });
   }
 });
@@ -1341,19 +1460,24 @@ describe("여러 취득분을 소비한 처분을 화면이 어떻게 말하는�
     });
 
     renderDashboard("DE");
-    await screen.findByText(/독일 룰셋으로 판정 중/);
+    await settled();
     const card = await screen.findByText(rowLabel(target));
+    // 목록은 도장만 찍는다. 보유일이 섞였다는 사실은 상세의 손익 근거표가 말해야 한다.
+    fireEvent.click(card.closest("button")!);
+    const section = (await screen.findByText("손익은 이렇게 나왔습니다")).parentElement!;
     await waitFor(
-      () => expect(card.closest("button")!.textContent).toMatch(/보유기간 취득분마다 다름/),
+      () => expect(section.textContent).toMatch(/취득분마다 다름/),
       { timeout: SETTLE_TIMEOUT },
     );
-    expect(card.closest("button")!.textContent).toMatch(/취득분 3건/);
+    // 보유일·취득일이 하나로 정해지지 않은 이유는 소비한 취득분이 여럿이기 때문이다.
+    expect(section.textContent).toMatch(/소비한 취득분/);
+    expect(section.textContent).toMatch(/3개/);
   });
 });
 
-describe("금액을 보이는 곳이면 그 한계도 같이 말한다", () => {
-  it("판정 기준 카드가 계산의 한계를 함께 밝힌다", async () => {
-    // 세금 탭에만 한계를 두면 대시보드만 보는 사용자는 근사인 줄 모른다.
+describe("금액을 말하지 않는 화면은 그 금액의 한계도 옮겨오지 않는다", () => {
+  it("계산의 한계는 세금 탭에만 있고 내역 화면에 새지 않는다", async () => {
+    // 내역은 부담 금액을 말하지 않는다. 금액이 없는데 "이 금액이 흔들린다"고 하면 무엇이 흔들리는지 알 수 없다.
     ports.estimate.mockImplementation(async (input: Parameters<MockTaxEngine["estimate"]>[0]) => {
       const base = await engine.estimate(input);
       return {
@@ -1366,17 +1490,12 @@ describe("금액을 보이는 곳이면 그 한계도 같이 말한다", () => {
     });
 
     renderDashboard("DE");
-    const card = await screen.findByLabelText("판정 기준");
-    await waitFor(() => expect(card.textContent).toMatch(/이 금액이 흔들리는 지점 2건/), { timeout: SETTLE_TIMEOUT });
-    expect(card.textContent).toMatch(/대체 취득분 원가/);
-    expect(card.querySelector('a[href="/tax"]')).not.toBeNull();
-  });
-
-  it("한계가 없으면 없는 말을 만들지 않는다", async () => {
-    renderDashboard("DE");
-    const card = await screen.findByLabelText("판정 기준");
-    await waitFor(() => expect(card.textContent).toMatch(/년 세금/), { timeout: SETTLE_TIMEOUT });
-    expect(card.textContent).not.toMatch(/흔들리는 지점 0건/);
+    await settled();
+    const body = document.body.textContent ?? "";
+    expect(body).not.toMatch(/흔들리는 지점/);
+    expect(body).not.toContain("부인된 손실을 대체 취득분 원가에 더하지 않았습니다.");
+    // 대신 한계를 볼 문은 세금 탭이다. 내역이 자기 자리에서 답하려 들면 두 화면이 갈린다.
+    expect(document.querySelector('a[href="/tax"]')).toBeNull();
   });
 });
 
@@ -1413,7 +1532,7 @@ describe("상세 시트가 손익 계산 4줄을 보인다", () => {
     });
 
     renderDashboard("DE");
-    await screen.findByText(/독일 룰셋으로 판정 중/);
+    await settled();
     fireEvent.click(screen.getByText(rowLabel(target)).closest("button")!);
     await screen.findByText("거래 상세");
 
@@ -1426,5 +1545,70 @@ describe("상세 시트가 손익 계산 4줄을 보인다", () => {
     expect(rowValue("− 취득가액")).toBe("€1,000.00");
     expect(rowValue("− 수수료")).toBe("€20.00");
     expect(rowValue("= 손익")).toBe("€1,980.00");
+  });
+});
+describe("거래 카드는 온체인 사실 네 가지와 도장만 말한다", () => {
+  /** e2e가 카드를 식별할 때 쓰는 훅. 순서 기반 선택자로 되돌아가면 레이아웃 변경마다 깨진다. */
+  const labelOf = (card: Element) => card.querySelector("[data-event-label]")?.textContent ?? "";
+  const cardsOf = (container: HTMLElement) => [...container.querySelectorAll("section .mt-3.grid.gap-3 > button")];
+
+  it("날짜는 UTC 하루 머리글에 한 번만 찍고 그 사실을 화면이 밝힌다", async () => {
+    const { container } = renderDashboard("DE");
+    await settled();
+    const headings = [...container.querySelectorAll("section .mt-3.grid.gap-3 > h3")];
+    const days = [...new Set(events.map((event) => isoDay(event.block_timestamp)))];
+    expect(headings.map((node) => node.textContent)).toEqual(days.map((day) => formatDate(`${day}T00:00:00.000Z`)));
+    // 시간대를 안 밝히면 사용자는 자기 시간대로 읽는다 — 과세연도 경계에서 다른 해가 된다.
+    expect(container.textContent).toContain(UTC_NOTICE);
+    // 머리글이 날짜를 맡았으니 카드가 같은 날짜를 또 반복하면 안 된다.
+    for (const card of cardsOf(container)) expect(card.textContent).not.toMatch(/\d{4}\. \d{1,2}\./);
+  });
+
+  it("체인·수량·거래방법을 싣고 법정통화 금액은 싣지 않는다", async () => {
+    const { container } = renderDashboard("DE");
+    await settled();
+    const cards = cardsOf(container);
+    expect(cards).toHaveLength(events.length);
+
+    for (const [index, card] of cards.entries()) {
+      const event = events[index];
+      const text = card.textContent ?? "";
+      expect(labelOf(card), event.id).toBe(rowLabel(event));
+      // 표식은 색으로 훑게 하고, 이름은 글자가 말한다. 아이콘만 두면 색맹·미지원 체인에서 정보가 사라진다.
+      expect(card.querySelector(`[data-chain-icon="${event.chain_id}"]`), event.id).not.toBeNull();
+      expect(text, event.id).toContain(chainLabel(event.chain_id));
+      // 계산에 들어가지 않는 값은 목록에 없다. 가스는 픽스처 전 건이 같은 값이라 25줄을 채우고도
+      // 아무것도 구분해주지 않으며, 어떤 판정도 바꾸지 않는다 — 상세에서만 답한다.
+      expect(text, event.id).not.toContain("가스");
+      // 카드에 통화 기호가 새면 사용자는 그 숫자를 세금으로 읽는다. 금액은 상세에서 근거와 함께만 보인다.
+      expect(text, event.id).not.toMatch(/[€₩$]/);
+    }
+  });
+
+  it("확인 필요 사유를 review.ts 판정 그대로 찍는다", async () => {
+    const { container } = renderDashboard("DE");
+    await settled();
+    // 가격 미확인 이벤트가 픽스처에 없으면 이 단언은 아무것도 지키지 않는다.
+    expect(events.filter((event) => reviewReason(event) === "가격 확인 필요").length).toBeGreaterThan(0);
+
+    for (const [index, card] of cardsOf(container).entries()) {
+      const event = events[index];
+      const text = card.textContent ?? "";
+      // 카드가 "가격 확인 필요"라 하고 세금 화면이 "분류 확인 필요"라 하면 화면이 두 이야기를 한다.
+      if (needsReview(event)) expect(text, event.id).toContain(reviewReason(event));
+      // 판정 도장의 "계산 제외 · 확인 필요"와 달리, 사유 배지는 확인이 필요할 때만 존재한다.
+      else expect(text, event.id).not.toMatch(/분류 확인 필요|가격 확인 필요|수량 확인 필요|신뢰도 낮음/);
+    }
+  });
+
+  it("계산에 안 들어간 가스는 상세에서 손익 근거 옆에 답한다", async () => {
+    renderDashboard("DE");
+    await settled();
+    const target = events[0];
+    fireEvent.click(screen.getByText(rowLabel(target)).closest("button")!);
+    await screen.findByText("거래 상세");
+    // `− 수수료 €0.00`이 왜 0인지 답할 수 있는 건 네이티브 수량뿐이다.
+    const gas = (await screen.findByText("가스")).parentElement!;
+    expect(gas.textContent).toContain(`${formatTokenAmount(target.gas_fee_native, 0)} ${nativeSymbol(target.chain_id)}`);
   });
 });

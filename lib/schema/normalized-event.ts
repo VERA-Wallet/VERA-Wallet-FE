@@ -21,6 +21,28 @@ export const normalizedEventSchema = z
     direction: z.enum(["IN", "OUT"]),
     asset_type: z.enum(["NATIVE", "ERC20", "ERC721", "ERC1155"]),
     asset_contract: z.string().nullable(),
+    /**
+     * 토큰 심볼. 메타데이터를 못 찾으면 null이고, 화면은 지어내지 않고 자산 타입으로 대체한다.
+     * 네이티브 자산도 체인 심볼(ETH·POL)을 그대로 담는다.
+     *
+     * `default`는 **버전 스큐 방어**다. 이 칸을 모르는 옛 응답(배포 중인 구버전 서버,
+     * 재시드되지 않은 dev 스토어)이 오면 목록 전체가 파싱에 실패해 "거래를 불러오지 못했습니다"가 된다.
+     * 칸 하나가 비었다고 이력 전부를 못 보여주는 건 균형이 맞지 않는다 — 모른다고 읽고 그렇게 표시한다.
+     */
+    asset_symbol: z.string().min(1).nullable().default(null),
+    /**
+     * 토큰 목록으로 대조된 자산인가.
+     * 심볼은 누구나 사칭할 수 있다("USDC"를 자칭하는 스팸 에어드랍). 심볼 한 칸만 두면
+     * 화면이 사칭을 확인된 사실처럼 말하게 되므로 검증 여부를 따로 싣는다.
+     *
+     * 모르면 `false`다. 검증하지 않은 것을 검증됐다고 말하는 쪽이 훨씬 위험하다.
+     */
+    asset_verified: z.boolean().default(false),
+    /**
+     * 자산 로고 이미지. 메타데이터 출처가 주면 그대로 담고, 없으면 null이다.
+     * 화면은 null이면 대체 마크를 그린다(`AssetMark`) — 로고를 지어내지 않는다.
+     */
+    asset_icon_url: z.string().min(1).nullable().default(null),
     token_id: z.string().nullable(),
     decimals: z.number().int().nonnegative(),
     raw_amount: decimalString,
@@ -45,6 +67,10 @@ export const normalizedEventSchema = z
     }
     if (event.price_status !== "UNKNOWN" && event.fiat_value === null) {
       ctx.addIssue({ code: "custom", path: ["fiat_value"], message: "Resolved prices require a fiat_value" });
+    }
+    // 심볼 없이 "검증됨"이라 말할 수 없다 — 무엇을 대조했다는 것인지 가리킬 대상이 없다.
+    if (event.asset_verified && event.asset_symbol === null) {
+      ctx.addIssue({ code: "custom", path: ["asset_symbol"], message: "Verified assets require a symbol" });
     }
   });
 

@@ -31,6 +31,18 @@ export const PENDING_ACB_SUFFIX = " 그 자산을 팔 때 반영됩니다.";
 export const ZERO_BASIS_SUFFIX = " 취득가액 0으로 계산했습니다.";
 
 /**
+ * 한국 의제취득가액(2026-12-31 시가)을 반영하지 못했다는 근사의 고정 꼬리.
+ * 법정 취득가액은 Max(시가, 실제 취득가액)이므로, 실제 취득가액만 쓰면 손익이 과대될 수 있다.
+ */
+export const DEEMED_COST_SUFFIX = " 의제취득가액(2026-12-31 시가)을 확인하지 못해 실제 취득가액으로 계산했습니다 — 손익이 과대될 수 있습니다.";
+
+/** 무상취득분 취득가액 규정이 없어 수령 시 FMV를 원가로 썼다는 근사의 고정 꼬리. */
+export const RECEIPT_COST_SUFFIX = " 무상취득분 취득가액 규정이 없어 수령 시 FMV를 취득가액으로 계산했습니다 — 0원으로 보면 처분 시 과세분이 커집니다.";
+
+/** 가상자산사업자 경유 여부를 알 수 없어 원가법 하나로 계산했다는 근사의 고정 꼬리. */
+export const COST_METHOD_SUFFIX = " 가상자산사업자 경유 여부를 알 수 없어 전 건을 선입선출법으로 계산했습니다 — 사업자 경유분은 이동평균법 대상입니다.";
+
+/**
  * 답이 얼마나 흔들리는지의 순서.
  *
  * 숫자를 지어내지 않는다. 대신 **답에 어떻게 작용하는가**로만 줄을 세운다.
@@ -57,6 +69,14 @@ export function classifyLimitation(message: string): LimitationKind {
   const known = KIND_OF_MESSAGE.get(message);
   if (known) return known;
   if (message.endsWith(ZERO_BASIS_SUFFIX)) return "zero_basis";
+  // 법정 취득가액·원가법을 그대로 쓰지 못하고 대체값으로 계산한 줄은 전부 근사다.
+  if (
+    message.endsWith(DEEMED_COST_SUFFIX) ||
+    message.endsWith(RECEIPT_COST_SUFFIX) ||
+    message.endsWith(COST_METHOD_SUFFIX)
+  ) {
+    return "approximation";
+  }
   // 부인 손실의 원가 가산 누락은 "취득가액 0"이 아니라 "반영 안 함"이다.
   // zero_basis로 찍으면 화면 배지가 존재하지 않는 계산 사실을 말한다.
   if (message.endsWith(DENIED_ACB_SUFFIX) || message.endsWith(PENDING_ACB_SUFFIX)) return "not_reflected";

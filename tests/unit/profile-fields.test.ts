@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { FIXTURE_TAX_YEAR } from "@/tests/fixtures/tax-year";
 import { createTaxScenarioEvents } from "@/lib/mock/tax-fixtures";
 import { computeTaxEstimate } from "@/lib/tax/engine";
 import { pickDeclared } from "@/components/tax/tax-simulator";
@@ -26,7 +27,7 @@ const PROBE: Record<ProfileField, TaxpayerProfile[ProfileField]> = {
 };
 
 function sensitiveFields(country: string): ProfileField[] {
-  const events = createTaxScenarioEvents();
+  const events = createTaxScenarioEvents(FIXTURE_TAX_YEAR);
   const reference = JSON.stringify(computeTaxEstimate({ country, taxYear: 2025, events, profile: BASE }));
   return (Object.keys(PROBE) as ProfileField[]).filter((field) => {
     const profile = { ...BASE, [field]: PROBE[field] } as TaxpayerProfile;
@@ -63,7 +64,7 @@ function readFields(country: string): ProfileField[] {
       original.judgeIncome!.call(ruleset, row, spy(context), estimate);
   }
   try {
-    computeTaxEstimate({ country, taxYear: 2025, events: createTaxScenarioEvents(), profile: BASE });
+    computeTaxEstimate({ country, taxYear: FIXTURE_TAX_YEAR, events: createTaxScenarioEvents(FIXTURE_TAX_YEAR), profile: BASE });
   } finally {
     Object.assign(ruleset, original);
   }
@@ -160,7 +161,7 @@ describe("계산할 거래 없음이라고 말해도 되는가", () => {
         const result = computeTaxEstimate({
           country,
           taxYear,
-          events: createTaxScenarioEvents(),
+          events: createTaxScenarioEvents(FIXTURE_TAX_YEAR),
           profile: BASE,
         });
         const hasWork = result.judgments.some((row) => row.inPeriod && row.group !== "acquire");

@@ -15,6 +15,8 @@ test.describe.serial("AC6 provenance badges", () => {
     await request.post("/api/auth/did/present", { data: { country: "KR" } });
     await page.goto("/connect-wallet");
     await expect(badgeIn("wallet-connect")).toBeVisible();
+    // 거래소 연동은 흐름만 재현하는 시연 표면이다. 배지가 없으면 화면이 실제 연동인 척하게 된다.
+    await expect(badgeIn("exchange-connect")).toBeVisible();
 
     await request.post("/api/auth/test-login");
     await page.goto("/dashboard");

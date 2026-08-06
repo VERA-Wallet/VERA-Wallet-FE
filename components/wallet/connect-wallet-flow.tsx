@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { SiweMessage } from "siwe";
 import { Card } from "@/components/ui/card";
 import { MockProvenanceChip } from "@/components/ui/mock-provenance-chip";
+import { ChainIcon } from "@/components/ui/chain-icon";
 import { chainLabel } from "@/lib/format";
 import type { WalletAccount, WalletPort } from "@/lib/ports/wallet-port";
 import { wagmiWalletPort } from "@/lib/wallet/wagmi-wallet-port";
@@ -78,7 +79,10 @@ export function ConnectWalletFlow({ walletPort = wagmiWalletPort, authClient = c
       {account ? (
         <>
           <p className="mt-3 break-all font-mono text-xs text-zinc-600">{account.address}</p>
-          <p className="mt-1 text-sm text-zinc-500">{chainLabel(account.chainId)}</p>
+          <p className="mt-1 flex items-center gap-1.5 text-sm text-zinc-500">
+            <ChainIcon chainId={account.chainId} />
+            {chainLabel(account.chainId)}
+          </p>
           <p className="mt-4 text-sm leading-6 text-zinc-600">
             서명은 지갑 소유 확인에만 쓰이며 자산을 옮기지 않습니다.
           </p>

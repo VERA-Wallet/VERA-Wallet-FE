@@ -1,0 +1,129 @@
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+
+import { FlowChart } from "@/components/dashboard/flow-chart";
+import type { NormalizedEvent } from "@/lib/schema/normalized-event";
+
+function event(overrides: Partial<NormalizedEvent> & { id: string }): NormalizedEvent {
+  return {
+    tx_hash: `0x${overrides.id}`,
+    chain_id: 1,
+    log_index: 0,
+    block_timestamp: "2025-01-10T00:00:00.000Z",
+    wallet_address: "0x1111111111111111111111111111111111111111",
+    direction: "IN",
+    asset_type: "NATIVE",
+    asset_contract: null,
+    asset_symbol: "ETH",
+    asset_verified: true,
+    asset_icon_url: null,
+    token_id: null,
+    decimals: 18,
+    raw_amount: "1000000000000000000",
+    counterparty: "0x2222222222222222222222222222222222222222",
+    gas_fee_native: "0.001",
+    classification: "RECEIVE",
+    confidence: 0.9,
+    user_override: null,
+    price_status: "RESOLVED",
+    fiat_value: "1000000",
+    fiat_currency: "KRW",
+    ...overrides,
+  };
+}
+
+/** 1/10 +100만 → 2/10 −40만 → 3/10 +20만. 마지막 누적은 80만원이다. */
+const wallet: NormalizedEvent[] = [
+  event({ id: "a", classification: "RECEIVE", fiat_value: "1000000", block_timestamp: "2025-01-10T00:00:00.000Z" }),
+  event({ id: "b", classification: "SEND", fiat_value: "400000", block_timestamp: "2025-02-10T00:00:00.000Z" }),
+  event({ id: "c", classification: "RECEIVE", fiat_value: "200000", block_timestamp: "2025-03-10T00:00:00.000Z" }),
+];
+
+const chart = () => screen.getByLabelText("누적 순유입");
+
+describe("내역 화면의 지갑 이력 그래프", () => {
+  it("누적 금액과 선을 함께 보이고, 세금은 한 마디도 하지 않는다", () => {
+    render(<FlowChart events={wallet} state="ready" />);
+
+    expect(screen.getByTestId("flow-total").textContent).toBe("₩800,000");
+    // 선이 실제로 그려졌는가 — 점 수만큼 좌표가 있어야 한다.
+    const line = screen.getByTestId("flow-line").getAttribute("d") ?? "";
+    expect(line.match(/[ML]/g)).toHaveLength(3);
+    expect(chart().textContent).not.toMatch(/세금|부담|과세/);
+  });
+
+  it("이 선이 무엇이 아닌지를 같은 자리에서 말한다", () => {
+    render(<FlowChart events={wallet} state="ready" />);
+    // "평가액"으로 읽히면 우리가 갖고 있지 않은 현재 시세를 주장하는 화면이 된다.
+    expect(chart().textContent).toContain("지금 시세로 평가한 금액이 아닙니다");
+  });
+
+  it("기간을 바꾸면 그 기간의 변화만 다시 잰다", () => {
+    render(<FlowChart events={wallet} state="ready" />);
+    // 전체 구간은 0에서 시작하므로 변화율을 말할 수 없다.
+    expect(screen.getByTestId("flow-change").textContent).toContain("+₩800,000");
+    expect(screen.getByTestId("flow-change").textContent).not.toContain("%");
+
+    fireEvent.click(screen.getByRole("button", { name: "1개월" }));
+
+    // 마지막 거래(3/10) 기준 30일. 1/10 건은 창 밖이라 기준값(100만)이 된다.
+    const change = screen.getByTestId("flow-change").textContent ?? "";
+    expect(change).toContain("-₩200,000");
+    expect(change).toContain("20%");
+    expect(chart().textContent).toContain("1개월 변화");
+  });
+
+  it("선에 넣지 못한 거래는 이유와 건수를 밝힌다", () => {
+    render(
+      <FlowChart
+        events={[
+          ...wallet,
+          event({ id: "d", price_status: "UNKNOWN", fiat_value: null, block_timestamp: "2025-03-11T00:00:00.000Z" }),
+          event({ id: "e", classification: "INTERNAL_TRANSFER", block_timestamp: "2025-03-12T00:00:00.000Z" }),
+        ]}
+        state="ready"
+      />,
+    );
+    expect(chart().textContent).toContain("가격·분류 미확정 1건 · 자기 지갑 간 이체 1건은 선에 없습니다.");
+  });
+
+  it("그릴 거래가 없으면 금액 자리를 비우고 이유를 말한다", () => {
+    render(<FlowChart events={[event({ id: "a", price_status: "UNKNOWN", fiat_value: null })]} state="ready" />);
+    // `—`도 0도 "값이 있다"는 인상을 준다. 아예 두지 않는다.
+    expect(screen.queryByTestId("flow-total")).not.toBeInTheDocument();
+    expect(chart().textContent).toContain("선을 그릴 거래가 없습니다.");
+    expect(chart().textContent).toContain("가격·분류 미확정 1건은 선에 없습니다.");
+  });
+
+  it("거래가 한 건뿐이면 선을 그리는 척하지 않는다", () => {
+    render(<FlowChart events={[wallet[0]]} state="ready" />);
+    expect(screen.queryByTestId("flow-line")).not.toBeInTheDocument();
+    expect(chart().textContent).toContain("거래가 한 건뿐이라 선을 그릴 수 없습니다.");
+    // 그래도 누적값 자체는 사실이므로 지우지 않는다.
+    expect(screen.getByTestId("flow-total").textContent).toBe("₩1,000,000");
+  });
+
+  it("목록이 갱신 중이거나 실패했으면 이 선이 마지막 상태임을 밝힌다", () => {
+    const { rerender } = render(<FlowChart events={wallet} state="pending" />);
+    expect(chart().textContent).toContain("목록을 갱신하는 중입니다");
+
+    rerender(<FlowChart events={wallet} state="error" />);
+    expect(chart().textContent).toContain("목록을 갱신하지 못했습니다");
+
+    rerender(<FlowChart events={wallet} state="ready" />);
+    expect(chart().textContent).not.toContain("마지막으로 받은 거래로 그렸습니다");
+  });
+
+  it("목록을 일부만 받아왔으면 선도 일부라고 말한다", () => {
+    render(<FlowChart events={wallet} state="ready" truncated />);
+    expect(chart().textContent).toContain("거래를 일부만 불러와 이 선도 일부입니다.");
+  });
+
+  it("고른 기간과 실제 날짜 범위를 함께 찍는다", () => {
+    render(<FlowChart events={wallet} state="ready" />);
+    const ranges = within(screen.getByLabelText("기간 선택"));
+    expect(ranges.getByRole("button", { name: "전체" })).toHaveAttribute("aria-pressed", "true");
+    // "최근"이 무엇을 가리키는지 숨기지 않는다 — 기준은 벽시계가 아니라 마지막 거래다.
+    expect(chart().textContent).toContain("마지막 거래 기준");
+  });
+});

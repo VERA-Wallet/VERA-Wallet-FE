@@ -9,6 +9,11 @@ export type TaxEstimateRequest = {
   source: TaxEventSource;
   profile?: Partial<TaxpayerProfile>;
   includeMarginal?: boolean;
+  /**
+   * 시행일이 아직 오지 않은 룰셋(한국 2027-01-01)을 "시행됐다고 가정하고" 계산한다.
+   * 켠 화면이 그 사실을 계속 말해야 한다 — 결과의 notes도 함께 그렇게 말한다.
+   */
+  assumeEffective?: boolean;
 };
 
 export interface TaxEnginePort {
