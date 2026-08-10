@@ -4,6 +4,8 @@ import * as XLSX from "xlsx";
 import { EXPORT_COLUMNS } from "../../lib/export/schema";
 import { effectiveClassification, needsReview, taxExclusionReason } from "@/lib/review";
 import type { NormalizedEvent } from "@/lib/schema/normalized-event";
+import { useFreshBackend } from "./support/backend-lifecycle";
+import { bootstrapSession } from "./support/bootstrap-be-session";
 
 type CaseResult = { id: string; scenario: string; expected: unknown; actual: unknown; verdict: "passed" | "failed" };
 type EventRecord = { event: NormalizedEvent; version: number };
@@ -48,12 +50,15 @@ function recorder() {
 }
 
 test.describe.serial("G003 dashboard and export contract red team", () => {
+  useFreshBackend();
   test("completed session verifies dashboard, exports, anchoring, and stale reclassification", async ({ page, browser }) => {
     await mkdir(artifactDirectory, { recursive: true });
     const cases: CaseResult[] = [];
     const transcript = recorder();
-    const login = await page.context().request.post("/api/auth/test-login");
-    record(cases, "auth-test-login", "completed session cookie is issued", 204, login.status(), login.status() === 204);
+    await bootstrapSession(page, { privateKey: "0x5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e" });
+    const bootstrapped = await page.context().request.get("/api/auth/session");
+    const bootstrappedBody = await bootstrapped.json() as { data: { walletAddress: string | null } };
+    record(cases, "auth-bootstrap-session", "completed session cookie is issued", true, bootstrappedBody.data.walletAddress !== null, bootstrappedBody.data.walletAddress !== null);
 
     const listResponse = await page.context().request.get("/api/events?limit=100");
     const list = await listResponse.json() as { data?: { items?: EventRecord[] } };
@@ -101,6 +106,7 @@ test.describe.serial("G003 dashboard and export contract red team", () => {
     // 선택한 카드를 식별해 그 카드에서만 확인한다.
     const selectedCard = cards.first();
     const selectedLabel = (await selectedCard.locator("[data-event-label]").innerText()).trim();
+    const selectedEventId = await selectedCard.getAttribute("data-event-id");
     await selectedCard.click();
     await expect(page.getByText("거래 상세").last()).toBeVisible();
     const classification = page.locator("#classification");
@@ -113,7 +119,8 @@ test.describe.serial("G003 dashboard and export contract red team", () => {
     await expect(classification).toHaveValue(changedClassification);
     await page.getByRole("button", { name: "닫기", exact: true }).click();
     // 수동 분류 표시는 목록이 아니라 상세가 말한다 — 목록에는 온체인 사실과 판정 도장만 둔다.
-    const editedCard = cards.filter({ hasText: selectedLabel }).first();
+    // 라벨은 유효 분류에 따라 부호가 뒤집히므로(재분류 후 +0.01 → -0.01) 식별자로 쓸 수 없다. 이벤트 id로 다시 찾는다.
+    const editedCard = page.locator(`section .mt-3.grid.gap-3 > button[data-event-id="${selectedEventId}"]`).first();
     await editedCard.click();
     await expect(page.getByText("거래 상세").last()).toBeVisible();
     const manualOverride = page.getByText(/^사용자 확정 · /).first();

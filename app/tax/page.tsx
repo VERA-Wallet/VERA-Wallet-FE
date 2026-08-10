@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { summaryProvider } from "@/lib/composition-root.server";
-import { requireCompletedOnboarding, requireDidSession } from "@/lib/dal";
+import { getSessionCookieHeaderForEventReader, requireCompletedOnboarding, requireDidSession } from "@/lib/dal";
 import { isGroundedPeriod } from "@/lib/period";
 import { taxYearFor } from "@/lib/tax/engine";
 import { TaxSimulator } from "@/components/tax/tax-simulator";
@@ -9,16 +9,22 @@ import { TaxSimulator } from "@/components/tax/tax-simulator";
  * 마지막 거래가 속한 과세연도.
  * 화면을 늘 "올해"로 열면 올해 거래가 없는 지갑은 진입하자마자 12개 룰셋이 전부
  * "계산할 거래 없음"을 말한다 — 룰셋 비교가 성립하지 않는다.
- * 요약 기간이 신뢰할 수 없거나 조회에 실패하면 지어내지 않고 `undefined`를 준다(화면은 올해로 연다).
+ * 요약 기간이 신뢰할 수 없으면 지어내지 않고 `undefined`를 준다(화면은 올해로 연다).
  */
 async function latestActivityTaxYear(countryCode: string): Promise<number | undefined> {
-  try {
-    const summary = await summaryProvider.getSummary();
-    // period.to는 마지막 이벤트의 시각이다. 과세기간은 나라마다 다르므로 역년으로 자르지 않는다.
-    return isGroundedPeriod(summary.period) ? taxYearFor(countryCode, summary.period.to) : undefined;
-  } catch {
-    return undefined;
+  // ON 모드에서는 대시보드와 같은 BE 이벤트를 봐야 한다. FE mock 요약을 쓰면 세금 화면만 다른 연도를 연다.
+  if (process.env.VERAWALLET_BACKEND_ORIGIN) {
+    const { readBeWalletEvents } = await import("@/lib/adapters/http/event-repository.server");
+    const events = await readBeWalletEvents(await getSessionCookieHeaderForEventReader());
+    // 문자열 비교는 offset이 섞인 RFC3339에서 순서를 틀린다. 시각으로 비교한다.
+    const latest = events.reduce<string | null>((max, event) => (max === null || Date.parse(event.block_timestamp) > Date.parse(max) ? event.block_timestamp : max), null);
+    // 인증은 됐는데 이벤트가 0건인 것은 정상 상태다(빈 지갑). 그때만 연도를 비운다.
+    return latest === null ? undefined : taxYearFor(countryCode, latest);
   }
+
+  const summary = await summaryProvider.getSummary();
+  // period.to는 마지막 이벤트의 시각이다. 과세기간은 나라마다 다르므로 역년으로 자르지 않는다.
+  return isGroundedPeriod(summary.period) ? taxYearFor(countryCode, summary.period.to) : undefined;
 }
 
 export default async function TaxPage() {

@@ -1,0 +1,115 @@
+{
+  "source": "BE MockAlchemyAdapter 25-event fixture via FE lib/tax engine",
+  "eventCount": 25,
+  "taxYear": 2025,
+  "us": {
+    "totals": {
+      "taxableGains": "107000",
+      "exemptGains": "0",
+      "incomeTotal": "0",
+      "taxableBase": "107000",
+      "estimatedCharge": "18527",
+      "effectiveRatePercent": "17.31"
+    },
+    "status": "CONFIRMED",
+    "method": "FIFO (지갑별, Rev. Proc. 2024-28)"
+  },
+  "perCountry": {
+    "US": {
+      "judgments": 14,
+      "excluded": 6,
+      "period": {
+        "from": "2025-01-01T00:00:00.000Z",
+        "to": "2026-01-01T00:00:00.000Z"
+      }
+    },
+    "GB": {
+      "judgments": 5,
+      "excluded": 0,
+      "period": {
+        "from": "2025-04-06T00:00:00.000Z",
+        "to": "2026-04-06T00:00:00.000Z"
+      }
+    },
+    "AU": {
+      "judgments": 5,
+      "excluded": 0,
+      "period": {
+        "from": "2025-07-01T00:00:00.000Z",
+        "to": "2026-07-01T00:00:00.000Z"
+      }
+    },
+    "DE": {
+      "judgments": 14,
+      "excluded": 6,
+      "period": {
+        "from": "2025-01-01T00:00:00.000Z",
+        "to": "2026-01-01T00:00:00.000Z"
+      }
+    },
+    "KR": {
+      "judgments": 14,
+      "excluded": 6,
+      "period": {
+        "from": "2025-01-01T00:00:00.000Z",
+        "to": "2026-01-01T00:00:00.000Z"
+      }
+    },
+    "IN": {
+      "judgments": 14,
+      "excluded": 6,
+      "period": {
+        "from": "2025-01-01T00:00:00.000Z",
+        "to": "2026-01-01T00:00:00.000Z"
+      }
+    },
+    "PT": {
+      "judgments": 14,
+      "excluded": 6,
+      "period": {
+        "from": "2025-01-01T00:00:00.000Z",
+        "to": "2026-01-01T00:00:00.000Z"
+      }
+    },
+    "FR": {
+      "judgments": 14,
+      "excluded": 6,
+      "period": {
+        "from": "2025-01-01T00:00:00.000Z",
+        "to": "2026-01-01T00:00:00.000Z"
+      }
+    },
+    "IT": {
+      "judgments": 14,
+      "excluded": 6,
+      "period": {
+        "from": "2025-01-01T00:00:00.000Z",
+        "to": "2026-01-01T00:00:00.000Z"
+      }
+    },
+    "ES": {
+      "judgments": 14,
+      "excluded": 6,
+      "period": {
+        "from": "2025-01-01T00:00:00.000Z",
+        "to": "2026-01-01T00:00:00.000Z"
+      }
+    },
+    "CA": {
+      "judgments": 14,
+      "excluded": 6,
+      "period": {
+        "from": "2025-01-01T00:00:00.000Z",
+        "to": "2026-01-01T00:00:00.000Z"
+      }
+    },
+    "JP": {
+      "judgments": 14,
+      "excluded": 6,
+      "period": {
+        "from": "2025-01-01T00:00:00.000Z",
+        "to": "2026-01-01T00:00:00.000Z"
+      }
+    }
+  }
+}

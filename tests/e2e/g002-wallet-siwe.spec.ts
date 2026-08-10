@@ -54,7 +54,13 @@ async function issueNonce(request: APIRequestContext) {
   return ((await response.json()) as { data: Nonce }).data;
 }
 
-test.describe.serial("G002 synthetic wallet SIWE red team", () => {
+// 이 스펙은 FE mock의 SIWE 계약(422 재사용/불일치, 익명 nonce 허용, DID 재제시 시 지갑 클레임 초기화)을 고정한다.
+// BE는 같은 상황에서 409/400을 주고 nonce에 JWT를 요구하며 DID 재제시로 바인딩을 지우지 않는다 —
+// 두 계약을 한 단언에 섞으면 어느 쪽 드리프트도 못 잡는다.
+// ON 모드의 raw BE 계약은 tests/integration/be-siwe-contract.test.ts가 담당한다.
+const offModeOnly = process.env.VERAWALLET_BACKEND_ORIGIN ? test.describe.skip : test.describe.serial;
+
+offModeOnly("G002 synthetic wallet SIWE red team", () => {
   test("DID claim, synthetic EIP-1193 wallet SIWE, and authentication API defenses", async ({ page, request, browser }) => {
     await mkdir(artifactDirectory, { recursive: true });
     const cases: CaseResult[] = [];

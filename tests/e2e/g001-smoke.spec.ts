@@ -2,6 +2,8 @@ import { expect, test } from "@playwright/test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { effectiveClassification, needsReview, taxExclusionReason } from "@/lib/review";
 import type { NormalizedEvent } from "@/lib/schema/normalized-event";
+import { useFreshBackend } from "./support/backend-lifecycle";
+import { bootstrapSession } from "./support/bootstrap-be-session";
 
 type CaseResult = {
   id: string;
@@ -43,6 +45,7 @@ function transcriptRecorder() {
 }
 
 test.describe.serial("G001 contract red team", () => {
+  useFreshBackend();
   test("web routes and API mutation/error/summary contracts", async ({ page }) => {
     // 페이지 가드가 쿠키 세션을 읽으므로 API 호출도 브라우저 컨텍스트의 쿠키 자(jar)를 공유해야 한다.
     const request = page.context().request;
@@ -78,12 +81,15 @@ test.describe.serial("G001 contract red team", () => {
 
     // DID 단계 세션에서만 지갑 연결 화면에 접근할 수 있다.
     const didResponse = await request.post("/api/auth/did/present", { data: { country: "KR" } });
-    record(cases, "auth-did-present", "DID claim issues a DID-stage session", 200, didResponse.status(), didResponse.status() === 200);
+    // FE mock은 200, BE는 201을 준다(NestJS @Post 기본 성공 코드). 어댑터는 response.ok로 판정하므로 둘 다 정상이다.
+    record(cases, "auth-did-present", "DID claim issues a DID-stage session", "2xx", didResponse.status(), didResponse.ok());
     await checkPage("/connect-wallet", "지갑을 연결하세요", "지갑 연결하기");
 
     // 완료 세션(dev 전용 test-login)에서 대시보드·내보내기를 검증한다.
-    const loginResponse = await request.post("/api/auth/test-login");
-    record(cases, "auth-test-login", "Dev-only completed-session issuance", 204, loginResponse.status(), loginResponse.status() === 204);
+    await bootstrapSession(page, { privateKey: "0x4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d" });
+    const bootstrapped = await request.get("/api/auth/session");
+    const bootstrappedBody = await bootstrapped.json() as { data: { walletAddress: string | null } };
+    record(cases, "auth-bootstrap-session", "completed session is established for the active mode", true, bootstrappedBody.data.walletAddress !== null, bootstrappedBody.data.walletAddress !== null);
     await checkPage("/dashboard", "거래 요약", "전체 거래");
     // 여백이 많은 fullPage 대신 콘텐츠 밀집 영역을 캡처해 비균일 증거를 보존한다.
     transcript.act({ type: "screenshot", selector: "main", target: dashboardPath });

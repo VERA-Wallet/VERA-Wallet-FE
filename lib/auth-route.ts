@@ -3,10 +3,22 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 
 import { siweEnv } from "@/lib/env";
+import { SessionInfrastructureError } from "@/lib/ports/session-reader";
 import type { ErrorEnvelope, SuccessEnvelope } from "@/lib/http/envelope";
 
 export function success<T>(data: T): SuccessEnvelope<T> { return { data, meta: { provenance: "mock", generatedAt: new Date().toISOString() } }; }
 export function error(code: string, message: string, details?: unknown): ErrorEnvelope { return { error: { code, message, ...(details === undefined ? {} : { details }) } }; }
+// Route Handler에는 error boundary가 없어 그대로 던지면 500 HTML이 되므로 JSON 오류로 변환한다.
+export async function withSessionInfrastructureError<T>(read: () => Promise<T>): Promise<T | Response> {
+  try {
+    return await read();
+  } catch (cause) {
+    if (cause instanceof SessionInfrastructureError) {
+      return Response.json(error("upstream_unavailable", "인증 서버에서 정상적인 세션 응답을 받지 못했습니다."), { status: 502 });
+    }
+    throw cause;
+  }
+}
 export function sessionIdFrom(request: Request) { return request.headers.get("cookie")?.match(/(?:^|;\s*)vw_session=([^;]+)/)?.[1] ?? null; }
 export function trustedOrigin(request: Request): { domain: string; uri: string } {
   // scheme+authority는 서버가 본 요청 URL에서 파생한다(dev http, 배포 https) — Host 헤더 단독 신뢰·https 하드코딩 금지.

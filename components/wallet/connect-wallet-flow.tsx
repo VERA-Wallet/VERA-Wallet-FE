@@ -12,10 +12,17 @@ import { wagmiWalletPort } from "@/lib/wallet/wagmi-wallet-port";
 import { authClient as compositionAuthClient } from "@/lib/composition-root.client";
 import { AuthClientError, type AuthClient } from "@/lib/ports/auth-client";
 
+// SIWE 오류는 status가 아니라 error code로 분기한다.
+// BE와 FE mock의 status가 다르기 때문이다(재사용 409/422, 불일치 400/422). 모든 400·409를 한 문구로 뭉개면
+// challenge_not_found나 요청 형식 오류까지 "인증 요청 불일치"가 되어 원인이 사라진다.
+// AuthClientError.code와 decodeResponse의 error 스키마 모두 code를 필수 문자열로 요구하므로 code는 항상 존재한다.
+const SIWE_CHALLENGE_MISMATCH_CODES = new Set(["already-consumed", "challenge_mismatch"]);
+
 function errorMessage(cause: unknown) {
   if (cause instanceof AuthClientError) {
-    if (cause.status === 422) return "인증 요청 불일치";
-    if (cause.status === 410) return "만료됨 — 다시 시도";
+    if (SIWE_CHALLENGE_MISMATCH_CODES.has(cause.code)) return "인증 요청 불일치";
+    if (cause.code === "challenge_not_found") return "인증 요청을 찾을 수 없습니다. 다시 시도해 주세요.";
+    if (cause.code === "challenge_expired") return "만료됨 — 다시 시도";
     if (cause.status === 401) return "서명을 확인할 수 없습니다.";
   }
   return cause instanceof Error ? cause.message : "인증 중 오류가 발생했습니다.";

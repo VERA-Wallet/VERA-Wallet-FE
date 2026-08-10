@@ -13,12 +13,17 @@ export default function RouteError({
     console.error(error);
   }, [error]);
 
+  const backendUnavailable = error.digest === "VW_BACKEND_UNAVAILABLE";
+
   return (
     <main className="flex min-h-dvh flex-col justify-center px-5 py-8">
       <p className="text-sm font-semibold text-primary-500">VeraWallet</p>
-      <h1 className="mt-3 text-2xl font-bold tracking-tight text-zinc-900">화면을 불러오지 못했습니다</h1>
+      <h1 className="mt-3 text-2xl font-bold tracking-tight text-zinc-900">
+        {/* 원인 5종(timeout·network·http_status·invalid_json·invalid_contract)을 한 문구로 압축하므로 "연결 실패"로 단정하지 않는다. */}
+        {backendUnavailable ? "인증 서버 응답을 확인하지 못했습니다" : "화면을 불러오지 못했습니다"}
+      </h1>
       <p className="mt-3 text-base leading-6 text-zinc-600">
-        일시적인 문제일 수 있습니다. 다시 시도하거나 잠시 후 접속해 주세요.
+        {backendUnavailable ? "서버가 정상적인 세션 응답을 주지 않았습니다. 잠시 후 다시 시도해 주세요." : "일시적인 문제일 수 있습니다. 다시 시도하거나 잠시 후 접속해 주세요."}
       </p>
       {error.digest ? <p className="mt-2 font-mono text-xs text-zinc-400">code: {error.digest}</p> : null}
       <button

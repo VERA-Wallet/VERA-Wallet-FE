@@ -436,7 +436,9 @@ function EventRow({
     inPeriod !== null && effectiveClassification(event) === "INTERNAL_TRANSFER" && rows.length === 0;
 
   return (
-    <button type="button" className="rounded-card border border-zinc-200 bg-white p-4 text-left shadow-card active:bg-zinc-50" onClick={onSelect}>
+    // 카드는 이벤트 id로 식별한다. 금액 라벨은 유효 분류에 따라 부호가 뒤집히므로(재분류 후 +0.01 → -0.01)
+    // 그걸 식별자로 쓰면 "방금 고친 카드"를 다시 찾지 못한다.
+    <button data-event-id={event.id} type="button" className="rounded-card border border-zinc-200 bg-white p-4 text-left shadow-card active:bg-zinc-50" onClick={onSelect}>
       <div className="flex items-start justify-between gap-3">
         <p className="flex min-w-0 items-center gap-1.5 truncate text-sm text-zinc-500">
           <ChainIcon chainId={event.chain_id} />

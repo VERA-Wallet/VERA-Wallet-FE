@@ -1,9 +1,10 @@
+import { success, withSessionInfrastructureError } from "@/lib/auth-route";
 import { requireCompletedOnboarding } from "@/lib/dal";
 import { z } from "zod";
 
 import { summaryProvider } from "@/lib/composition-root.server";
 import type { SummaryDTO } from "@/lib/http/dto";
-import type { ErrorEnvelope, SuccessEnvelope } from "@/lib/http/envelope";
+import type { ErrorEnvelope } from "@/lib/http/envelope";
 
 const periodQuerySchema = z
   .object({
@@ -16,9 +17,6 @@ const periodQuerySchema = z
     { message: "from must be earlier than to" },
   );
 
-function success<T>(data: T): SuccessEnvelope<T> {
-  return { data, meta: { provenance: "mock", generatedAt: new Date().toISOString() } };
-}
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -32,7 +30,9 @@ export async function GET(request: Request) {
     };
     return Response.json(body, { status: 400 });
   }
-  if (!await requireCompletedOnboarding(request)) {
+  const session = await withSessionInfrastructureError(() => requireCompletedOnboarding(request));
+  if (session instanceof Response) return session;
+  if (!session) {
     const body: ErrorEnvelope = { error: { code: "unauthorized", message: "Completed onboarding required." } };
     return Response.json(body, { status: 401 });
   }

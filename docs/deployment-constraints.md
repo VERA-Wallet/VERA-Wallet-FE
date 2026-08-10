@@ -48,5 +48,31 @@
 ## 온보딩 순서
 
 서버 가드(`lib/dal.ts`)가 DID → 지갑 → 대시보드 순서를 강제한다.
-`/api/auth/did/present`는 DID 제시 시 기존 지갑 클레임을 초기화해 역순(SIWE→DID) 우회를 차단한다.
-백엔드 교체 시에도 이 불변식을 유지해야 한다.
+FE mock(`app/api/auth/did/present/route.ts`)은 DID 제시 시 기존 지갑 클레임을 초기화해 역순(SIWE→DID) 우회를 차단한다.
+**BE는 그렇지 않다** — `FrontendAuthController.present`는 사용자를 upsert하고 JWT만 새로 발급하며 기존 바인딩을 유지한다
+(`tests/integration/be-siwe-contract.test.ts`가 이 차이를 고정한다). ON 모드에서 역순 우회 차단이 필요하면 BE 계약 변경이 선행돼야 한다.
+
+## 하이브리드 프록시 경로 소유권
+
+ON 모드(`VERAWALLET_BACKEND_ORIGIN` 설정)에서 어떤 경로가 어디로 가는지는 `proxy.ts`의 allowlist가 유일한 기준이다.
+"가릴 것을 빼는" negative 방식을 쓰지 않는다 — 규칙을 하나 빠뜨리면 조용히 BE로 새어 나가고,
+번들된 path-to-regexp는 `?`로 시작하는 그룹(negative lookahead)을 거부한다.
+
+| 경로 | 소유 | 이유 |
+|---|---|---|
+| `POST /api/auth/did/present` | BE | DID 제시와 JWT 발급은 BE 계약 |
+| `POST /api/auth/nonce` | BE | SIWE challenge는 BE의 `SIWE_TRUSTED_ORIGIN`으로 만들어진다 |
+| `POST /api/auth/verify` | BE | 서명 검증과 지갑 바인딩 |
+| `GET /api/auth/session` | BE | 세션 판정의 단일 진실 소스 |
+| `POST /api/auth/logout` | BE | 쿠키 만료를 BE가 발급해야 실제로 끊긴다 |
+| `/api/events` (+ 하위 전체, `GET`·`PATCH`) | BE | 목록·요약·상세와 `PATCH /api/events/:id` 재분류까지 |
+| `GET /api/anchor-proof` | BE | 앵커 증명 |
+| `POST /api/tax/estimate` | **FE** | BE 세금 계층은 역년 고정·단일 세율·KR 무조건 UNDETERMINED로 FE 12개국 엔진보다 충실도가 낮다 |
+| `GET /api/tax/rulesets`, `GET /api/rulesets` | **FE** | 위와 같은 이유. FE는 12개국, BE도 12개국이지만 계산 계층이 다르다 |
+| `POST /api/auth/test-login` | **FE (ON에서 404)** | `vw_session`만 발급해 BE 세션이 되지 않는다. 열려 있으면 무의미한 가짜 세션을 만드는 함정 |
+
+FE에 남는 세금 경로도 계산 **입력**은 BE 이벤트를 쓴다(`lib/adapters/http/event-repository.server.ts`).
+그래야 대시보드·내보내기·세금이 같은 거래 집합을 본다. 이 연결이 끊기면 화면마다 다른 숫자를 말하게 된다.
+
+프록시는 요청 헤더를 통째로 넘기지 않는다. BE `JwtStrategy`가 `Authorization`을 쿠키보다 먼저 읽으므로
+호출자가 심은 bearer가 쿠키 신원을 덮어쓸 수 있고, 쿠키는 `vw_access_token` 하나로 다시 만들어 보낸다.

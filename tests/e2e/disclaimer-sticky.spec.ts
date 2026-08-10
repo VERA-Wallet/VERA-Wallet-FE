@@ -1,9 +1,12 @@
 import { expect, test } from "@playwright/test";
+import { useFreshBackend } from "./support/backend-lifecycle";
+import { bootstrapSession } from "./support/bootstrap-be-session";
 
 // 승인 계획 §9 / AC6: 면책 문구는 5개 route 전부에서 모바일 뷰포트 기준 스크롤 전·후 모두 하단에 고정된다.
 const MOBILE = { width: 375, height: 667 };
 
 test.describe.serial("AC6 disclaimer sticky", () => {
+  useFreshBackend();
   test("keeps the disclaimer pinned on every route at the mobile viewport", async ({ page }) => {
     const request = page.context().request;
     await page.setViewportSize(MOBILE);
@@ -39,7 +42,7 @@ test.describe.serial("AC6 disclaimer sticky", () => {
     await request.post("/api/auth/did/present", { data: { country: "KR" } });
     await assertPinned("/connect-wallet");
 
-    await request.post("/api/auth/test-login");
+    await bootstrapSession(page, { privateKey: "0x1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a" });
     await assertPinned("/dashboard");
     await assertPinned("/export");
     await assertPinned("/");

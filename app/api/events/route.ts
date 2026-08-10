@@ -1,15 +1,13 @@
-import { error } from "@/lib/auth-route";
+import { error, success, withSessionInfrastructureError } from "@/lib/auth-route";
 import { requireCompletedOnboarding } from "@/lib/dal";
 import { eventRepository } from "@/lib/composition-root.server";
-import type { SuccessEnvelope } from "@/lib/http/envelope";
 import type { EventListDTO } from "@/lib/http/dto";
 
-function success<T>(data: T): SuccessEnvelope<T> {
-  return { data, meta: { provenance: "mock", generatedAt: new Date().toISOString() } };
-}
 
 export async function GET(request: Request) {
-  if (!await requireCompletedOnboarding(request)) return Response.json(error("unauthorized", "Completed onboarding required."), { status: 401 });
+  const session = await withSessionInfrastructureError(() => requireCompletedOnboarding(request));
+  if (session instanceof Response) return session;
+  if (!session) return Response.json(error("unauthorized", "Completed onboarding required."), { status: 401 });
   const url = new URL(request.url);
   const limitValue = url.searchParams.get("limit");
   const limit = limitValue ? Number(limitValue) : undefined;

@@ -1,7 +1,7 @@
 import "client-only";
 
 import { decodeResponse } from "@/lib/http/error-codec";
-import { eventDetailSchema, eventListSchema, eventMutationSchema } from "@/lib/http/dto";
+import { beEventDetailSchema, beEventListSchema, beEventMutationSchema } from "@/lib/schema/be-event-transport";
 import type { EventDetailDTO, EventListDTO, ReclassifyRequestDTO } from "@/lib/http/dto";
 import type { EventRepository, ReclassifyResult } from "@/lib/ports/event-repository";
 
@@ -17,13 +17,13 @@ export class HttpEventRepository implements EventRepository {
     const query = new URLSearchParams();
     if (input.cursor) query.set("cursor", input.cursor);
     if (input.limit) query.set("limit", String(input.limit));
-    const response = await decodeResponse(await this.fetcher(`/api/events${query.size ? `?${query}` : ""}`), eventListSchema);
+    const response = await decodeResponse(await this.fetcher(`/api/events${query.size ? `?${query}` : ""}`), beEventListSchema);
     if ("data" in response && "meta" in response) return response.data;
     throw requestError(response.error.message);
   }
 
   async getById(id: string): Promise<EventDetailDTO | null> {
-    const response = await decodeResponse(await this.fetcher(`/api/events/${encodeURIComponent(id)}`), eventDetailSchema);
+    const response = await decodeResponse(await this.fetcher(`/api/events/${encodeURIComponent(id)}`), beEventDetailSchema);
     if ("data" in response && "meta" in response) return response.data;
     if (response.error.code === "not_found") return null;
     throw requestError(response.error.message);
@@ -36,7 +36,7 @@ export class HttpEventRepository implements EventRepository {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(input),
       }),
-      eventMutationSchema,
+      beEventMutationSchema,
     );
     if ("data" in response && "meta" in response) return { status: "ok", ...response.data };
     if ("data" in response && response.error.code === "version_conflict") return { status: "conflict", ...response.data };

@@ -1,4 +1,4 @@
-import { act, render, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { WalletSessionWatcher } from "@/components/wallet/wallet-session-watcher";
 import type { AuthClient } from "@/lib/ports/auth-client";
@@ -50,6 +50,7 @@ describe("WalletSessionWatcher", () => {
 
     await waitFor(() => expect(auth.logout).toHaveBeenCalledOnce());
     expect(push).toHaveBeenCalledWith("/login");
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("logs out and redirects when only the chain changes", async () => {
@@ -63,7 +64,7 @@ describe("WalletSessionWatcher", () => {
     expect(push).toHaveBeenCalledWith("/login");
   });
 
-  it("redirects and preserves diagnostics when logout fails", async () => {
+  it("does not redirect and shows a retry alert when logout fails", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const wallet = walletPort(account);
     const auth = authClient();
@@ -72,8 +73,28 @@ describe("WalletSessionWatcher", () => {
 
     await act(async () => wallet.notify(null));
 
-    await waitFor(() => expect(push).toHaveBeenCalledWith("/login"));
+    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+    expect(push).not.toHaveBeenCalled();
     expect(errorSpy).toHaveBeenCalledWith("세션 종료 요청이 실패했습니다.", expect.any(Error));
+    errorSpy.mockRestore();
+  });
+
+  it("retries logout from the failure alert", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const wallet = walletPort(account);
+    const auth = authClient();
+    vi.mocked(auth.logout).mockRejectedValueOnce(new Error("logout_failed")).mockResolvedValue(undefined);
+    render(<WalletSessionWatcher walletPort={wallet.port} authClient={auth} />);
+
+    await act(async () => wallet.notify(null));
+
+    await screen.findByRole("alert");
+    fireEvent.click(screen.getByRole("button", { name: "다시 시도" }));
+
+    await waitFor(() => expect(auth.logout).toHaveBeenCalledTimes(2));
+    // 재시도가 성공하면 실제로 로그인 화면으로 가고 실패 알림이 사라져야 한다. 호출 횟수만 보면 이 전이가 사라져도 통과한다.
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/login"));
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
     errorSpy.mockRestore();
   });
 });

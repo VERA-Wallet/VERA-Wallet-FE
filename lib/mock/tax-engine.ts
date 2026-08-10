@@ -14,7 +14,8 @@ import { sortLimitations } from "@/lib/tax/limitations";
  * 실제 백엔드로 교체될 때 바뀌는 것은 이벤트 출처뿐이고, 룰셋·원장·계산은 lib/tax가 그대로 담당한다.
  */
 export class MockTaxEngine implements TaxEnginePort {
-  constructor(private readonly walletEvents: () => NormalizedEvent[]) {}
+  // 지갑 이벤트 출처는 모드에 따라 다르다(OFF: FE mock store, ON: BE 스냅샷). 룰셋·원장·계산은 그대로 lib/tax가 담당한다.
+  constructor(private readonly walletEvents: () => NormalizedEvent[] | Promise<NormalizedEvent[]>) {}
 
   async listRuleSets(): Promise<RuleSetSummary[]> {
     return listRuleSetSummaries();
@@ -39,7 +40,7 @@ export class MockTaxEngine implements TaxEnginePort {
     }
 
     // 취득 이력은 기간 전 것도 필요하므로 전체를 파생한다.
-    const walletEvents = this.walletEvents();
+    const walletEvents = await this.walletEvents();
     const derived = deriveTaxEvents(walletEvents);
     // 다만 "확인이 필요해 계산에서 빠짐"은 **이 과세기간 안**의 이벤트에만 해당한다.
     // 기간 밖 이벤트까지 세면 화면이 없던 사유를 지어낸다(2024년 계산에 2025년 6건이 잡히던 결함).

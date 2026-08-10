@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { eventRepository, summaryProvider } from "@/lib/composition-root.client";
+import { collectBoundedEvents } from "@/lib/collect/bounded-event-collector";
 import type { ReclassifyRequestDTO } from "@/lib/http/dto";
 
 // React Query 무효화는 접두 매칭이라 list 키를 ["events","list"]로 분리해 둔다.
@@ -19,26 +20,9 @@ export function useEventList(maxPages: number = MAX_PAGES) {
     queryFn: async () => {
       // 커서를 버리면 101번째 거래가 화면에서 통째로 사라진다.
       // 거래 탭은 "전체 거래"를 표방하므로 페이지를 끝까지 이어 받는다.
-      const items: Awaited<ReturnType<typeof eventRepository.list>>["items"] = [];
-      const seenCursors = new Set<string>();
-      let cursor: string | null = null;
-      let truncated = false;
-      for (let page = 0; page < maxPages; page += 1) {
-        const requested = cursor;
-        const result = await eventRepository.list({ limit: PAGE_LIMIT, cursor: requested ?? undefined });
-        if (requested !== null) seenCursors.add(requested);
-        const nextCursor = result.nextCursor ?? null;
-        // 서버가 방금 쓴 커서를 그대로 되돌려주면 같은 페이지다. 쌓지 않고 멈춘다.
-        if (nextCursor !== null && seenCursors.has(nextCursor)) {
-          truncated = true;
-          break;
-        }
-        items.push(...result.items);
-        cursor = nextCursor;
-        if (!cursor) break;
-        if (page === maxPages - 1) truncated = true;
-      }
-      return { items, nextCursor: cursor, truncated };
+      // 상한·커서 반복 가드는 export·서버 스냅샷과 같은 수집기를 공유한다 —
+      // 갈라지면 대시보드·내보내기·세금이 서로 다른 개수를 말하게 된다.
+      return collectBoundedEvents(eventRepository, { maxPages, pageLimit: PAGE_LIMIT });
     },
     // "더 불러오기"로 상한이 바뀌면 키가 달라진다. 이전 목록을 유지해 화면이 빈 상태로 튀지 않게 한다.
     placeholderData: (previous) => previous,

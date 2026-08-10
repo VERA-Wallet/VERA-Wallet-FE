@@ -4,11 +4,14 @@ import { MockAuthStore } from "@/lib/mock/auth-store";
 import { getMockRuleset } from "@/lib/mock/rulesets";
 import { MockEventStore } from "@/lib/mock/store";
 import { MockTaxEngine } from "@/lib/mock/tax-engine";
+import { BeSessionReader } from "@/lib/adapters/session/be-session-reader.server";
+import { MockSessionReader } from "@/lib/adapters/session/mock-session-reader.server";
 import type { AnchorProofProvider } from "@/lib/ports/anchor-proof-provider";
 import type { EventRepository } from "@/lib/ports/event-repository";
 import type { RuleSetRepository } from "@/lib/ports/ruleset-repository";
 import type { SummaryProvider } from "@/lib/ports/summary-provider";
 import type { TaxEnginePort } from "@/lib/ports/tax-engine";
+import type { SessionReader } from "@/lib/ports/session-reader";
 
 // mock 저장소 수명주기(로컬/테스트 단일 프로세스 전용):
 // - Route Handler와 RSC는 서로 다른 모듈 그래프로 번들될 수 있어 모듈 스코프 싱글턴이 분리된다.
@@ -23,6 +26,10 @@ const globalStores = globalThis as typeof globalThis & {
 };
 const store = (globalStores.__verawalletEventStore ??= new MockEventStore());
 const authStore = (globalStores.__verawalletAuthStore ??= new MockAuthStore());
+// 모드는 모듈 로드 때 한 번만 정해진다. 환경 변수를 바꾸면 서버를 재시작해야 하며 자동 failover는 하지 않는다.
+export const sessionReader: SessionReader = process.env.VERAWALLET_BACKEND_ORIGIN
+  ? new BeSessionReader()
+  : new MockSessionReader(authStore);
 
 export const eventRepository: EventRepository = {
   list: async (input) => store.list(input),
@@ -38,7 +45,15 @@ export const ruleSetRepository: RuleSetRepository = {
   getByCountry: async (country) => getMockRuleset(country),
 };
 
-export const taxEngine: TaxEnginePort = new MockTaxEngine(() => store.list({ limit: 100 }).items.map((item) => item.event));
+// 세금 계산의 지갑 이벤트 출처를 모드로 고른다.
+// ON에서 FE mock store를 그대로 쓰면 대시보드(BE 25건)와 세금 화면(FE fixture)이 서로 다른 우주를 말한다.
+// dal ↔ composition-root 순환을 피하려고 ON 경로만 지연 import한다.
+export const taxEngine: TaxEnginePort = new MockTaxEngine(async () => {
+  if (!process.env.VERAWALLET_BACKEND_ORIGIN) return store.list({ limit: 100 }).items.map((item) => item.event);
+  const { getSessionCookieHeaderForEventReader } = await import("@/lib/dal");
+  const { readBeWalletEvents } = await import("@/lib/adapters/http/event-repository.server");
+  return readBeWalletEvents(await getSessionCookieHeaderForEventReader());
+});
 
 export const anchorProofProvider: AnchorProofProvider = {
   getProof: async (eventId) => {

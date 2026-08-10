@@ -1,13 +1,13 @@
+import { success, withSessionInfrastructureError } from "@/lib/auth-route";
 import { requireCompletedOnboarding } from "@/lib/dal";
 import { anchorProofProvider } from "@/lib/composition-root.server";
-import type { ErrorEnvelope, SuccessEnvelope } from "@/lib/http/envelope";
+import type { ErrorEnvelope } from "@/lib/http/envelope";
 
-function success<T>(data: T): SuccessEnvelope<T> {
-  return { data, meta: { provenance: "mock", generatedAt: new Date().toISOString() } };
-}
 
 export async function GET(request: Request) {
-  if (!await requireCompletedOnboarding(request)) {
+  const session = await withSessionInfrastructureError(() => requireCompletedOnboarding(request));
+  if (session instanceof Response) return session;
+  if (!session) {
     const body: ErrorEnvelope = { error: { code: "unauthorized", message: "Completed onboarding required." } };
     return Response.json(body, { status: 401 });
   }

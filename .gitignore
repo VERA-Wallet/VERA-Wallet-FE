@@ -32,6 +32,8 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# 연동 절차 문서가 참조하는 템플릿이라 값이 없는 예시는 커밋한다.
+!.env.local.example
 
 # vercel
 .vercel
@@ -40,6 +42,8 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 test-results/
+# 리뷰 증거(스크린샷·계약 리포트). 스펙을 다시 돌리면 재생성되는 산출물이라 소스로 두지 않는다.
+artifacts/
 
 # GJC 런타임 상태·아티팩트 (소스가 아님)
 .gjc/

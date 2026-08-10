@@ -1,4 +1,6 @@
 import { expect, test } from "@playwright/test";
+import { useFreshBackend } from "./support/backend-lifecycle";
+import { bootstrapSession } from "./support/bootstrap-be-session";
 
 /**
  * 거래소 연동은 화면 시연이다. 브라우저 저장소에만 남기 때문에 단위 테스트(주입한 저장소)로는
@@ -6,6 +8,7 @@ import { expect, test } from "@playwright/test";
  * 대시보드가 같은 연동을 말하는지.
  */
 test.describe.serial("exchange link demo", () => {
+  useFreshBackend();
   test("links an exchange on the onboarding screen and carries it to the dashboard", async ({ page }) => {
     const request = page.context().request;
     await request.post("/api/auth/did/present", { data: { country: "KR" } });
@@ -21,7 +24,7 @@ test.describe.serial("exchange link demo", () => {
     // 원문 키가 화면 어디에도 남으면 안 된다.
     expect(await page.locator("body").innerText()).not.toContain("UPBIT-KEY-1234567890");
 
-    await request.post("/api/auth/test-login");
+    await bootstrapSession(page, { privateKey: "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b" });
     await page.goto("/dashboard");
     await expect(page.getByRole("region", { name: "연동된 거래소" })).toBeVisible();
     await expect(page.getByText("거래소 연동 1곳")).toBeVisible();

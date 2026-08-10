@@ -1,31 +1,28 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { OnboardingSession } from "@/lib/ports/session-store";
+import type { SessionSnapshot } from "@/lib/ports/session-snapshot";
 
 const mocks = vi.hoisted(() => ({
-  session: null as OnboardingSession | null,
+  snapshot: { source: "anonymous" } as SessionSnapshot,
   redirect: vi.fn((destination: string): never => { throw new Error(`redirect:${destination}`); }),
-}));
-
-vi.mock("next/headers", () => ({
-  cookies: vi.fn(async () => ({
-    get: () => mocks.session ? { value: "test-session" } : undefined,
-  })),
+  read: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
-
+vi.mock("next/headers", () => ({
+  cookies: vi.fn(async () => ({ get: () => undefined })),
+}));
 vi.mock("@/lib/composition-root.server", () => ({
-  authStore: { get: vi.fn(async () => mocks.session) },
+  sessionReader: { cookieMode: "access-token", read: mocks.read },
 }));
 
 import ConnectWalletPage from "@/app/connect-wallet/page";
 import DashboardPage from "@/app/dashboard/page";
 import ExportPage from "@/app/export/page";
-import { isCompletedOnboarding } from "@/lib/dal";
 
 const now = Date.now();
-const complete: OnboardingSession = {
-  didVerified: true,
+const complete = {
+  source: "mock" as const,
+  didVerified: true as const,
   countryCode: "US",
   walletAddress: "0x123",
   chainId: 1,
@@ -33,12 +30,14 @@ const complete: OnboardingSession = {
   walletExpiresAt: now + 60_000,
 };
 
-const states: Array<{ name: string; session: OnboardingSession | null; destinations: [string | null, string | null, string | null] }> = [
-  { name: "anonymous", session: null, destinations: ["/login", "/login", "/login"] },
-  { name: "DID only", session: { ...complete, walletAddress: null, chainId: null, walletExpiresAt: null }, destinations: [null, "/connect-wallet", "/connect-wallet"] },
-  { name: "complete", session: complete, destinations: ["/dashboard", null, null] },
-  { name: "expired DID", session: { ...complete, didExpiresAt: now - 1 }, destinations: ["/login", "/login", "/login"] },
-  { name: "expired wallet", session: { ...complete, walletExpiresAt: now - 1 }, destinations: [null, "/connect-wallet", "/connect-wallet"] },
+const states: Array<{ name: string; snapshot: SessionSnapshot; destinations: [string | null, string | null, string | null] }> = [
+  { name: "anonymous", snapshot: { source: "anonymous" }, destinations: ["/login", "/login", "/login"] },
+  { name: "DID only", snapshot: { ...complete, walletAddress: null, chainId: null }, destinations: [null, "/connect-wallet", "/connect-wallet"] },
+  { name: "complete", snapshot: complete, destinations: ["/dashboard", null, null] },
+  { name: "expired DID", snapshot: { ...complete, didExpiresAt: now }, destinations: ["/login", "/login", "/login"] },
+  { name: "expired wallet", snapshot: { ...complete, walletExpiresAt: now }, destinations: [null, "/connect-wallet", "/connect-wallet"] },
+  { name: "BE DID only", snapshot: { source: "be", didVerified: true, countryCode: "US", walletAddress: null, chainId: null }, destinations: [null, "/connect-wallet", "/connect-wallet"] },
+  { name: "BE complete", snapshot: { source: "be", didVerified: true, countryCode: "US", walletAddress: "0x123", chainId: 1 }, destinations: ["/dashboard", null, null] },
 ];
 
 const pages = [ConnectWalletPage, DashboardPage, ExportPage];
@@ -58,16 +57,13 @@ async function expectDestination(page: () => Promise<unknown>, destination: stri
 describe("onboarding page guards", () => {
   beforeEach(() => {
     mocks.redirect.mockClear();
+    mocks.read.mockImplementation(async () => mocks.snapshot);
   });
 
   for (const state of states) {
     it(`routes ${state.name} sessions through each onboarding step`, async () => {
-      mocks.session = state.session;
+      mocks.snapshot = state.snapshot;
       for (const [index, page] of pages.entries()) await expectDestination(page, state.destinations[index]!);
     });
   }
-
-  it("does not treat a wallet-only session as completed onboarding", () => {
-    expect(isCompletedOnboarding({ ...complete, didVerified: false, countryCode: null }, now)).toBe(false);
-  });
 });

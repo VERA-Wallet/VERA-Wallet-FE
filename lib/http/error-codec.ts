@@ -11,7 +11,8 @@ const conflictShell = z.object({
 });
 const successShell = z.object({
   data: z.unknown(),
-  meta: z.object({ provenance: z.literal("mock"), generatedAt: z.string() }),
+  // BE는 MOCK_MODE에 따라 "mock" 또는 "live"를 보낸다. literal로 고정해 두면 실 모드 전환 순간 전 요청이 계약 위반으로 거절된다.
+  meta: z.object({ provenance: z.enum(["mock", "live"]), generatedAt: z.string() }),
 });
 
 const invalidResponse: ErrorEnvelope = {
