@@ -34,6 +34,7 @@ yarn-error.log*
 .env*
 # 연동 절차 문서가 참조하는 템플릿이라 값이 없는 예시는 커밋한다.
 !.env.local.example
+!.env.example
 
 # vercel
 .vercel
