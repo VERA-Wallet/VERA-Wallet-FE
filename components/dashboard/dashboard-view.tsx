@@ -514,6 +514,9 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
   const [group, setGroup] = useState<JudgmentGroup | "excluded" | null>(null);
   // 체인 필터. null = 전체. 목록에 없는 체인이 걸리면 아래에서 무시한다.
   const [chain, setChain] = useState<number | null>(null);
+  // 연도 필터. null = 전체. 체인 필터와 같은 성격의 **표시 필터**라 판정·요약은 건드리지 않는다
+  // (연도가 계산 경계인 곳은 세금 탭이고, 여기서 고른 해는 목록만 좁힌다).
+  const [year, setYear] = useState<number | null>(null);
   // 선택은 **식별자만** 들고 있는다. 클릭 시점 스냅샷을 들고 있으면
   // 목록을 다시 불러온 뒤 시트가 사라진 거래나 옛 버전을 계속 보여준다.
   const [selectedKey, setSelectedKey] = useState<{ eventId: string; occurrence: number } | null>(null);
@@ -534,12 +537,18 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
   const taxYear = taxYearFor(countryCode ?? "KR", referencePeriod ?? new Date().toISOString());
   const judgments = useJudgments(countryCode ?? "KR", taxYear, referencePeriod !== null);
   const items = events.data?.items ?? [];
+  // 레퍼런스 관례대로 최신이 위. 원본 배열은 건드리지 않는다 — 누적 그래프는 시간순으로 받아야 한다.
+  // 페이지를 끝까지 이어 받은 뒤 정렬하므로 "최신"이 페이지 경계에 좌우되지는 않지만,
+  // 목록이 잘렸을 때 이 순서가 전부는 아니라는 사실은 아래 잘림 고지가 말한다.
+  const orderedItems = [...items].sort(
+    (left, right) => Date.parse(right.event.block_timestamp) - Date.parse(left.event.block_timestamp),
+  );
   // 같은 id가 두 번 이상 나오면 두 번째부터는 판정을 붙일 수 없다 — 확인 필요로 올린다.
-  // 중복 판정은 **원본 목록 순서**로 한 번만 계산하고 마커를 레코드에 붙인다.
+  // 중복 판정은 **표시 순서**로 한 번만 계산하고 마커를 레코드에 붙인다.
   // 객체 동일성(Set<EventRecord>)으로 들고 있으면 목록을 다시 불러온 순간 마커가 사라져
   // 두 번째 중복이 첫 건의 판정을 물려받는다.
   const seenCounts = new Map<string, number>();
-  const annotated: AnnotatedRecord[] = items.map((record) => {
+  const annotated: AnnotatedRecord[] = orderedItems.map((record) => {
     const occurrence = seenCounts.get(record.event.id) ?? 0;
     seenCounts.set(record.event.id, occurrence + 1);
     return { record, occurrence, isDuplicate: occurrence > 0 };
@@ -598,6 +607,14 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
   };
   const matchesChain = (item: AnnotatedRecord, chain: number | null) =>
     chain === null || item.record.event.chain_id === chain;
+  // 연도는 날짜 머리글과 같은 판정을 쓴다(`isoDay`) — 달력에 없는 날짜·깨진 오프셋은 연도도 없다.
+  // 그런 건은 "날짜 미상"으로 남고 특정 연도 칩에는 잡히지 않는다.
+  const yearOf = (item: AnnotatedRecord): number | null => {
+    const day = isoDay(item.record.event.block_timestamp);
+    return day === "" ? null : Number(day.slice(0, 4));
+  };
+  const matchesYear = (item: AnnotatedRecord, target: number | null) =>
+    target === null || yearOf(item) === target;
   const matchesGroup = (item: AnnotatedRecord, target: JudgmentGroup | "excluded" | null) =>
     target === null || groupsOf(item).has(target);
   const groupExistsInTab = group === null || tabItems.some((item) => groupsOf(item).has(group));
@@ -605,24 +622,37 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
   // 고른 체인이 이 탭에 없으면 필터를 유지할 근거가 없다.
   // 유지하면 빈 목록만 남고 사용자는 자기가 건 필터 때문인지 거래가 없는 건지 알 수 없다.
   const activeChain = chain !== null && tabItems.some((item) => matchesChain(item, chain)) ? chain : null;
-  const displayedItems = tabItems.filter((item) => matchesChain(item, activeChain) && matchesGroup(item, activeGroup));
+  // 연도도 같은 규칙이다 — 고른 해가 이 탭에 없으면 놓는다.
+  const activeYear = year !== null && tabItems.some((item) => matchesYear(item, year)) ? year : null;
+  const displayedItems = tabItems.filter(
+    (item) => matchesChain(item, activeChain) && matchesGroup(item, activeGroup) && matchesYear(item, activeYear),
+  );
   // 칩 건수는 **지금 눌렀을 때 남을 카드 수**다. 그래서 자기 자신을 뺀 나머지 필터를 적용한 뒤 센다.
   // 전체 목록 기준으로 세면 다른 필터가 걸린 상태에서 칩 건수와 카드 수가 어긋난다.
   const groupCounts = new Map<JudgmentGroup | "excluded", number>();
   // 판정을 다시 계산하는 중이면 칩도 보류한다.
   // 카드가 "판정 확인 중"인데 칩이 "취득 10"이라 하면 화면이 두 이야기를 한다.
-  for (const item of judgmentsPending || judgments.isError ? [] : tabItems.filter((row) => matchesChain(row, activeChain))) {
+  for (const item of judgmentsPending || judgments.isError
+    ? []
+    : tabItems.filter((row) => matchesChain(row, activeChain) && matchesYear(row, activeYear))) {
     for (const key of groupsOf(item)) groupCounts.set(key, (groupCounts.get(key) ?? 0) + 1);
   }
   const groups = [...groupCounts.entries()];
-  // 체인 칩은 판정과 무관하게 온체인 사실이라 판정 조회 상태와 관계없이 셀 수 있다.
+  // 체인·연도 칩은 판정과 무관하게 온체인 사실이라 판정 조회 상태와 관계없이 셀 수 있다.
   const chainCounts = new Map<number, number>();
-  for (const item of tabItems.filter((row) => matchesGroup(row, activeGroup))) {
+  for (const item of tabItems.filter((row) => matchesGroup(row, activeGroup) && matchesYear(row, activeYear))) {
     const id = item.record.event.chain_id;
     chainCounts.set(id, (chainCounts.get(id) ?? 0) + 1);
   }
   // 체인이 하나뿐이면 고를 것이 없다 — 누를 수 없는 칩 한 줄은 자리만 차지한다.
   const chainFilters = chainCounts.size > 1 ? [...chainCounts.entries()].sort((left, right) => left[0] - right[0]) : [];
+  const yearCounts = new Map<number, number>();
+  for (const item of tabItems.filter((row) => matchesChain(row, activeChain) && matchesGroup(row, activeGroup))) {
+    const value = yearOf(item);
+    if (value !== null) yearCounts.set(value, (yearCounts.get(value) ?? 0) + 1);
+  }
+  // 연도가 하나뿐이면 고를 것이 없다(체인 필터와 같은 규칙). 목록은 최신순이라 칩도 최신 연도가 먼저다.
+  const yearFilters = yearCounts.size > 1 ? [...yearCounts.entries()].sort((left, right) => right[0] - left[0]) : [];
   const estimate = judgments.estimate;
   const selected = selectedKey
     ? annotated.find((item) => item.record.event.id === selectedKey.eventId && item.occurrence === selectedKey.occurrence) ?? null
@@ -721,6 +751,33 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
             <p>앰버 배지 — 확인이 필요한 문제. 정상 상태는 배지를 달지 않습니다.</p>
           </div>
         </details>
+        {/* 연도 필터. 목록 자체는 늘 최신순이고, 연도는 정렬이 아니라 **경계**다 —
+            "2025년에 무슨 일이 있었나"를 보려면 그 해만 남길 문이 있어야 한다.
+            체인 필터와 같은 표시 필터라 판정·요약 금액은 이 선택에 흔들리지 않는다. */}
+        {yearFilters.length > 0 ? (
+          <div className="mt-3 flex gap-2 overflow-x-auto pb-1" aria-label="연도 필터">
+            <button
+              type="button"
+              aria-pressed={activeYear === null}
+              className={`shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold ${activeYear === null ? "bg-primary-500 text-white" : "bg-zinc-100 text-zinc-600"}`}
+              onClick={() => setYear(null)}
+            >
+              전체 연도
+            </button>
+            {yearFilters.map(([value, count]) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={activeYear === value}
+                className={`shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold ${activeYear === value ? "bg-primary-500 text-white" : "bg-zinc-100 text-zinc-600"}`}
+                // 누른 칩을 다시 누르면 풀린다. 필터가 겹쳐 걸리는 이상 되돌릴 문이 칩 자체에 있어야 한다.
+                onClick={() => setYear(year === value ? null : value)}
+              >
+                {value}년 <span aria-hidden="true">{count}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
         {/* 체인 필터. 여러 체인을 한 목록에 섞어 두면 "이 체인에서 무슨 일이 있었나"를 볼 방법이 없다.
             판정 필터와 독립이라 둘을 겹쳐 걸 수 있고, 각 칩의 건수는 상대 필터를 적용한 뒤의 수다. */}
         {chainFilters.length > 0 ? (

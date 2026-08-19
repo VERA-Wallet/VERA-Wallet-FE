@@ -16,7 +16,15 @@ import type { NormalizedEvent } from "@/lib/schema/normalized-event";
 
 // 화면에 나오면 즉시 눈에 띄도록 픽스처 금액과 겹치지 않는 값을 쓴다.
 const LEAK_SENTINEL_AMOUNT = "987654.32";
-const events = createNormalizedEventFixtures(FIXTURE_TAX_YEAR);
+/**
+ * 이 스위트는 **한 해치 목록**을 본다. 픽스처는 기준 연도 뒤에 다음 해 배치를 붙이지만,
+ * 그 해가 열리기 전 시각을 주면 배치가 비어 25건만 남는다.
+ * 여기 오라클(`derived.excludedEventIds` 등)은 "픽스처의 해 == 화면이 판정하는 해"를 전제로 하고,
+ * 두 해가 섞이면 2026년 거래가 "기간 밖"이 되어 오라클이 조용히 다른 것을 세게 된다.
+ * 연도가 둘인 경우는 아래 "연도 필터" 스위트가 따로 본다.
+ */
+const SINGLE_YEAR_NOW = new Date(`${FIXTURE_TAX_YEAR + 1}-01-01T00:00:00.000Z`);
+const events = createNormalizedEventFixtures(FIXTURE_TAX_YEAR, SINGLE_YEAR_NOW);
 const derived = deriveTaxEvents(events);
 // 요약 기간이 픽스처와 어긋나면 화면이 거래 없는 해를 과세연도로 잡는다.
 // 그러면 판정이 전부 비어도 테스트는 조용히 통과한다 — 기간은 픽스처에서 파생한다.
@@ -1554,12 +1562,16 @@ describe("거래 카드는 온체인 사실 네 가지와 도장만 말한다", 
   /** e2e가 카드를 식별할 때 쓰는 훅. 순서 기반 선택자로 되돌아가면 레이아웃 변경마다 깨진다. */
   const labelOf = (card: Element) => card.querySelector("[data-event-label]")?.textContent ?? "";
   const cardsOf = (container: HTMLElement) => [...container.querySelectorAll("section .mt-3.grid.gap-3 > button")];
+  /** 화면이 그리는 순서. 목록은 최신이 위이고 픽스처는 오래된 순이라 둘은 서로 뒤집힌 것이다. */
+  const newestFirst = [...events].sort(
+    (left, right) => Date.parse(right.block_timestamp) - Date.parse(left.block_timestamp),
+  );
 
   it("날짜는 UTC 하루 머리글에 한 번만 찍고 그 사실을 화면이 밝힌다", async () => {
     const { container } = renderDashboard("DE");
     await settled();
     const headings = [...container.querySelectorAll("section .mt-3.grid.gap-3 > h3")];
-    const days = [...new Set(events.map((event) => isoDay(event.block_timestamp)))];
+    const days = [...new Set(newestFirst.map((event) => isoDay(event.block_timestamp)))];
     expect(headings.map((node) => node.textContent)).toEqual(days.map((day) => formatDate(`${day}T00:00:00.000Z`)));
     // 시간대를 안 밝히면 사용자는 자기 시간대로 읽는다 — 과세연도 경계에서 다른 해가 된다.
     expect(container.textContent).toContain(UTC_NOTICE);
@@ -1574,7 +1586,7 @@ describe("거래 카드는 온체인 사실 네 가지와 도장만 말한다", 
     expect(cards).toHaveLength(events.length);
 
     for (const [index, card] of cards.entries()) {
-      const event = events[index];
+      const event = newestFirst[index];
       const text = card.textContent ?? "";
       expect(labelOf(card), event.id).toBe(rowLabel(event));
       // 표식은 색으로 훑게 하고, 이름은 글자가 말한다. 아이콘만 두면 색맹·미지원 체인에서 정보가 사라진다.
@@ -1595,7 +1607,7 @@ describe("거래 카드는 온체인 사실 네 가지와 도장만 말한다", 
     expect(events.filter((event) => reviewReason(event) === "가격 확인 필요").length).toBeGreaterThan(0);
 
     for (const [index, card] of cardsOf(container).entries()) {
-      const event = events[index];
+      const event = newestFirst[index];
       const text = card.textContent ?? "";
       // 카드가 "가격 확인 필요"라 하고 세금 화면이 "분류 확인 필요"라 하면 화면이 두 이야기를 한다.
       if (needsReview(event)) expect(text, event.id).toContain(reviewReason(event));
