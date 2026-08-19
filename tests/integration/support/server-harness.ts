@@ -12,6 +12,7 @@ const BE_CWD = process.env.VERAWALLET_BACKEND_CWD ?? path.resolve(process.cwd(),
 // globalSetup과 테스트 파일은 서로 다른 워커일 수 있어 모듈 스코프 핸들을 공유할 수 없으므로 PID를 임시 파일에도 기록한다.
 const BACKEND_PID_FILE = path.join(tmpdir(), "vw-integration-backend.pid");
 const NEXT_PID_FILE = path.join(tmpdir(), "vw-integration-next.pid");
+const NEXT_PROD_PID_FILE = path.join(tmpdir(), "vw-integration-next-production.pid");
 const OUTPUT_LIMIT = 300;
 const startedServers = new Map<string, StartedServer>();
 
@@ -205,6 +206,15 @@ function buildBackendOnce(): Promise<void> {
   });
   return backendBuild;
 }
+let nextBuild: Promise<void> | undefined;
+
+function buildNextOnce(): Promise<void> {
+  nextBuild ??= runToCompletion("pnpm", ["build"], process.cwd()).catch((cause: unknown) => {
+    nextBuild = undefined;
+    throw cause;
+  });
+  return nextBuild;
+}
 
 async function buildBackend(): Promise<void> {
   const backendDir = path.join(BE_CWD, "apps", "backend");
@@ -252,6 +262,13 @@ export async function startNextServer(opts: ServerOptions = {}): Promise<void> {
   const port = opts.port ?? 3100;
   await startServer("pnpm", ["exec", "next", "dev", "-p", String(port)], process.cwd(), port, opts.env ?? {}, NEXT_PID_FILE, `http://localhost:${port}/`, {}, "Next server");
 }
+export async function startNextProduction(opts: { port?: number; env?: Record<string, string> } = {}): Promise<void> {
+  const port = opts.port ?? 3300;
+  await buildNextOnce();
+  await startServer("pnpm", ["exec", "next", "start", "-p", String(port)], process.cwd(), port, opts.env ?? {}, NEXT_PROD_PID_FILE, `http://localhost:${port}/`, {}, "Next production server");
+}
+
+export async function stopNextProduction(): Promise<void> { await stopServer(NEXT_PROD_PID_FILE); }
 
 export async function stopAll(): Promise<void> {
   await stopServer(NEXT_PID_FILE);
