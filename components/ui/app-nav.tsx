@@ -45,12 +45,15 @@ const items: NavItem[] = [
   },
 ];
 
-const hrefs = items.map((item) => item.href);
+// 탭이 아니지만 탭을 띄워야 하는 화면. 플랜은 내보내기 잠금 배너로만 들어오는 곁길이라
+// 탭 자리를 차지할 이유가 없지만, 여기서 내비를 감추면 돌아갈 길 없는 막다른 길이 된다.
+const sideRoutes = ["/plan"];
+const navRoutes = [...items.map((item) => item.href), ...sideRoutes];
 
 export function AppNav() {
   const pathname = usePathname();
   // 온보딩(로그인·지갑 연결) 중에는 탭 이동이 세션 가드에 막히므로 노출하지 않는다.
-  if (!hrefs.some((href) => pathname === href || pathname.startsWith(`${href}/`))) return null;
+  if (!navRoutes.some((href) => pathname === href || pathname.startsWith(`${href}/`))) return null;
 
   return (
     <nav aria-label="주요 화면" data-testid="app-nav" className="border-t border-zinc-200 bg-white/95 backdrop-blur">
