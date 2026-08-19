@@ -5,14 +5,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { TaxSimulator } from "@/components/tax/tax-simulator";
 import { FIXTURE_TAX_YEAR } from "@/tests/fixtures/tax-year";
-import { createTaxScenarioEvents, scenarioScaleFor } from "@/lib/mock/tax-fixtures";
+import { createTaxScenarioEvents, scenarioScaleFor } from "@/lib/tax/scenarios";
 import { computeTaxEstimate } from "@/lib/tax/engine";
 import { listRuleSetSummaries } from "@/lib/tax/rulesets";
 import { taxEstimateSchema, ruleSetListSchema } from "@/lib/http/tax-dto";
-import { createNormalizedEventFixtures } from "@/lib/mock/fixtures";
+import { createNormalizedEventFixtures } from "@/tests/fixtures/generated/normalized-events";
 import { deriveTaxEvents } from "@/lib/tax/derive";
 import type { NormalizedEvent } from "@/lib/schema/normalized-event";
-import { MockTaxEngine } from "@/lib/mock/tax-engine";
+import { TaxEngineService } from "@/lib/tax/tax-engine-service.server";
 import type { TaxEstimateRequest } from "@/lib/ports/tax-engine";
 import { AMOUNT_KIND_LABEL, GROUP_SHORT_LABEL } from "@/components/ui/judgment-badge";
 import { formatFiat } from "@/lib/format";
@@ -27,7 +27,7 @@ vi.mock("@/lib/composition-root.client", () => ({
 ports.listRuleSets.mockImplementation(async () => ruleSetListSchema.parse(listRuleSetSummaries()));
 // 더블이 source를 무시하면 요청은 지갑인데 응답은 시나리오가 된다.
 // wallet은 실제 어댑터를, scenario는 시나리오 엔진을 태워 두 경로를 갈라 둔다.
-const walletEngine = new MockTaxEngine(() => createNormalizedEventFixtures(FIXTURE_TAX_YEAR));
+const walletEngine = new TaxEngineService(() => createNormalizedEventFixtures(FIXTURE_TAX_YEAR));
 const defaultEstimate = async (input: TaxEstimateRequest) =>
   input.source === "wallet"
     ? taxEstimateSchema.parse(await walletEngine.estimate(input))
@@ -149,6 +149,8 @@ describe("TaxSimulator", () => {
       expect(screen.getByTestId("estimated-charge").textContent).toContain("₩1,733,710"),
     );
     // 미래 연도를 아무 말 없이 계산하면 사용자는 확정된 답으로 읽는다.
+    // 이제는 배지로 보이고, 전문은 그 배지를 펼쳐야 나오는 접힘 안에 보존된다.
+    expect(screen.getByText("2027년 시행 기준 미리보기")).toBeInTheDocument();
     expect(screen.getByText(/아직 시행 전인 2027년 기준으로 미리 계산했습니다/)).toBeInTheDocument();
   });
 
@@ -222,7 +224,7 @@ describe("TaxSimulator 제외 배너", () => {
     // 실제 어댑터를 그대로 쓴다 — 병합 규칙을 여기서 다시 쓰면 프로덕션에 없는 화면을 검증하게 된다.
     // source를 강제하면 화면은 "데모 시나리오"인데 결과는 지갑이 되어,
     // 화면이 거짓을 말하는 상태를 테스트가 통과시킨다. 요청의 source를 그대로 존중한다.
-    const engine = new MockTaxEngine(() => events);
+    const engine = new TaxEngineService(() => events);
     ports.estimate.mockImplementation(async (input: TaxEstimateRequest) =>
       taxEstimateSchema.parse(await engine.estimate(input)),
     );
@@ -438,7 +440,8 @@ describe("세금 탭이 답 우선 3계층인가", () => {
     await screen.findByText("독일 · 2025");
     expect(screen.getByText("2025년 세금")).toBeInTheDocument();
     expect(screen.queryByText("올해 세금")).not.toBeInTheDocument();
-    // 이유를 말하지 않으면 사용자는 지난 해 결과를 올해 답으로 읽는다.
+    // 이유는 배지로 강등됐지만 삭제되지 않았다 — 배지가 보이고, 전문은 접힘 안에 그대로 있다.
+    expect(screen.getByText("2025년으로 열림")).toBeInTheDocument();
     expect(screen.getByText(/2026년에는 계산할 거래가 없어/)).toBeInTheDocument();
 
     const details = screen.getByText("계산 조건 바꾸기").closest("details")!;

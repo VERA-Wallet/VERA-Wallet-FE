@@ -216,7 +216,8 @@ export function TaxSimulator({
   countryCode,
   currentYear = new Date().getFullYear(),
   latestActivityYear,
-}: { countryCode?: string; currentYear?: number; latestActivityYear?: number } = {}) {
+  walletConnected = true,
+}: { countryCode?: string; currentYear?: number; latestActivityYear?: number; walletConnected?: boolean } = {}) {
   // DID가 주는 UK 같은 별칭을 여기서 한 번 표준화한다.
   const [country, setCountry] = useState(() => canonicalCountryCode(countryCode ?? "") ?? FALLBACK_COUNTRY);
   // 연도는 서버가 정한 값 하나만 쓴다. state와 버튼 목록이 서로 다른 시계를 읽으면
@@ -225,7 +226,8 @@ export function TaxSimulator({
   // 그건 비교가 아니라 빈 화면이다. 마지막 거래가 있는 해를 알면 거기서 연다.
   const [taxYear, setTaxYear] = useState(latestActivityYear ?? currentYear);
   // 기본은 내 지갑이다. 데모 시나리오는 명시적으로 고를 때만 쓴다.
-  const [source, setSource] = useState<TaxEventSource>("wallet");
+  // 지갑 미연결이면 낼 지갑 이력이 없으므로 데모 시나리오로 연다.
+  const [source, setSource] = useState<TaxEventSource>(walletConnected ? "wallet" : "scenario");
   // 시행 전 룰셋(한국 2027)을 "시행됐다고 가정하고" 볼지. 기본은 사실 — 가정은 사용자가 켠다.
   const [assumeEffective, setAssumeEffective] = useState(false);
   // 슬라이더는 드래그 중 화면만 따라가고(draft), 손을 뗄 때 한 번만 계산에 커밋한다.
@@ -326,19 +328,54 @@ export function TaxSimulator({
           {/* 설명은 실제 상태에서 파생한다. 정적 문장으로 두면 데모를 지갑이라 하고,
               아직 계산하지 않은 화면을 "적용한 결과"라고 단정한다. */}
           <p className="mt-2 text-sm text-zinc-500">{headerNote}</p>
-          {openedOnPastYear ? (
-            <p className="mt-1 text-sm text-zinc-500">
-              {currentYear}년에는 계산할 거래가 없어 마지막 거래가 있는 {latestActivityYear}년으로 열었습니다.
-            </p>
+          {/* 고지 3줄이 쌓이면 아무것도 읽히지 않는다 — 배지로 접고 전문은 아래에 보존. */}
+          {openedOnPastYear || previewingEffectiveYear ? (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {openedOnPastYear ? (
+                <span className="inline-flex rounded-full bg-zinc-200 px-2.5 py-1 text-xs font-semibold text-zinc-700">
+                  {latestActivityYear}년으로 열림
+                </span>
+              ) : null}
+              {previewingEffectiveYear ? (
+                <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
+                  {effectiveTaxYear}년 시행 기준 미리보기
+                </span>
+              ) : null}
+            </div>
           ) : null}
-          {previewingEffectiveYear ? (
-            <p className="mt-1 text-sm text-zinc-500">
-              아직 시행 전인 {effectiveTaxYear}년 기준으로 미리 계산했습니다. 시행일이 지나야 확정된 답이 됩니다.
-            </p>
+          {openedOnPastYear || previewingEffectiveYear ? (
+            <details className="mt-1">
+              <summary className="cursor-pointer text-xs font-medium text-zinc-400">이 연도로 연 이유</summary>
+              {openedOnPastYear ? (
+                <p className="mt-1 text-sm text-zinc-500">
+                  {currentYear}년에는 계산할 거래가 없어 마지막 거래가 있는 {latestActivityYear}년으로 열었습니다.
+                </p>
+              ) : null}
+              {previewingEffectiveYear ? (
+                <p className="mt-1 text-sm text-zinc-500">
+                  아직 시행 전인 {effectiveTaxYear}년 기준으로 미리 계산했습니다. 시행일이 지나야 확정된 답이 됩니다.
+                </p>
+              ) : null}
+            </details>
           ) : null}
         </div>
         <MockProvenanceChip />
       </header>
+
+      {/* 지갑 미연결 동안 상시 노출한다 — 가정 배너와 같은 원칙: 답 옆에 그 사실이 계속 있어야 한다. */}
+      {!walletConnected ? (
+        <div className="mt-3 flex items-start justify-between gap-3 rounded-card border border-zinc-200 bg-zinc-50 p-3">
+          <p className="text-sm leading-6 text-zinc-600">
+            데모 시나리오로 보는 중입니다. 지갑을 연결하면 이 화면이 내 거래로 다시 계산됩니다.
+          </p>
+          <Link
+            href="/connect-wallet"
+            className="shrink-0 rounded-lg border border-primary-500 px-2.5 py-1 text-xs font-semibold text-primary-600"
+          >
+            연결하기
+          </Link>
+        </div>
+      ) : null}
 
       <section className="mt-6" aria-label="국가 선택">
         {/* 12개 룰셋을 세로로 쌓으면 첫 화면이 칩으로 다 찬다 — 가로 스크롤 스트립으로 접는다. */}
@@ -691,17 +728,29 @@ export function TaxSimulator({
         <div className="mt-3 grid gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-medium text-zinc-700">이벤트 출처</span>
-          {(["scenario", "wallet"] as const).map((option) => (
-            <button
-              key={option}
-              type="button"
-              aria-pressed={source === option}
-              className={`rounded-lg border px-3 py-1.5 text-sm ${source === option ? "border-primary-500 text-primary-600" : "border-zinc-300 text-zinc-600"}`}
-              onClick={() => setSource(option)}
-            >
-              {option === "scenario" ? "데모 시나리오" : "내 지갑 이벤트"}
-            </button>
-          ))}
+          {(["scenario", "wallet"] as const).map((option) =>
+            // 지갑 미연결 상태에서 "내 지갑 이벤트"는 고를 수 있는 소스가 아니다.
+            // 눌러도 소스가 바뀌는 척하지 않고, 실제로 되는 일(지갑 연결)로 보낸다.
+            option === "wallet" && !walletConnected ? (
+              <Link
+                key={option}
+                href="/connect-wallet"
+                className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm text-zinc-400"
+              >
+                내 지갑 이벤트 — 연결 필요
+              </Link>
+            ) : (
+              <button
+                key={option}
+                type="button"
+                aria-pressed={source === option}
+                className={`rounded-lg border px-3 py-1.5 text-sm ${source === option ? "border-primary-500 text-primary-600" : "border-zinc-300 text-zinc-600"}`}
+                onClick={() => setSource(option)}
+              >
+                {option === "scenario" ? "데모 시나리오" : "내 지갑 이벤트"}
+              </button>
+            ),
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-medium text-zinc-700">과세연도</span>

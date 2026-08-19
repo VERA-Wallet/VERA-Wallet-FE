@@ -3,6 +3,7 @@ import { summaryProvider } from "@/lib/composition-root.server";
 import { getSessionCookieHeaderForEventReader, requireCompletedOnboarding, requireDidSession } from "@/lib/dal";
 import { isGroundedPeriod } from "@/lib/period";
 import { taxYearFor } from "@/lib/tax/engine";
+import { isMockApiMode } from "@/lib/api-mode";
 import { TaxSimulator } from "@/components/tax/tax-simulator";
 
 /**
@@ -13,7 +14,7 @@ import { TaxSimulator } from "@/components/tax/tax-simulator";
  */
 async function latestActivityTaxYear(countryCode: string): Promise<number | undefined> {
   // ON 모드에서는 대시보드와 같은 BE 이벤트를 봐야 한다. FE mock 요약을 쓰면 세금 화면만 다른 연도를 연다.
-  if (process.env.VERAWALLET_BACKEND_ORIGIN) {
+  if (!isMockApiMode()) {
     const { readBeWalletEvents } = await import("@/lib/adapters/http/event-repository.server");
     const events = await readBeWalletEvents(await getSessionCookieHeaderForEventReader());
     // 문자열 비교는 offset이 섞인 RFC3339에서 순서를 틀린다. 시각으로 비교한다.
@@ -28,18 +29,32 @@ async function latestActivityTaxYear(countryCode: string): Promise<number | unde
 }
 
 export default async function TaxPage() {
-  const session = await requireCompletedOnboarding();
+  const completed = await requireCompletedOnboarding();
   // 거주국은 DID 클레임에서 확정됐다. 화면이 "어느 나라?"부터 묻지 않도록 서버에서 내려준다.
   // 연도도 서버에서 내려준다. 클라이언트가 따로 시계를 읽으면
   // 연말 자정 경계에서 서버 HTML과 hydration 결과가 갈린다.
-  if (session) {
+  if (completed) {
     return (
       <TaxSimulator
-        countryCode={session.countryCode}
+        countryCode={completed.countryCode}
         currentYear={new Date().getFullYear()}
-        latestActivityYear={await latestActivityTaxYear(session.countryCode)}
+        latestActivityYear={await latestActivityTaxYear(completed.countryCode)}
       />
     );
   }
-  redirect(await requireDidSession() ? "/connect-wallet" : "/login");
+
+  // 지갑 미연결(DID-only)도 이 화면을 데모로 쓸 수 있다 — 데모 시나리오는 지갑 없이 성립한다.
+  // latestActivityTaxYear는 지갑 이벤트를 조회하므로 여기서는 부르지 않는다. ON 모드에서
+  // bound-wallet 404가 나므로, 대시보드 빈 상태와 같은 원칙으로 네트워크 자체를 건드리지 않는다.
+  const didSession = await requireDidSession();
+  if (didSession) {
+    return (
+      <TaxSimulator
+        countryCode={didSession.countryCode}
+        currentYear={new Date().getFullYear()}
+        walletConnected={false}
+      />
+    );
+  }
+  redirect("/login");
 }
