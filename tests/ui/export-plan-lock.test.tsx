@@ -50,15 +50,28 @@ beforeEach(() => {
 });
 
 describe("내보내기 플랜 잠금", () => {
-  it("무료 한도까지는 잠그지 않는다", async () => {
+  it("무료 한도까지는 잠그지 않지만 플랜으로 가는 길은 열어 둔다", async () => {
     renderWith(FREE_EXPORT_EVENT_LIMIT, null);
 
     const csv = await screen.findByRole("button", { name: /CSV 다운로드/ });
     await waitFor(() => expect(csv).not.toBeDisabled());
     expect(screen.getByRole("button", { name: /XLSX 다운로드/ })).not.toBeDisabled();
-    expect(screen.queryByRole("link", { name: /플랜 보기/ })).toBeNull();
+    // 플랜은 탭에 없다 — 여기서도 감추면 앱 안에서 도달할 길이 사라진다.
+    expect(await screen.findByRole("link", { name: /플랜 보기/ })).toHaveAttribute("href", "/plan");
+    // 잠기지 않았는데 "필요합니다"라고 하면 쓰지도 못할 결제를 재촉하는 셈이다.
+    expect(screen.getByText("무료 플랜 100건까지 · 현재 100건")).toBeInTheDocument();
     // 파일 행 수와 과금 건수는 다를 수 있다. 캡션은 자기 기준과 자기 수를 함께 말해야 한다.
     expect(screen.getByText(/건수는 계산 대상 이벤트 기준입니다 · 현재 100건/)).toBeInTheDocument();
+  });
+
+  it("건수를 아직 모르면 안내도 하지 않는다 — 근거 없는 한도 표기는 하지 않는다", () => {
+    state.plan = null;
+    ports.list.mockResolvedValue({ items: [], nextCursor: null });
+    ports.getProof.mockResolvedValue(null);
+    ports.getSummary.mockReturnValue(new Promise(() => {}));
+    render(<ExportView />);
+
+    expect(screen.queryByRole("link", { name: /플랜 보기/ })).toBeNull();
   });
 
   it("한도를 넘고 플랜이 없으면 다운로드만 잠기고 플랜으로 가는 문이 열린다", async () => {
@@ -66,7 +79,7 @@ describe("내보내기 플랜 잠금", () => {
 
     const banner = await screen.findByRole("link", { name: /플랜 보기/ });
     expect(banner).toHaveAttribute("href", "/plan");
-    expect(screen.getByText(/무료 100건까지 · 현재 250건 — 플랜이 필요합니다/)).toBeInTheDocument();
+    expect(screen.getByText("무료 플랜 100건까지 · 현재 250건 — 플랜이 필요합니다")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "🔒 CSV 다운로드" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "🔒 XLSX 다운로드" })).toBeDisabled();
     // 미리보기는 잠기지 않는다 — 기간·건수 표기는 그대로 보인다.
@@ -79,7 +92,8 @@ describe("내보내기 플랜 잠금", () => {
     const csv = await screen.findByRole("button", { name: /CSV 다운로드/ });
     await waitFor(() => expect(csv).not.toBeDisabled());
     expect(csv.textContent).not.toContain("🔒");
-    expect(screen.queryByRole("link", { name: /플랜 보기/ })).toBeNull();
+    // 결제한 사용자에게도 남은 한도는 알려 준다 — 다만 재촉 문구는 붙지 않는다.
+    expect(screen.getByText("플러스 플랜 1,000건까지 · 현재 250건")).toBeInTheDocument();
   });
 
   it("활성 플랜의 한도마저 넘으면 상위 플랜을 가리킨다", async () => {

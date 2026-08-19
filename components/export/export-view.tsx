@@ -11,7 +11,7 @@ import { createExportCsv } from "@/lib/export/csv";
 import { createExportXlsx } from "@/lib/export/xlsx";
 import type { SummaryDTO } from "@/lib/http/dto";
 import { periodFilePart, periodLabel } from "@/lib/period";
-import { FREE_EXPORT_EVENT_LIMIT, exportEventAllowance, planDefinition, usePlan } from "@/lib/plan/use-plan";
+import { exportEventAllowance, planDefinition, usePlan } from "@/lib/plan/use-plan";
 import type { NormalizedEvent } from "@/lib/schema/normalized-event";
 
 function shortHash(value: string): string {
@@ -58,6 +58,7 @@ export function ExportView() {
   // 스팸 토큰 제외는 아직 요약이 말해 주지 않는다. `ignored` 같은 필드가 생기면 이 수에서 빼야 한다.
   const billableCount = summary?.computableEventCount ?? 0;
   const allowance = exportEventAllowance(plan);
+  const planName = plan === null ? "무료" : planDefinition(plan.tier).name;
   // 요약을 아직 못 읽었으면 잠그지 않는다 — 건수를 모르는 상태의 자물쇠는 근거 없는 자물쇠다.
   const locked = summary !== null && billableCount > allowance;
 
@@ -80,18 +81,21 @@ export function ExportView() {
           <button className="rounded-xl bg-primary-500 py-3.5 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50" disabled={!ready || locked} type="button" onClick={() => download(createExportCsv(events), "text/csv;charset=utf-8", `verawallet-명세-${filenamePeriod}.csv`)}>{locked ? "🔒 " : ""}CSV 다운로드</button>
           <button className="rounded-xl border border-primary-500 py-3.5 font-semibold text-primary-600 disabled:cursor-not-allowed disabled:opacity-50" disabled={!ready || !summary || locked} type="button" onClick={() => summary && download(createExportXlsx(events, summary), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", `verawallet-명세-${filenamePeriod}.xlsx`)}>{locked ? "🔒 " : ""}XLSX 다운로드</button>
         </div>
-        {locked && (
+        {summary !== null && (
           // 잠기는 것은 다운로드뿐이다 — 위의 기간·건수와 아래 앵커링 증명은 그대로 보인다.
+          // 잠기지 않았을 때도 남겨 둔다: 플랜은 탭에 없어서 이 줄이 앱 안의 유일한 진입로다.
+          // 대신 톤은 상태를 따라간다 — 열려 있는데 경고색을 쓰면 없는 문제를 있다고 말하는 셈이다.
           <Link
             href="/plan"
-            className="mt-3 flex items-center justify-between gap-3 rounded-card border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"
+            className={`mt-3 flex items-center justify-between gap-3 rounded-card border p-3 text-sm ${
+              locked ? "border-amber-200 bg-amber-50 text-amber-900" : "border-zinc-200 bg-zinc-50 text-zinc-600"
+            }`}
           >
             <span>
-              {plan === null
-                ? `무료 ${FREE_EXPORT_EVENT_LIMIT.toLocaleString("ko-KR")}건까지 · 현재 ${billableCount.toLocaleString("ko-KR")}건 — 플랜이 필요합니다`
-                : `${planDefinition(plan.tier).name} 플랜 ${allowance.toLocaleString("ko-KR")}건까지 · 현재 ${billableCount.toLocaleString("ko-KR")}건 — 상위 플랜이 필요합니다`}
+              {`${planName} 플랜 ${allowance.toLocaleString("ko-KR")}건까지 · 현재 ${billableCount.toLocaleString("ko-KR")}건`}
+              {locked && (plan === null ? " — 플랜이 필요합니다" : " — 상위 플랜이 필요합니다")}
             </span>
-            <span className="shrink-0 font-semibold underline">플랜 보기</span>
+            <span className={`shrink-0 font-semibold underline ${locked ? "" : "text-primary-600"}`}>플랜 보기</span>
           </Link>
         )}
       </Card>
