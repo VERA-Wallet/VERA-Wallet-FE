@@ -31,7 +31,9 @@ jobs:
           version: 10
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # jsdom 30이 끌어오는 undici 8은 `^22.22.2 || ^24.15.0 || >=26.0.0`을 요구한다.
+          # Node 20에는 `webidl.util.markAsUncloneable`이 없어 vitest 워커가 통째로 못 뜬다.
+          node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: npx tsc --noEmit
@@ -56,7 +58,9 @@ jobs:
           version: 10
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # jsdom 30이 끌어오는 undici 8은 `^22.22.2 || ^24.15.0 || >=26.0.0`을 요구한다.
+          # Node 20에는 `webidl.util.markAsUncloneable`이 없어 vitest 워커가 통째로 못 뜬다.
+          node-version: 22
           cache: pnpm
           cache-dependency-path: fe/pnpm-lock.yaml
       - name: Install FE deps
@@ -96,7 +100,9 @@ jobs:
           version: 10
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # jsdom 30이 끌어오는 undici 8은 `^22.22.2 || ^24.15.0 || >=26.0.0`을 요구한다.
+          # Node 20에는 `webidl.util.markAsUncloneable`이 없어 vitest 워커가 통째로 못 뜬다.
+          node-version: 22
           cache: pnpm
           cache-dependency-path: fe/pnpm-lock.yaml
       - name: Install FE deps

@@ -222,6 +222,10 @@ async function buildBackend(): Promise<void> {
   for (const [command, args, cwd] of [
     ["pnpm", ["--filter", "@vera/interfaces", "build"], BE_CWD],
     ["pnpm", ["--filter", "@vera/tax-engine", "build"], BE_CWD],
+    // `@prisma/client`는 generate 전까지 타입이 비어 있다 — `PrismaClient`조차 export되지 않아
+    // 아래 tsc가 TS2305로 죽는다. 개발자 머신에서는 설치 훅이 이미 돌려 놓기 때문에 이 단계가
+    // 없어도 통과하지만, 깨끗한 CI 체크아웃에서는 여기서만 생성된다. DB 접속은 하지 않는다.
+    ["pnpm", ["--filter", "@vera/backend", "prisma:generate"], BE_CWD],
     ["npx", ["tsc", "-p", "tsconfig.build.json"], backendDir],
   ] as const) {
     await runToCompletion(command, [...args], cwd);
