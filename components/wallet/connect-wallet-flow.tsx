@@ -13,7 +13,7 @@ import { authClient as compositionAuthClient } from "@/lib/composition-root.clie
 import { AuthClientError, type AuthClient } from "@/lib/ports/auth-client";
 
 // SIWE 오류는 status가 아니라 error code로 분기한다.
-// BE와 FE mock의 status가 다르기 때문이다(재사용 409/422, 불일치 400/422). 모든 400·409를 한 문구로 뭉개면
+// BE와 FE mock의 status는 이제 정렬됐다(재사용 409, 불일치 400). code 분기는 원인 구분을 위해 유지한다. 모든 400·409를 한 문구로 뭉개면
 // challenge_not_found나 요청 형식 오류까지 "인증 요청 불일치"가 되어 원인이 사라진다.
 // AuthClientError.code와 decodeResponse의 error 스키마 모두 code를 필수 문자열로 요구하므로 code는 항상 존재한다.
 const SIWE_CHALLENGE_MISMATCH_CODES = new Set(["already-consumed", "challenge_mismatch"]);

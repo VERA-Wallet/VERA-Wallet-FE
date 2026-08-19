@@ -8,6 +8,14 @@ import type { ErrorEnvelope, SuccessEnvelope } from "@/lib/http/envelope";
 
 export function success<T>(data: T): SuccessEnvelope<T> { return { data, meta: { provenance: "mock", generatedAt: new Date().toISOString() } }; }
 export function error(code: string, message: string, details?: unknown): ErrorEnvelope { return { error: { code, message, ...(details === undefined ? {} : { details }) } }; }
+// BE JwtAuthGuard 401 계약(passport 기본 메시지).
+export function unauthorizedResponse(): Response {
+  return Response.json(error("unauthorized", "Unauthorized"), { status: 401 });
+}
+// BE listOrSync 지갑 미바인딩 404 계약.
+export function walletNotBoundResponse(): Response {
+  return Response.json(error("not_found", "A bound wallet is required before sync."), { status: 404 });
+}
 // Route Handler에는 error boundary가 없어 그대로 던지면 500 HTML이 되므로 JSON 오류로 변환한다.
 export async function withSessionInfrastructureError<T>(read: () => Promise<T>): Promise<T | Response> {
   try {

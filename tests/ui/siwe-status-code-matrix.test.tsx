@@ -29,12 +29,12 @@ function authClientRejecting(error: AuthClientError): AuthClient {
   };
 }
 
-// (status, code) 행렬. status만 보면 BE(409/400)와 FE mock(422)이 갈라지므로 code가 판정 기준이다.
+// FE mock도 이제 BE와 같은 status다 — code 기준 분기는 원인 구분 정확성을 위해 유지
 const matrix: Array<[string, number, string, string]> = [
   ["BE replay", 409, "already-consumed", "인증 요청 불일치"],
   ["BE challenge mismatch", 400, "challenge_mismatch", "인증 요청 불일치"],
-  ["OFF mock replay", 422, "already-consumed", "인증 요청 불일치"],
-  ["OFF mock mismatch", 422, "challenge_mismatch", "인증 요청 불일치"],
+  ["OFF mock replay", 409, "already-consumed", "인증 요청 불일치"],
+  ["OFF mock mismatch", 400, "challenge_mismatch", "인증 요청 불일치"],
   ["challenge not found", 400, "challenge_not_found", "인증 요청을 찾을 수 없습니다. 다시 시도해 주세요."],
   ["expired challenge", 410, "challenge_expired", "만료됨 — 다시 시도"],
   ["invalid signature", 401, "invalid_signature", "서명을 확인할 수 없습니다."],

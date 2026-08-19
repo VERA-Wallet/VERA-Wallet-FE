@@ -46,7 +46,7 @@ describe("BE authentication contract", () => {
   });
 
   it("returns 201 for the authenticated SIWE nonce POST", async () => {
-    // POST 계열이 전부 201이라는 사실을 nonce에서도 고정한다 — FE mock은 200이었다.
+    // POST 계열이 전부 201이라는 사실을 nonce에서도 고정한다 — FE mock도 201으로 동일하다.
     const presented = await fetch(`${origin}/api/auth/did/present`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -68,7 +68,7 @@ describe("BE authentication contract", () => {
   });
 
   it("returns an anonymous session inside the response envelope", async () => {
-    // FE mock과 달리 BE는 익명도 200 envelope로 표현하므로 data 안쪽을 읽는 계약을 고정한다.
+    // FE mock도 익명 세션을 200 envelope로 표현하므로 양쪽의 응답 구조가 동일하다.
     const response = await fetch(`${origin}/api/auth/session`);
     expect(response.status).toBe(200);
     expect((await response.json() as SessionEnvelope).data).toEqual({ didVerified: false, countryCode: null, walletAddress: null, chainId: null });
@@ -93,7 +93,7 @@ describe("BE authentication contract", () => {
   });
 
   it("rejects events before a wallet is bound and exposes its BE error code", async () => {
-    // FE mock 이벤트는 지갑 미바인딩 오류를 재현하지 않으므로, 실제 IndexerService의 404 경계를 고정한다.
+    // FE mock 이벤트도 지갑 미바인딩 오류를 동일한 404 경계로 재현하므로, 양쪽 계약을 함께 고정한다.
     const presented = await fetch(`${origin}/api/auth/did/present`, {
       method: "POST",
       headers: { "content-type": "application/json" },

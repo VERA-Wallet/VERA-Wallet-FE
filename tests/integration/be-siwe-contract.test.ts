@@ -58,7 +58,7 @@ async function verify(cookie: string, message: string, signature: string) {
   return { status: response.status, body: await response.json() as { error?: { code?: string } } };
 }
 
-// BE의 raw SIWE 계약. FE mock과 status가 다르므로(422 vs 409/400) 한 스펙에 섞지 않고 여기서만 고정한다.
+// BE의 raw SIWE 계약. 이제 FE mock도 동일(409/400·consume-먼저)라 이 스펙은 rewrite 경유 raw BE 관측을 고정한다.
 describe.sequential("BE SIWE raw contract through the rewrite", () => {
   it("requires a DID session before issuing a nonce", async () => {
     const response = await fetch(`${FE}/api/auth/nonce`, {
@@ -88,7 +88,7 @@ describe.sequential("BE SIWE raw contract through the rewrite", () => {
     expect(first.status).toBe(201);
 
     const replay = await verify(cookie, message, signature);
-    // FE mock은 422였다. BE는 ConflictException이라 409다.
+    // FE mock도 이제 409/400으로 정렬됨(정렬 이전엔 422). BE는 ConflictException이라 409다.
     expect(replay.status).toBe(409);
     expect(replay.body.error?.code).toBe("already-consumed");
   });
@@ -100,7 +100,7 @@ describe.sequential("BE SIWE raw contract through the rewrite", () => {
     const message = siwe(nonce, account.address, { domain: "attacker.example", uri: "https://attacker.example/login" });
 
     const mismatch = await verify(cookie, message, await account.signMessage({ message }));
-    // FE mock은 422였다. BE는 BadRequestException이라 400이다.
+    // FE mock도 이제 409/400으로 정렬됨(정렬 이전엔 422). BE는 BadRequestException이라 400이다.
     expect(mismatch.status).toBe(400);
     expect(mismatch.body.error?.code).toBe("challenge_mismatch");
   });
@@ -126,7 +126,7 @@ describe.sequential("BE SIWE raw contract through the rewrite", () => {
     const message = siwe(nonce, account.address);
     expect((await verify(cookie, message, await account.signMessage({ message }))).status).toBe(201);
 
-    // FE mock은 DID 재제시로 지갑 클레임을 지웠다. BE는 지우지 않는다 — 알려진 모드 차이이므로 사실대로 고정한다.
+    // FE mock과 BE 양쪽 모두 지갑 클레임을 유지한다.
     const reissued = await presentDid();
     const session = await fetch(`${FE}/api/auth/session`, { headers: { cookie: reissued } });
     const body = await session.json() as { data: { walletAddress: string | null } };

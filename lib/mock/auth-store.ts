@@ -12,9 +12,10 @@ export class MockAuthStore implements SiweChallengeStore, SessionStore {
 
   async issue(record: SiweChallengeRecord) { this.challenges.set(record.jti, record); }
   async peek(jti: string) { return this.challenges.get(jti) ?? null; }
-  async consume(jti: string): Promise<"ok" | "not-found" | "expired" | "already-consumed"> {
+  async consume(jti: string, sessionId: string): Promise<"ok" | "not-found" | "expired" | "already-consumed"> {
     const record = this.challenges.get(jti);
     if (!record) return "not-found";
+    if (record.sessionId !== sessionId) return "not-found";
     if (record.expiresAtMs <= Date.now()) return "expired";
     if (record.consumedAt !== null) return "already-consumed";
     record.consumedAt = Date.now();

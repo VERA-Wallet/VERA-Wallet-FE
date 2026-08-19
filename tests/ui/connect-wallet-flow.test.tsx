@@ -40,11 +40,11 @@ describe("wallet connection SIWE flow", () => {
     expect(push).toHaveBeenCalledWith("/dashboard");
   });
 
-  it("shows the mismatch message for a 422 verification response", async () => {
+  it("shows the mismatch message for a 400 verification response", async () => {
     const port = walletPort();
     const auth = authClient();
     vi.mocked(auth.requestNonce).mockResolvedValue({ nonce: "nonce12345", domain: "wallet.example", uri: "https://wallet.example", chainId: 8453, issuedAt: "2026-07-30T00:00:00.000Z", expiresAtMs: 1785373200000 });
-    vi.mocked(auth.verify).mockRejectedValue(new AuthClientError(422, "challenge_mismatch", "Challenge does not match signed message."));
+    vi.mocked(auth.verify).mockRejectedValue(new AuthClientError(400, "challenge_mismatch", "Challenge does not match signed message."));
     render(<ConnectWalletFlow walletPort={port} authClient={auth} />);
     fireEvent.click(screen.getByRole("button", { name: "SIWE 서명으로 계속" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("인증 요청 불일치");

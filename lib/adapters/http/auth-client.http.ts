@@ -18,7 +18,7 @@ async function request<T>(path: string, init: RequestInit, schema: z.ZodType<T>)
 export class HttpAuthClient implements AuthClient {
   requestNonce(input: { chainId: number }) { return request("/api/auth/nonce", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) }, nonceSchema); }
   verify(input: { message: string; signature: string }) { return request("/api/auth/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) }, verifiedSchema); }
-  presentDid(input: { country: "KR" | "US" | "UK" | "DE" }) { return request("/api/auth/did/present", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) }, didSchema); }
+  presentDid(input: { country: "KR" | "US" | "UK" | "DE"; cxToken?: string }) { return request("/api/auth/did/present", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) }, didSchema); }
   async logout() {
     const response = await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
     if (!response.ok) throw new AuthClientError(response.status, "logout_failed", "Failed to end the session.");

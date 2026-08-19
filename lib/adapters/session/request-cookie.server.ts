@@ -1,6 +1,7 @@
 import "server-only";
 
 import { cookies } from "next/headers";
+import { backendOrigin } from "@/lib/api-mode";
 
 const ACCESS_TOKEN_COOKIE_NAME = "vw_access_token";
 
@@ -35,13 +36,13 @@ export async function resolveRawCookieHeader(request?: Request): Promise<string 
 /** 설정 누락은 네트워크 장애가 아니다. 세션 리더가 이걸 "network"로 뭉개면 원인 진단이 어긋난다. */
 export class BackendOriginNotConfiguredError extends Error {
   constructor() {
-    super("VERAWALLET_BACKEND_ORIGIN이 설정되지 않은 상태에서 beFetch가 호출됐다.");
+    super("VERAWALLET_BACKEND_ORIGIN이 없거나 VERAWALLET_MOCK_MODE=true인 상태에서 beFetch가 호출됐다.");
     this.name = "BackendOriginNotConfiguredError";
   }
 }
 
 export async function beFetch(path: string, opts: { cookieHeader?: string; timeoutMs?: number; init?: RequestInit } = {}): Promise<Response> {
-  const origin = process.env.VERAWALLET_BACKEND_ORIGIN;
+  const origin = backendOrigin();
   if (!origin) throw new BackendOriginNotConfiguredError();
 
   const { cookieHeader, timeoutMs = 2000, init } = opts;

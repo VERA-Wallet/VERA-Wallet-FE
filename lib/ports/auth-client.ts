@@ -15,7 +15,8 @@ export class AuthClientError extends Error {
 export interface AuthClient {
   requestNonce(input: { chainId: number }): Promise<AuthNonce>;
   verify(input: { message: string; signature: string }): Promise<{ walletAddress: string; chainId: number }>;
-  presentDid(input: { country: "KR" | "US" | "UK" | "DE" }): Promise<DidPresentation>;
+  /** cxToken: OmniOne CX 표준인증창 성공 콜백의 일회용 토큰. 없으면 mock 프레젠테이션으로 동작한다. */
+  presentDid(input: { country: "KR" | "US" | "UK" | "DE"; cxToken?: string }): Promise<DidPresentation>;
   logout(): Promise<void>;
   getSession(): Promise<AuthSession>;
 }
