@@ -27,8 +27,18 @@ describe("체인 표식", () => {
     expect(new Set(colors).size).toBe(NAMED_CHAINS.length);
   });
 
+  it("이름을 아는 체인은 원 위에 공식 마크를 얹는다", () => {
+    // 색만 있고 마크가 없으면 다섯 체인이 색점 다섯 개가 되어, 색을 못 읽는 화면에서 전부 같아진다.
+    for (const chainId of NAMED_CHAINS) {
+      expect(iconOf(chainId).querySelectorAll("path").length, String(chainId)).toBeGreaterThan(0);
+    }
+  });
+
   it("모르는 체인은 브랜드를 지어내지 않고 중립색으로 자리를 지킨다", () => {
-    expect(iconOf(999_999).querySelector("circle")?.getAttribute("fill")).toBe("#A1A1AA");
+    const unknown = iconOf(999_999);
+    expect(unknown.querySelector("circle")?.getAttribute("fill")).toBe("#A1A1AA");
+    // 마크가 없다는 것이 "모른다"의 표현이다 — 아무 체인의 도형이나 빌려 쓰지 않는다.
+    expect(unknown.querySelectorAll("path")).toHaveLength(0);
   });
 
   it("스크린리더에서 숨긴다 — 체인 이름은 옆의 글자가 말한다", () => {
