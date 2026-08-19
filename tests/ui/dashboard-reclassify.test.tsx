@@ -3,7 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
 import { assetLabel, formatSignedTokenAmount } from "@/lib/format";
-import { createNormalizedEventFixtures } from "@/lib/mock/fixtures";
+import { createNormalizedEventFixtures } from "@/tests/fixtures/generated/normalized-events";
 import type { NormalizedEvent } from "@/lib/schema/normalized-event";
 
 const ports = vi.hoisted(() => ({ list: vi.fn(), getSummary: vi.fn(), reclassify: vi.fn(), getById: vi.fn() }));

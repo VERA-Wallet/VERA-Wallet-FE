@@ -13,6 +13,7 @@ import { fresh, freshNotice, type FreshState } from "@/lib/queries/fresh";
 import { AMOUNT_KIND_LABEL, GROUP_SHORT_LABEL, JudgmentBadge } from "@/components/ui/judgment-badge";
 import { MockProvenanceChip } from "@/components/ui/mock-provenance-chip";
 import { SummaryCard } from "@/components/ui/summary-card";
+import { useHideBalances } from "@/lib/privacy/use-hide-balances";
 import { assetLabel, chainLabel, explorerTxUrl, formatDate, formatFiat, formatFiatExact, formatSignedTokenAmount, formatTokenAmount, nativeSymbol, shortHash, UTC_NOTICE } from "@/lib/format";
 import { eventSummaryQueryKey, useEventDetail, useEventList, useEventSummary, useReclassify } from "@/lib/queries/events";
 import { useTaxEstimate } from "@/lib/queries/tax";
@@ -99,13 +100,13 @@ function OtherCountryJudgments({
   };
 
   return (
-    <section className="mt-4 rounded-lg bg-zinc-50 p-3">
-      <h3 className="text-sm font-semibold text-zinc-700">다른 나라였다면</h3>
+    <details className="mt-4 rounded-lg bg-zinc-50 p-3">
+      <summary className="cursor-pointer text-sm font-semibold text-zinc-700 marker:text-zinc-400">다른 나라였다면</summary>
       <div className="mt-2 space-y-2">
         {renderRows(firstFresh.data, firstRows, firstCountry, firstFresh.state)}
         {renderRows(secondFresh.data, secondRows, secondCountry, secondFresh.state)}
       </div>
-    </section>
+    </details>
   );
 }
 
@@ -367,8 +368,8 @@ function EventDetails({
         </section>
       )}
       {marginalContribution !== undefined ? (
-        <section className="mt-4 rounded-lg bg-zinc-50 p-3">
-          <h3 className="text-sm font-semibold text-zinc-700">이 거래가 없었다면</h3>
+        <details className="mt-4 rounded-lg bg-zinc-50 p-3">
+          <summary className="cursor-pointer text-sm font-semibold text-zinc-700 marker:text-zinc-400">이 거래가 없었다면</summary>
           <p className="mt-2 text-sm text-zinc-700">
             {isZero(marginalContribution)
               ? "총액이 그대로입니다 — 부담에 영향 없음"
@@ -377,15 +378,15 @@ function EventDetails({
                 : formatFiat(marginalContribution, currency)}
           </p>
           <p className="mt-1 text-sm text-zinc-500">부담을 건별로 나눠 넣을 수 없어, 이 거래를 뺀 경우의 차이를 보입니다.</p>
-        </section>
+        </details>
       ) : null}
       {/* 중복 레코드는 자기 판정이 없다. 나라별 비교도 id로 잡히므로 첫 건의 결과를 물려받으면 안 된다. */}
       {isDuplicate ? null : (
         <OtherCountryJudgments eventId={event.id} countryCode={resolvedCountryCode} taxYear={resolvedTaxYear} grounded={taxYearGrounded ?? true} />
       )}
       {history.length > 0 ? (
-        <section className="mt-4 rounded-lg bg-zinc-50 p-3">
-          <h3 className="text-sm font-semibold text-zinc-700">재분류 이력</h3>
+        <details className="mt-4 rounded-lg bg-zinc-50 p-3">
+          <summary className="cursor-pointer text-sm font-semibold text-zinc-700 marker:text-zinc-400">재분류 이력</summary>
           <ul className="mt-2 space-y-1 text-sm text-zinc-600">
             {history.map((entry, index) => (
               <li key={`${entry.overridden_at}-${index}`}>
@@ -394,7 +395,7 @@ function EventDetails({
               </li>
             ))}
           </ul>
-        </section>
+        </details>
       ) : null}
       <section className="mt-6 border-t border-zinc-200 pt-5">
         <h3 className="font-bold text-zinc-900">재분류</h3>
@@ -419,6 +420,7 @@ function EventRow({
   judgmentError,
   judgmentDisabled,
   isDuplicate,
+  hideBalances,
 }: {
   record: EventRecord;
   onSelect: () => void;
@@ -429,6 +431,8 @@ function EventRow({
   /** 기준 기간이 없어 판정을 아예 계산하지 않은 상태. "확인 중"과 구분해야 한다. */
   judgmentDisabled?: boolean;
   isDuplicate: boolean;
+  /** 잔액 가리기 모드. 수량은 가리되 자산 심볼·배지·건수는 정보로 남긴다. */
+  hideBalances?: boolean;
 }) {
   const { event } = record;
   // `이동 · 처분 아님`은 분류가 아니라 **판정** 주장이다. 판정이 보류면 이것도 단정하지 않는다.
@@ -456,25 +460,28 @@ function EventRow({
         {/* 마크는 라벨 밖에 둔다. 안에 넣으면 카드 제목 텍스트가 마크 글자까지 삼킨다. */}
         <AssetMark event={event} size={28} />
         <p data-event-label className={`min-w-0 truncate text-lg font-bold ${FLOW_TEXT_CLASS[assetFlow(event)]}`}>
-          {formatSignedTokenAmount(event)} · {assetLabel(event)}
+          {hideBalances ? "•••••" : formatSignedTokenAmount(event)} · {assetLabel(event)}
         </p>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
         {/* 확인 필요 사유는 `lib/review.ts` 하나만 말한다. 가격·분류를 각자 판정하면
-            카드가 "가격 확인 필요"라 하고 세금 화면은 "분류 확인 필요"라고 갈린다. */}
-        {needsReview(event)
+            카드가 "가격 확인 필요"라 하고 세금 화면은 "분류 확인 필요"라고 갈린다.
+            단, 중복·제외 배지도 앰버라 사유 배지를 따로 그리면 앰버가 2~3개 겹친다 —
+            그럴 땐 이 배지를 접고 사유를 아래 중복/제외 배지 라벨에 접합한다. */}
+        {needsReview(event) && !isDuplicate && !isExcluded
           ? <span className="rounded-full bg-amber-100 px-2.5 py-1 font-semibold text-amber-800">{reviewReason(event)}</span>
           : null}
         {/* 자산 딱지. 심볼은 사칭할 수 있으므로 대조 결과를 이름 옆에서 말한다.
             추정가·수동 분류는 이 거래를 **어떻게 처리했는가**의 문제라 상세에서만 말한다 —
-            목록에 다 깔면 정작 읽어야 할 판정 도장이 배지 더미에 묻힌다. */}
+            목록에 다 깔면 정작 읽어야 할 판정 도장이 배지 더미에 묻힌다.
+            문제만 배지로 만든다 — 검증됨은 기본값의 확인일 뿐이라 배지로 그리면 판정 도장만 묻는다. */}
         {event.asset_verified
-          ? <span className="rounded-full bg-emerald-100 px-2.5 py-1 font-semibold text-emerald-800">검증됨</span>
+          ? null
           : <span className="rounded-full bg-amber-100 px-2.5 py-1 font-semibold text-amber-800">미검증 토큰</span>}
         {isDuplicate
-          ? <JudgmentBadge group="excluded" label="중복 id · 확인 필요" />
+          ? <JudgmentBadge group="excluded" label={needsReview(event) ? `중복 id · ${reviewReason(event)}` : "중복 id · 확인 필요"} />
           : isExcluded
-            ? <JudgmentBadge group="excluded" label="계산 제외 · 확인 필요" />
+            ? <JudgmentBadge group="excluded" label={needsReview(event) ? `계산 제외 · ${reviewReason(event)}` : "계산 제외 · 확인 필요"} />
             : isInternalTransfer
               ? <JudgmentBadge group="deferred" label="이동 · 처분 아님" />
               : rows.length > 0
@@ -501,6 +508,8 @@ function EventRow({
 
 export function DashboardView({ countryCode }: { countryCode?: string }) {
   const queryClient = useQueryClient();
+  // 잔액 가리기. 서버는 저장소를 모르므로 첫 렌더는 항상 꺼짐이고, 마운트 후 저장값으로 복원한다.
+  const [hideBalances, setHideBalances] = useHideBalances();
   const [tab, setTab] = useState<Tab>("all");
   const [group, setGroup] = useState<JudgmentGroup | "excluded" | null>(null);
   // 체인 필터. null = 전체. 목록에 없는 체인이 걸리면 아래에서 무시한다.
@@ -633,11 +642,27 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
           {/* 빈 기간을 ` ~ `로 보이면 기간이 있는 것처럼 말하는 셈이다. */}
           {period ? <p className="mt-1 text-sm text-zinc-500">{periodLabel(period)}</p> : null}
         </div>
-        <MockProvenanceChip />
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          <MockProvenanceChip />
+          {/* 잔액만 가린다 — 배지·건수는 확인에 필요한 사실이지 금액이 아니므로 그대로 둔다. */}
+          <button
+            type="button"
+            aria-pressed={hideBalances}
+            className="text-xs font-medium text-zinc-500"
+            onClick={() => setHideBalances(!hideBalances)}
+          >
+            {hideBalances ? "금액 표시" : "금액 가리기"}
+          </button>
+        </div>
       </header>
       {/* 이 화면은 지갑 이력이 그린 선까지만 말한다. 세금 금액·판정 기준·계산의 한계는
           세금 탭 한 곳에서만 답한다 — 두 화면이 각자 금액을 말하면 어느 쪽이 최신인지 알 수 없다. */}
-      <FlowChart events={items.map((item) => item.event)} state={eventsFresh.state} truncated={events.data?.truncated === true} />
+      <FlowChart
+        events={items.map((item) => item.event)}
+        state={eventsFresh.state}
+        truncated={events.data?.truncated === true}
+        hideBalances={hideBalances}
+      />
 
       <ExchangeLinkSummary />
 
@@ -650,7 +675,9 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
               ? "—"
               : summaryFresh.data.computableEventCount === 0
                 ? "계산할 거래 없음"
-                : formatFiat(summaryFresh.data.periodPnl, summaryFresh.data.currency)
+                : hideBalances
+                  ? "•••••"
+                  : formatFiat(summaryFresh.data.periodPnl, summaryFresh.data.currency)
           }
           supportingText={
             summaryFresh.data && summaryFresh.data.computableEventCount === 0
@@ -685,6 +712,15 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
             <span aria-hidden="true" className={`rounded-full px-1.5 py-0.5 text-xs font-semibold ${reviewItems.length > 0 ? "bg-amber-100 text-amber-800" : "bg-zinc-100 text-zinc-500"}`}>{reviewItems.length}</span>
           </button>
         </div>
+        {/* 두 배지 체계의 구분은 앱 안에서 한 곳이 말해야 한다 — 여기가 그 한 곳이다. */}
+        <details className="mt-3">
+          <summary className="cursor-pointer text-xs font-medium text-zinc-400">배지 뜻</summary>
+          <div className="mt-2 space-y-1 text-sm text-zinc-600">
+            <p>분류 — 온체인에서 일어난 일(수신·송금·교환·내부 이동·미분류). 상세에서 직접 바꿀 수 있습니다.</p>
+            <p>판정 — 이 거래가 세금 계산에서 어떻게 쓰였는지(과세·취득·비과세·이연 등). 거주국 룰셋이 정하며 나라마다 다릅니다.</p>
+            <p>앰버 배지 — 확인이 필요한 문제. 정상 상태는 배지를 달지 않습니다.</p>
+          </div>
+        </details>
         {/* 체인 필터. 여러 체인을 한 목록에 섞어 두면 "이 체인에서 무슨 일이 있었나"를 볼 방법이 없다.
             판정 필터와 독립이라 둘을 겹쳐 걸 수 있고, 각 칩의 건수는 상대 필터를 적용한 뒤의 수다. */}
         {chainFilters.length > 0 ? (
@@ -725,19 +761,31 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
           </div>
         ) : null}
         {tab === "review" ? (
-          <p className="mt-3 text-sm text-zinc-500">확인이 필요한 거래입니다. 가격·분류·수량을 확정하지 못한 건은 계산에서 빠집니다. 신뢰도만 낮은 건은 계산 대상 분류라면 그대로 들어갑니다(자기 지갑 간 이체는 애초에 처분이 아닙니다).</p>
+          <div className="mt-3 text-sm text-zinc-500">
+            <p>계산에서 빠졌거나 확인이 필요한 거래만 모았습니다.</p>
+            {/* 정직성 문장은 삭제가 아니라 강등이다 — 왜 가격·신뢰도가 다르게 취급되는지는 접어서 보존한다. */}
+            <details className="mt-1">
+              <summary className="cursor-pointer font-medium text-zinc-600 marker:text-zinc-400">어떤 기준인가</summary>
+              <p className="mt-1">가격·분류·수량을 확정하지 못한 건은 계산에서 빠집니다. 신뢰도만 낮은 건은 계산 대상 분류라면 그대로 들어갑니다(자기 지갑 간 이체는 애초에 처분이 아닙니다).</p>
+            </details>
+          </div>
         ) : null}
-        {events.data?.truncated ? (
-          <p role="status" className="mt-3 rounded-card border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-            거래가 너무 많아 일부만 불러왔습니다. 아래 목록과 그룹 건수는 전체가 아닙니다.{" "}
-            <button type="button" className="font-semibold underline" onClick={() => setMaxPages((pages) => pages + 50)}>더 불러오기</button>
-          </p>
-        ) : null}
-        {eventsStale && events.data ? (
-          <p role="status" className="mt-3 rounded-card border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-600">
-            {eventsFresh.state === "error"
-              ? "목록을 갱신하지 못했습니다. 아래 내용은 마지막으로 받은 상태입니다."
-              : "목록을 갱신하는 중입니다. 아래 내용은 마지막으로 받은 상태입니다."}
+        {/* 잘림·갱신 배너는 둘 다 앰버·회색으로 목록 위를 겹겹이 덮었다. 실패 문구와 "더 불러오기"는
+            내용이지 부피가 아니므로 지우지 않고, 저채도 한 줄 노트로 부피만 강등한다. */}
+        {events.data?.truncated || (eventsStale && events.data) ? (
+          <p role="status" className="mt-3 border-l-2 border-zinc-200 pl-2 text-xs text-zinc-400">
+            {eventsStale && events.data
+              ? (eventsFresh.state === "error"
+                  ? "갱신하지 못했습니다 — 마지막으로 받은 상태 표시"
+                  : "갱신 중 — 마지막으로 받은 상태 표시")
+              : null}
+            {eventsStale && events.data && events.data?.truncated ? " · " : null}
+            {events.data?.truncated ? (
+              <>
+                일부만 불러옴{" "}
+                <button type="button" className="underline" onClick={() => setMaxPages((pages) => pages + 50)}>더 불러오기</button>
+              </>
+            ) : null}
           </p>
         ) : null}
         {/* 판정 상태는 목록 옆에서 말한다. 우선순위는 모든 표면에서 같다: disabled → error.
@@ -785,6 +833,7 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
                   judgmentError={judgments.isError}
                   judgmentDisabled={referencePeriod === null}
                   isDuplicate={isDuplicate}
+                  hideBalances={hideBalances}
                 />
               </Fragment>
             );

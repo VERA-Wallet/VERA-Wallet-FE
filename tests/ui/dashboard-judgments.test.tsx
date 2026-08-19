@@ -6,9 +6,9 @@ import { DashboardView } from "@/components/dashboard/dashboard-view";
 import { assetLabel, chainLabel, formatDate, formatFiat, formatSignedTokenAmount, formatTokenAmount, nativeSymbol, UTC_NOTICE } from "@/lib/format";
 import { isoDay } from "@/lib/period";
 import { FIXTURE_TAX_YEAR } from "@/tests/fixtures/tax-year";
-import { createNormalizedEventFixtures } from "@/lib/mock/fixtures";
-import { MockTaxEngine } from "@/lib/mock/tax-engine";
-import { MockEventStore } from "@/lib/mock/store";
+import { createNormalizedEventFixtures } from "@/tests/fixtures/generated/normalized-events";
+import { TaxEngineService } from "@/lib/tax/tax-engine-service.server";
+import { MockEventStore } from "@/tests/support/doubles/mock-event-store";
 import { deriveTaxEvents } from "@/lib/tax/derive";
 import { effectiveClassification as effectiveClassificationOf, needsReview, reviewReason } from "@/lib/review";
 import { computeTaxEstimate, taxYearFor } from "@/lib/tax/engine";
@@ -44,7 +44,7 @@ vi.mock("@/lib/composition-root.client", () => ({
 // 판정 소스를 **현재 목록**에 연동한다. 원본 events에 고정하면
 // 목록만 바꾼 테스트가 정착 후 옛 도장이 되돌아와도 통과해버린다.
 let currentEvents: NormalizedEvent[] = events;
-const engine = new MockTaxEngine(() => currentEvents);
+const engine = new TaxEngineService(() => currentEvents);
 
 function setListEvents(next: NormalizedEvent[]) {
   currentEvents = next;
@@ -64,7 +64,7 @@ ports.getById.mockImplementation(async (id: string) => ({
   version: 1,
   override_history: [],
 }));
-ports.estimate.mockImplementation(async (input: Parameters<MockTaxEngine["estimate"]>[0]) => engine.estimate(input));
+ports.estimate.mockImplementation(async (input: Parameters<TaxEngineService["estimate"]>[0]) => engine.estimate(input));
 
 let client0: QueryClient;
 
@@ -99,7 +99,7 @@ function resetPorts() {
     version: 1,
     override_history: [],
   }));
-  ports.estimate.mockImplementation(async (input: Parameters<MockTaxEngine["estimate"]>[0]) => engine.estimate(input));
+  ports.estimate.mockImplementation(async (input: Parameters<TaxEngineService["estimate"]>[0]) => engine.estimate(input));
 }
 
 // 테스트가 전역 목을 바꾸고 assertion 뒤에 되돌리면, 실패 한 번에 이후 전부가 오염된다.
@@ -140,7 +140,7 @@ describe("거래 탭이 세금 대신 판정 도장을 찍는다", () => {
   it("세금 금액은 내역 화면 어디에도 없다 — 그 자리에는 지갑 이력 그래프가 있다", async () => {
     // UI 계약은 엔진 구현과 분리한다. 같은 함수로 기대값을 만들면 엔진 결함이 함께 통과한다.
     const FIXED_CHARGE = "4242.42";
-    ports.estimate.mockImplementation(async (input: Parameters<MockTaxEngine["estimate"]>[0]) => {
+    ports.estimate.mockImplementation(async (input: Parameters<TaxEngineService["estimate"]>[0]) => {
       const base = await engine.estimate(input);
       return { ...base, totals: { ...base.totals, estimatedCharge: FIXED_CHARGE }, status: "SUPPORTED" as const };
     });
@@ -172,14 +172,17 @@ describe("거래 탭이 세금 대신 판정 도장을 찍는다", () => {
     expect(container.textContent).not.toContain("₩0");
   });
 
-  it("목록은 자산 검증 딱지만 두고 처리 방식 배지는 상세로 보낸다", async () => {
+  it("목록은 검증된 자산에 딱지를 남기지 않고 처리 방식 배지는 상세로 보낸다", async () => {
     renderDashboard("KR");
     // 픽스처 첫 건은 추정가이고, event-07은 사용자가 수동 분류한 건이다.
     const estimated = events.find((event) => event.price_status === "ESTIMATED")!;
     const overridden = events.find((event) => event.user_override !== null)!;
     const card = (await screen.findByText(rowLabel(estimated))).closest("button")!;
 
-    expect(within(card).getByText("검증됨")).toBeInTheDocument();
+    // 정상(검증됨)은 기본값의 확인이라 소음이다 — 문제만 배지로 만든다(B1).
+    // 픽스처는 전부 asset_verified: true이므로 목록에 "검증됨"·"미검증 토큰" 어느 쪽도 없어야 한다.
+    expect(within(card).queryByText("검증됨")).not.toBeInTheDocument();
+    expect(within(card).queryByText("미검증 토큰")).not.toBeInTheDocument();
     // 처리 방식(추정가·수동 분류)은 목록에서 빠지고 상세에서만 말한다.
     expect(within(card).queryByText("추정가")).not.toBeInTheDocument();
     expect(document.body.textContent ?? "").not.toContain("수동 분류됨");
@@ -441,7 +444,7 @@ describe("2차 리뷰 P1 경계", () => {
     const silent = cards.filter((card) => !/판정 확인 중|판정 불러오기 실패|이동 · 처분 아님|중복 id|계산 제외|기간 밖/.test(card.textContent ?? ""));
     expect(silent.map((card) => card.textContent)).toEqual([]);
     expect(cards.some((card) => /판정 확인 중/.test(card.textContent ?? ""))).toBe(true);
-    ports.estimate.mockImplementation(async (input: Parameters<MockTaxEngine["estimate"]>[0]) => engine.estimate(input));
+    ports.estimate.mockImplementation(async (input: Parameters<TaxEngineService["estimate"]>[0]) => engine.estimate(input));
   });
 });
 
@@ -529,7 +532,7 @@ describe("3차 리뷰 P1 경계", () => {
     expect(silentOnError.map((card) => card.textContent)).toEqual([]);
     expect(cards.some((card) => /판정 불러오기 실패/.test(card.textContent ?? ""))).toBe(true);
     expect(cards.some((card) => /판정 확인 중/.test(card.textContent ?? ""))).toBe(false);
-    ports.estimate.mockImplementation(async (input: Parameters<MockTaxEngine["estimate"]>[0]) => engine.estimate(input));
+    ports.estimate.mockImplementation(async (input: Parameters<TaxEngineService["estimate"]>[0]) => engine.estimate(input));
   });
 });
 
@@ -588,7 +591,7 @@ describe("그룹 칩 건수가 실제 카드 수와 같은가", () => {
     await screen.findByText(/세금 판정을 불러오지 못해/, undefined, { timeout: 3000 });
     // 필터를 유지하면 빈 목록만 남아 원인을 알 수 없다.
     expect(container.querySelectorAll("section .mt-3.grid.gap-3 > button").length).toBeGreaterThan(0);
-    ports.estimate.mockImplementation(async (input: Parameters<MockTaxEngine["estimate"]>[0]) => engine.estimate(input));
+    ports.estimate.mockImplementation(async (input: Parameters<TaxEngineService["estimate"]>[0]) => engine.estimate(input));
   });
 });
 
@@ -617,7 +620,7 @@ describe("4차 리뷰 P1 경계 — 오래된 상태가 최신인 척하지 않�
     const card = screen.getByText(rowLabel(target)).closest("button")!;
     expect(card.textContent).toMatch(/판정 불러오기 실패/);
     expect(card.textContent).not.toMatch(/취득 · 원가 기록/);
-    ports.estimate.mockImplementation(async (input: Parameters<MockTaxEngine["estimate"]>[0]) => engine.estimate(input));
+    ports.estimate.mockImplementation(async (input: Parameters<TaxEngineService["estimate"]>[0]) => engine.estimate(input));
   });
 
   it("선택한 거래가 목록에서 사라지면 시트가 옛 데이터를 계속 보여주지 않는다", async () => {
@@ -811,7 +814,7 @@ describe("목록을 다 못 받았으면 그 사실을 말한다", () => {
       nextCursor: "same",
     }));
     renderDashboard("DE");
-    expect(await screen.findByText(/거래가 너무 많아 일부만 불러왔습니다/)).toBeInTheDocument();
+    expect(await screen.findByText(/일부만 불러옴/)).toBeInTheDocument();
     ports.list.mockResolvedValue({ items: events.map((event) => ({ event, version: 1 })), nextCursor: null });
   });
 });
@@ -895,7 +898,7 @@ describe("판정 보류 중에는 칩도 함께 보류한다", () => {
     expect(chips.map((chip) => chip.textContent)).toEqual([]);
     // 체인은 판정이 아니라 온체인 사실이라 판정을 기다리는 동안에도 고를 수 있다.
     expect(container.querySelector('[aria-label="체인 필터"]')).not.toBeNull();
-    ports.estimate.mockImplementation(async (input: Parameters<MockTaxEngine["estimate"]>[0]) => engine.estimate(input));
+    ports.estimate.mockImplementation(async (input: Parameters<TaxEngineService["estimate"]>[0]) => engine.estimate(input));
   });
 });
 
@@ -940,7 +943,7 @@ describe("남은 WATCH 항목 회귀", () => {
       return { items: events.slice(0, 2).map((event) => ({ event, version: 1 })), nextCursor: `c${calls}` };
     });
     renderDashboard("DE");
-    await screen.findByText(/거래가 너무 많아 일부만 불러왔습니다/);
+    await screen.findByText(/일부만 불러옴/);
     const before = calls;
     fireEvent.click(screen.getByRole("button", { name: "더 불러오기" }));
     // 경고만 띄우고 막으면 "전체 거래"가 거짓이다. 계속 받을 수 있어야 한다.
@@ -1096,7 +1099,7 @@ describe("3세대 P1 경계", () => {
     // 재조회가 실패하면 캐시된 행이 남는다. 그걸 현재 사실로 단정하면 거짓이다.
     ports.list.mockRejectedValue(new Error("boom"));
     void client.invalidateQueries({ queryKey: ["events", "list"] });
-    await screen.findByText(/목록을 갱신하지 못했습니다. 아래 내용은 마지막으로 받은 상태입니다/, undefined, {
+    await screen.findByText(/갱신하지 못했습니다 — 마지막으로 받은 상태 표시/, undefined, {
       timeout: 3000,
     });
     // 내부 이체 카드도 예외가 아니다. `이동 · 처분 아님`은 분류가 아니라 판정 주장이다.
@@ -1478,7 +1481,7 @@ describe("여러 취득분을 소비한 처분을 화면이 어떻게 말하는�
 describe("금액을 말하지 않는 화면은 그 금액의 한계도 옮겨오지 않는다", () => {
   it("계산의 한계는 세금 탭에만 있고 내역 화면에 새지 않는다", async () => {
     // 내역은 부담 금액을 말하지 않는다. 금액이 없는데 "이 금액이 흔들린다"고 하면 무엇이 흔들리는지 알 수 없다.
-    ports.estimate.mockImplementation(async (input: Parameters<MockTaxEngine["estimate"]>[0]) => {
+    ports.estimate.mockImplementation(async (input: Parameters<TaxEngineService["estimate"]>[0]) => {
       const base = await engine.estimate(input);
       return {
         ...base,
@@ -1504,7 +1507,7 @@ describe("상세 시트가 손익 계산 4줄을 보인다", () => {
     const target = events.find((event) => derived.events.some((tax) => tax.id === event.id && tax.kind === "DISPOSE"))!;
     // fallback으로 아무 이벤트에나 가짜 행을 붙이면 실제 처분 경로가 검증되지 않는다.
     expect(target, "처분 이벤트가 픽스처에 없다").toBeDefined();
-    ports.estimate.mockImplementation(async (input: Parameters<MockTaxEngine["estimate"]>[0]) => {
+    ports.estimate.mockImplementation(async (input: Parameters<TaxEngineService["estimate"]>[0]) => {
       const base = await engine.estimate(input);
       return {
         ...base,
