@@ -1,34 +1,26 @@
 import { expect, test } from "@playwright/test";
 import { useFreshBackend } from "./support/backend-lifecycle";
-import { bootstrapSession } from "./support/bootstrap-be-session";
 
 /**
- * 거래소 연동은 화면 시연이다. 브라우저 저장소에만 남기 때문에 단위 테스트(주입한 저장소)로는
- * 확인할 수 없는 두 가지를 여기서 본다: 실제 localStorage 왕복과, 온보딩을 넘어간 뒤에도
- * 대시보드가 같은 연동을 말하는지.
+ * 거래소 연동은 MVP에서 "곧 지원"이다. 실제 연동 파이프라인(조회 전용 키/OAuth 정규화)은 아직 없으므로,
+ * 지갑 연결 화면이 지원 예정 거래소를 안내만 하고 되는 척하는 입력/버튼을 두지 않는지 확인한다.
+ * 데이터를 실제로 불러오는 경로는 지금은 지갑(EOA) 연결뿐이다.
  */
-test.describe.serial("exchange link demo", () => {
+test.describe.serial("exchange coming soon", () => {
   useFreshBackend();
-  test("links an exchange on the onboarding screen and carries it to the dashboard", async ({ page }) => {
+  test("shows the coming-soon exchange panel without any linking inputs", async ({ page }) => {
     const request = page.context().request;
     await request.post("/api/auth/did/present", { data: { country: "KR" } });
     await page.goto("/connect-wallet");
 
-    await page.getByRole("button", { name: "업비트 연동하기" }).click();
-    await page.getByLabel("API 키").fill("UPBIT-KEY-1234567890");
-    await page.getByLabel("시크릿 키").fill("secret-value");
-    await page.getByRole("button", { name: "연동하기", exact: true }).click();
-
-    await expect(page.getByRole("button", { name: "업비트 연동 해제" })).toBeVisible();
-    await expect(page.getByText("UPBI••••7890")).toBeVisible();
-    // 원문 키가 화면 어디에도 남으면 안 된다.
-    expect(await page.locator("body").innerText()).not.toContain("UPBIT-KEY-1234567890");
-
-    await bootstrapSession(page, { privateKey: "0x2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b" });
-    await page.goto("/dashboard");
-    await expect(page.getByRole("region", { name: "연동된 거래소" })).toBeVisible();
-    await expect(page.getByText("거래소 연동 1곳")).toBeVisible();
-    // 연동 배지만 띄우고 목록이 그대로면 화면이 "가져왔다"고 거짓말한다.
-    await expect(page.getByText(/거래소 거래가 아직 들어오지 않습니다/)).toBeVisible();
+    const panel = page.locator('[data-surface="exchange-coming-soon"]');
+    await expect(panel).toBeVisible();
+    await expect(panel.getByText("거래소 계정 연동")).toBeVisible();
+    await expect(panel.getByText("곧 지원")).toBeVisible();
+    // 지원 예정 거래소는 이름만 흐리게 보인다.
+    await expect(panel.getByText("업비트")).toBeVisible();
+    // 되는 척하는 연동 버튼·입력은 없어야 한다.
+    await expect(page.getByRole("button", { name: "업비트 연동하기" })).toHaveCount(0);
+    await expect(page.getByLabel("API 키")).toHaveCount(0);
   });
 });
