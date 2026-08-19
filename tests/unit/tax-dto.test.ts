@@ -4,7 +4,7 @@ import { taxEstimateSchema } from "@/lib/http/tax-dto";
 import { computeTaxEstimate } from "@/lib/tax/engine";
 import { RULE_SET_ORDER } from "@/lib/tax/rulesets";
 import { FIXTURE_TAX_YEAR } from "@/tests/fixtures/tax-year";
-import { createTaxScenarioEvents } from "@/lib/mock/tax-fixtures";
+import { createTaxScenarioEvents } from "@/lib/tax/scenarios";
 
 describe("DTO가 엔진 결과를 조용히 버리지 않는가", () => {
   it("엔진이 낸 필드가 스키마 통과 후에도 남아 있다", () => {

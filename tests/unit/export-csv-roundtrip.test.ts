@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createExportCsv } from "@/lib/export/csv";
 import { EXPORT_COLUMNS } from "@/lib/export/schema";
-import { createNormalizedEventFixtures } from "@/lib/mock/fixtures";
+import { createNormalizedEventFixtures } from "@/tests/fixtures/generated/normalized-events";
 
 function parseCsv(csv: string): string[][] {
   const rows: string[][] = [[]];

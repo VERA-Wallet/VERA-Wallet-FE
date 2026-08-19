@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { eventToRow } from "@/lib/export/schema";
-import { createNormalizedEventFixtures } from "@/lib/mock/fixtures";
+import { createNormalizedEventFixtures } from "@/tests/fixtures/generated/normalized-events";
 
 describe("estimated export values", () => {
   it("keeps the fiat decimal unadorned while price status carries estimation", () => {

@@ -1,4 +1,4 @@
-import { demoTaxYear } from "@/lib/mock/demo-calendar";
+import { demoTaxYear } from "@/lib/tax/demo-calendar";
 import type { Classification, NormalizedEvent } from "@/lib/schema/normalized-event";
 
 const chains = [1, 8453, 42161, 10, 137] as const;

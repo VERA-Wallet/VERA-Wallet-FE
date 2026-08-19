@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createNormalizedEventFixtures } from "@/lib/mock/fixtures";
+import { createNormalizedEventFixtures } from "@/tests/fixtures/generated/normalized-events";
 import { normalizedEventSchema } from "@/lib/schema/normalized-event";
 
 describe("price status schema", () => {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { FIXTURE_TAX_YEAR } from "@/tests/fixtures/tax-year";
-import { createTaxScenarioEvents } from "@/lib/mock/tax-fixtures";
+import { createTaxScenarioEvents } from "@/lib/tax/scenarios";
 import { add, div, mul, round, sub, toFixed } from "@/lib/tax/decimal";
 import { computeTaxEstimate, compareRuleSets, taxPeriodFor, taxYearFor } from "@/lib/tax/engine";
 import { runLedger } from "@/lib/tax/ledger";

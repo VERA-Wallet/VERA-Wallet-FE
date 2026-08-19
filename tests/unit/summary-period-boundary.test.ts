@@ -1,11 +1,36 @@
 import { describe, expect, it } from "vitest";
 import { GET } from "@/app/api/events/summary/route";
-import { createNormalizedEventFixtures } from "@/lib/mock/fixtures";
-import { MockEventStore } from "@/lib/mock/store";
+import { POST as present } from "@/app/api/auth/did/present/route";
+import { authStore } from "@/lib/composition-root.server";
+import { createNormalizedEventFixtures } from "@/tests/fixtures/generated/normalized-events";
+import { MockEventStore } from "@/tests/support/doubles/mock-event-store";
 import type { NormalizedEvent } from "@/lib/schema/normalized-event";
 
 function eventAt(overrides: Partial<NormalizedEvent>): NormalizedEvent {
   return { ...createNormalizedEventFixtures()[0], ...overrides };
+}
+
+async function didSessionCookie() {
+  const response = await present(new Request("http://localhost/api/auth/did/present", {
+    method: "POST",
+    body: JSON.stringify({ country: "KR" }),
+  }));
+  expect(response.status).toBe(201);
+  return response.headers.get("set-cookie")!.split(";")[0];
+}
+
+async function completedSessionCookie() {
+  const cookie = await didSessionCookie();
+  const sessionId = cookie.split("=")[1];
+  await authStore.set(sessionId, {
+    didVerified: true,
+    countryCode: "KR",
+    walletAddress: "0x0000000000000000000000000000000000000001",
+    chainId: 1,
+    didExpiresAt: Date.now() + 30 * 60_000,
+    walletExpiresAt: Date.now() + 30 * 60_000,
+  });
+  return cookie;
 }
 
 describe("summary period boundary [from, to)", () => {
@@ -40,28 +65,48 @@ describe("summary period boundary [from, to)", () => {
     expect(summary.taxableEventCount).toBe(1);
     expect(summary.periodPnl).toBe("10.00");
   });
+  it("treats empty from/to as absent like BE validation", async () => {
+    const cookie = await completedSessionCookie();
+    // BE validatePeriod는 falsy를 건너뛰므로 빈 값은 400이 아니라 전체 기간을 뜻한다.
+    const response = await GET(new Request(
+      "http://localhost/api/events/summary?from=&to=",
+      { headers: { cookie } },
+    ));
+    expect(response.status).toBe(200);
+  });
 
   it("rejects ranges inverted by instant even when lexicographically ordered", async () => {
     // "05:00Z" < "09:00+09:00" 사전식이지만 실제로는 05:00Z > 00:00Z.
+    const cookie = await didSessionCookie();
     const response = await GET(
       new Request(
         "http://localhost/api/events/summary?from=2025-01-01T05:00:00Z&to=2025-01-01T09:00:00%2B09:00",
+        { headers: { cookie } },
       ),
     );
     expect(response.status).toBe(400);
   });
 
   it("rejects malformed and inverted period queries with a 400 ErrorEnvelope", async () => {
-    const malformed = await GET(new Request("http://localhost/api/events/summary?from=x"));
+    const cookie = await didSessionCookie();
+    const malformed = await GET(new Request("http://localhost/api/events/summary?from=x", { headers: { cookie } }));
     expect(malformed.status).toBe(400);
     const inverted = await GET(
       new Request(
         "http://localhost/api/events/summary?from=2025-02-01T00:00:00.000Z&to=2025-01-01T00:00:00.000Z",
+        { headers: { cookie } },
       ),
     );
     expect(inverted.status).toBe(400);
     const invertedBody = (await inverted.json()) as { error?: { code?: string } };
     expect(invertedBody.error?.code).toBe("invalid_request");
+
+    // BE validatePeriod parity: Date.parse 가능한 offset 없는 RFC3339도 기간 검증을 통과한다.
+    const offsetless = await GET(new Request(
+      "http://localhost/api/events/summary?from=2025-01-01T00:00:00&to=2025-01-02T00:00:00",
+      { headers: { cookie } },
+    ));
+    expect(offsetless.status).toBe(404);
   });
 });
 

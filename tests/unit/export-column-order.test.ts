@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { EXPORT_COLUMNS, eventToRow } from "@/lib/export/schema";
-import { createNormalizedEventFixtures } from "@/lib/mock/fixtures";
+import { createNormalizedEventFixtures } from "@/tests/fixtures/generated/normalized-events";
 
 describe("export columns", () => {
   it("uses the complete fixed normalized-event field order", () => {

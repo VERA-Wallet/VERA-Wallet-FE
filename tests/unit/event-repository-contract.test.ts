@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MockEventStore } from "@/lib/mock/store";
+import { MockEventStore } from "@/tests/support/doubles/mock-event-store";
 
 describe("mock event repository contract", () => {
   it("carries versions through list and get", () => {

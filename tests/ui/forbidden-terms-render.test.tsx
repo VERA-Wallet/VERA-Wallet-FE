@@ -6,7 +6,7 @@ import { ConnectWalletFlow } from "@/components/wallet/connect-wallet-flow";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
 import { ExportView } from "@/components/export/export-view";
 import { DisclaimerFooter } from "@/components/ui/disclaimer-footer";
-import { createNormalizedEventFixtures } from "@/lib/mock/fixtures";
+import { createNormalizedEventFixtures } from "@/tests/fixtures/generated/normalized-events";
 import type { AuthClient } from "@/lib/ports/auth-client";
 import type { WalletPort } from "@/lib/ports/wallet-port";
 

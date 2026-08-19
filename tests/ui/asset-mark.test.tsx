@@ -2,7 +2,7 @@ import { fireEvent, render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { AssetMark } from "@/components/ui/asset-mark";
-import { createNormalizedEventFixtures } from "@/lib/mock/fixtures";
+import { createNormalizedEventFixtures } from "@/tests/fixtures/generated/normalized-events";
 
 const [nativeEvent] = createNormalizedEventFixtures();
 const nft = createNormalizedEventFixtures().find((event) => event.token_id !== null)!;

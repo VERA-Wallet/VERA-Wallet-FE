@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import { deriveTaxEvents } from "@/lib/tax/derive";
-import { createNormalizedEventFixtures } from "@/lib/mock/fixtures";
-import { MockEventStore } from "@/lib/mock/store";
-import { MockTaxEngine } from "@/lib/mock/tax-engine";
+import { createNormalizedEventFixtures } from "@/tests/fixtures/generated/normalized-events";
+import { MockEventStore } from "@/tests/support/doubles/mock-event-store";
+import { TaxEngineService } from "@/lib/tax/tax-engine-service.server";
 import { assetFlow, isLowConfidence, needsReview, reviewReason, taxExclusionReason } from "@/lib/review";
 import type { NormalizedEvent } from "@/lib/schema/normalized-event";
 
@@ -128,7 +128,7 @@ describe("세금 어댑터가 과세기간 밖 이벤트를 확인 필요로 세
     { ...healthy, id: "e-2025-ok", block_timestamp: "2025-06-01T00:00:00.000Z" },
     { ...healthy, id: "e-2025-bad", block_timestamp: "2025-06-02T00:00:00.000Z", price_status: "UNKNOWN", fiat_value: null },
   ];
-  const engine = new MockTaxEngine(() => walletEvents);
+  const engine = new TaxEngineService(() => walletEvents);
 
   it("2024년 계산에는 2025년 제외 건이 잡히지 않는다", async () => {
     // pass12 재현: 기간 밖 이벤트가 "확인이 필요해 계산에서 빠짐"으로 표시되던 결함.

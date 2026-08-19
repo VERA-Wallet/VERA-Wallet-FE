@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { createNormalizedEventFixtures } from "@/lib/mock/fixtures";
-import { MockTaxEngine } from "@/lib/mock/tax-engine";
-import { createTaxScenarioEvents, scenarioScaleFor } from "@/lib/mock/tax-fixtures";
+import { createNormalizedEventFixtures } from "@/tests/fixtures/generated/normalized-events";
+import { TaxEngineService } from "@/lib/tax/tax-engine-service.server";
+import { createTaxScenarioEvents, scenarioScaleFor } from "@/lib/tax/scenarios";
 import { computeTaxEstimate } from "@/lib/tax/engine";
 import { FIXTURE_TAX_YEAR } from "@/tests/fixtures/tax-year";
 
-const engine = new MockTaxEngine(() => createNormalizedEventFixtures(FIXTURE_TAX_YEAR));
+const engine = new TaxEngineService(() => createNormalizedEventFixtures(FIXTURE_TAX_YEAR));
 
 describe("데모 시나리오 출처", () => {
   it("요청한 과세연도로 이벤트를 만든다", async () => {

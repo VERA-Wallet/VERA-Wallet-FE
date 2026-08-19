@@ -1,7 +1,7 @@
 import * as XLSX from "xlsx";
 import { describe, expect, it } from "vitest";
 import { createExportWorkbook } from "@/lib/export/xlsx";
-import { createNormalizedEventFixtures } from "@/lib/mock/fixtures";
+import { createNormalizedEventFixtures } from "@/tests/fixtures/generated/normalized-events";
 
 const summary = { periodPnl: "123.45", computableEventCount: 3, taxableEventCount: 7, pendingReviewCount: 2, currency: "KRW", period: { from: "2025-01-01T00:00:00.000Z", to: "2025-02-01T00:00:00.000Z" } };
 

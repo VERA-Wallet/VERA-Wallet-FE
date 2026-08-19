@@ -4,10 +4,10 @@ import { MARGINAL_EVENT_LIMIT, MarginalBudgetError, computeMarginalContributions
 import { RULE_SETS, RULE_SET_ORDER, getRuleSet } from "@/lib/tax/rulesets";
 import { runLedger } from "@/lib/tax/ledger";
 import { deriveTaxEvents } from "@/lib/tax/derive";
-import { createNormalizedEventFixtures } from "@/lib/mock/fixtures";
+import { createNormalizedEventFixtures } from "@/tests/fixtures/generated/normalized-events";
 import type { IncomeKind, JudgmentRow, LedgerPolicy, TaxEvent } from "@/lib/tax/types";
 import { FIXTURE_TAX_YEAR } from "@/tests/fixtures/tax-year";
-import { createTaxScenarioEvents } from "@/lib/mock/tax-fixtures";
+import { createTaxScenarioEvents } from "@/lib/tax/scenarios";
 import { lt, sum } from "@/lib/tax/decimal";
 import { resolveAdjustment } from "@/lib/tax/judgment";
 

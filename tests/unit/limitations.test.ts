@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { FIXTURE_TAX_YEAR } from "@/tests/fixtures/tax-year";
-import { createNormalizedEventFixtures } from "@/lib/mock/fixtures";
-import { createTaxScenarioEvents } from "@/lib/mock/tax-fixtures";
+import { createNormalizedEventFixtures } from "@/tests/fixtures/generated/normalized-events";
+import { createTaxScenarioEvents } from "@/lib/tax/scenarios";
 import { deriveTaxEvents } from "@/lib/tax/derive";
 import type { TaxEvent } from "@/lib/tax/types";
 import { computeTaxEstimate } from "@/lib/tax/engine";
@@ -14,7 +14,7 @@ import {
   RECEIPT_COST_SUFFIX,
   classifyLimitation,
 } from "@/lib/tax/limitations";
-import { MockTaxEngine } from "@/lib/mock/tax-engine";
+import { TaxEngineService } from "@/lib/tax/tax-engine-service.server";
 import { RULE_SET_ORDER } from "@/lib/tax/rulesets";
 
 describe("계산의 한계 분류", () => {
@@ -75,7 +75,7 @@ describe("지갑 경로가 한계를 빠뜨리지 않는가", () => {
   it("어댑터가 파생 한계를 응답에 싣는다", async () => {
     // 엔진만 부르면 파생 단계(제외·근사·미반영)가 통째로 사라진다.
     // 테스트 하네스가 어댑터를 흉내 내다 이 병합을 빠뜨린 전례가 있다.
-    const engine = new MockTaxEngine(() => createNormalizedEventFixtures(FIXTURE_TAX_YEAR));
+    const engine = new TaxEngineService(() => createNormalizedEventFixtures(FIXTURE_TAX_YEAR));
     const result = await engine.estimate({ country: "DE", taxYear: FIXTURE_TAX_YEAR, source: "wallet" });
     const kinds = new Set(result.limitations.map((row) => row.kind));
 
@@ -89,7 +89,7 @@ describe("지갑 경로가 한계를 빠뜨리지 않는가", () => {
   });
 
   it("제외된 이벤트는 id를 달고 올라온다", async () => {
-    const engine = new MockTaxEngine(() => createNormalizedEventFixtures(FIXTURE_TAX_YEAR));
+    const engine = new TaxEngineService(() => createNormalizedEventFixtures(FIXTURE_TAX_YEAR));
     const result = await engine.estimate({ country: "DE", taxYear: FIXTURE_TAX_YEAR, source: "wallet" });
     for (const row of result.limitations.filter((item) => item.kind === "excluded")) {
       // id 없이 "빠졌습니다"만 말하면 사용자가 어느 거래인지 못 찾는다.

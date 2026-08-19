@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { MockEventStore } from "@/lib/mock/store";
+import { MockEventStore } from "@/tests/support/doubles/mock-event-store";
 
 it("returns the mutation version without losing it", () => {
   const store = new MockEventStore();

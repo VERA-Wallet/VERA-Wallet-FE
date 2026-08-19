@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { HttpEventRepository } from "@/lib/adapters/http/event-repository.http";
-import { createNormalizedEventFixtures } from "@/lib/mock/fixtures";
+import { createNormalizedEventFixtures } from "@/tests/fixtures/generated/normalized-events";
 
 const event = createNormalizedEventFixtures()[0];
 const meta = { provenance: "mock", generatedAt: "2025-01-01T00:00:00.000Z" };

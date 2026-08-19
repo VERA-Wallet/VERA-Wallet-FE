@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { eventToRow } from "@/lib/export/schema";
-import { createNormalizedEventFixtures } from "@/lib/mock/fixtures";
+import { createNormalizedEventFixtures } from "@/tests/fixtures/generated/normalized-events";
 
 describe("unknown export values", () => {
   it("exports an unknown fiat value as a blank cell", () => {

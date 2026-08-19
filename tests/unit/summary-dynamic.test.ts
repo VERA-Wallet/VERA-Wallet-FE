@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { createNormalizedEventFixtures } from "@/lib/mock/fixtures";
-import { MockEventStore } from "@/lib/mock/store";
+import { createNormalizedEventFixtures } from "@/tests/fixtures/generated/normalized-events";
+import { MockEventStore } from "@/tests/support/doubles/mock-event-store";
 import { effectiveClassification, needsReview, taxExclusionReason } from "@/lib/review";
 
 describe("dynamic summary", () => {

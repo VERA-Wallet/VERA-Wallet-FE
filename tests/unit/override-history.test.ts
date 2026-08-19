@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MockEventStore } from "@/lib/mock/store";
+import { MockEventStore } from "@/tests/support/doubles/mock-event-store";
 import { collectAllEvents } from "@/lib/export/collect";
 import type { EventListDTO } from "@/lib/http/dto";
 import type { EventRepository } from "@/lib/ports/event-repository";

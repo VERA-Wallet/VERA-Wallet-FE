@@ -3,7 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
 import { formatSignedTokenAmount } from "@/lib/format";
-import { createNormalizedEventFixtures } from "@/lib/mock/fixtures";
+import { createNormalizedEventFixtures } from "@/tests/fixtures/generated/normalized-events";
 
 const ports = vi.hoisted(() => ({ list: vi.fn(), getSummary: vi.fn(), reclassify: vi.fn() }));
 vi.mock("@/lib/composition-root.client", () => ({ eventRepository: { list: ports.list, reclassify: ports.reclassify }, summaryProvider: { getSummary: ports.getSummary } }));

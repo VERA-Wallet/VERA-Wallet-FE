@@ -7,7 +7,7 @@ import type { JudgmentRow, TaxEvent } from "@/lib/tax/types";
 import { defaultIncomeVerdict } from "@/lib/tax/judgment";
 import { sub, sum } from "@/lib/tax/decimal";
 import { FIXTURE_TAX_YEAR } from "@/tests/fixtures/tax-year";
-import { createTaxScenarioEvents } from "@/lib/mock/tax-fixtures";
+import { createTaxScenarioEvents } from "@/lib/tax/scenarios";
 
 const events = createTaxScenarioEvents(FIXTURE_TAX_YEAR);
 
