@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { MockProvenanceChip } from "@/components/ui/mock-provenance-chip";
 import { authClient as compositionAuthClient } from "@/lib/composition-root.client";
+import { closeCxLogin, cxLoginEnabled, openCxLogin } from "@/lib/omnione/oacx";
 import type { AuthClient, DidPresentation } from "@/lib/ports/auth-client";
 
 type Country = "KR" | "US" | "UK" | "DE";
@@ -21,9 +22,14 @@ export function DidLoginFlow({ authClient = compositionAuthClient }: { authClien
   const [state, setState] = useState<FlowState>("idle");
   const [claim, setClaim] = useState<DidPresentation | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // 취소 뒤 뒤늦게 도착한 표준인증창 콜백이 상태를 되살리지 못하게 시도 세대를 센다.
+  const attemptRef = useRef(0);
+  // OmniOne CX 표준인증창(가이드북 p.19-25): 설정 시 mock QR 대신 CX 로그인 모달을 연다.
+  const cxEnabled = cxLoginEnabled();
 
   useEffect(() => {
-    if (state !== "awaiting") return;
+    // mock 전용 대기 전이. CX 모드에서는 openCxLogin → presentDid가 직접 상태를 밀고 간다.
+    if (state !== "awaiting" || cxEnabled) return;
     const timer = window.setTimeout(async () => {
       try {
         const claim = await authClient.presentDid({ country });
@@ -35,12 +41,41 @@ export function DidLoginFlow({ authClient = compositionAuthClient }: { authClien
       }
     }, PRESENTATION_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [authClient, country, state]);
+  }, [authClient, country, cxEnabled, state]);
+
+  useEffect(() => {
+    // CX 모달은 presenting 진입 후 마운트 지점(#oacxDiv)이 DOM에 생긴 다음 열어야 한다.
+    if (!cxEnabled || state !== "presenting") return;
+    const attempt = ++attemptRef.current;
+    void (async () => {
+      try {
+        const cxToken = await openCxLogin();
+        if (attemptRef.current !== attempt) return;
+        setState("awaiting");
+        const claim = await authClient.presentDid({ country, cxToken });
+        if (attemptRef.current !== attempt) return;
+        setClaim(claim);
+        setState("claimed");
+      } catch (cause) {
+        if (attemptRef.current !== attempt) return;
+        setError(cause instanceof Error ? cause.message : "모바일신분증 인증을 완료하지 못했습니다.");
+        setState("idle");
+      }
+    })();
+    // presenting을 벗어나거나(취소·성공 전이) 언마운트되면 오버레이 iframe을 걷어낸다.
+    return () => closeCxLogin();
+  }, [authClient, country, cxEnabled, state]);
 
   function startPresentation() {
     setError(null);
     setClaim(null);
     setState("presenting");
+  }
+
+  function cancelPresentation() {
+    attemptRef.current += 1;
+    closeCxLogin();
+    setState("idle");
   }
 
   return (
@@ -67,11 +102,23 @@ export function DidLoginFlow({ authClient = compositionAuthClient }: { authClien
 
       {state === "idle" && (
         <button className="w-full rounded-xl bg-primary-500 py-3.5 font-semibold text-white" onClick={startPresentation} type="button">
-          QR/딥링크 제시
+          {cxEnabled ? "모바일신분증으로 인증" : "QR/딥링크 제시"}
         </button>
       )}
 
-      {state === "presenting" && (
+      {state === "presenting" && cxEnabled && (
+        <div className="space-y-3">
+          {/* CX 표준인증창은 전면 오버레이 iframe(oacx.ts)에 격리 렌더된다 — 여기엔 안내/취소만 둔다. */}
+          <p aria-live="polite" className="text-center text-sm text-zinc-600">
+            OmniOne CX 인증창에서 모바일신분증을 제출하세요. 데스크톱은 QR 스캔, 모바일은 앱 이동으로 진행됩니다.
+          </p>
+          <button className="w-full py-2 text-sm font-medium text-zinc-500" onClick={cancelPresentation} type="button">
+            취소하고 돌아가기
+          </button>
+        </div>
+      )}
+
+      {state === "presenting" && !cxEnabled && (
         <div className="space-y-3">
           <div aria-label="DID QR 코드" className="mx-auto grid h-36 w-36 grid-cols-6 gap-1 rounded-xl bg-white p-2 ring-1 ring-zinc-200">
             {Array.from({ length: 36 }, (_, index) => (
@@ -82,7 +129,7 @@ export function DidLoginFlow({ authClient = compositionAuthClient }: { authClien
           <button className="w-full rounded-xl bg-primary-500 py-3.5 font-semibold text-white" onClick={() => setState("awaiting")} type="button">
             제시 완료
           </button>
-          <button className="w-full py-2 text-sm font-medium text-zinc-500" onClick={() => setState("idle")} type="button">
+          <button className="w-full py-2 text-sm font-medium text-zinc-500" onClick={cancelPresentation} type="button">
             거주국 다시 선택
           </button>
         </div>
@@ -103,16 +150,16 @@ export function DidLoginFlow({ authClient = compositionAuthClient }: { authClien
             className="block w-full rounded-xl bg-primary-500 py-3.5 font-semibold text-white"
             onClick={() => {
               setState("done");
-              router.push("/connect-wallet");
+              router.push("/dashboard");
             }}
             type="button"
           >
-            지갑 연결로 계속
+            대시보드로 이동
           </button>
         </div>
       )}
 
-      {state === "done" && <p aria-live="polite" className="text-sm text-zinc-500">지갑 연결 화면으로 이동합니다...</p>}
+      {state === "done" && <p aria-live="polite" className="text-sm text-zinc-500">대시보드로 이동합니다...</p>}
 
       {error && (
         <div role="alert" className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">
