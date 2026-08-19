@@ -15,8 +15,9 @@ export function OnboardingSteps({ current }: { current: 1 | 2 }) {
                 active ? "bg-primary-500 text-white" : done ? "bg-primary-100 text-primary-700" : "bg-zinc-100 text-zinc-400"
               }`}
             >
-              <span aria-hidden="true">{done ? "✓" : step}</span>
-              {label}
+              {done ? <span aria-hidden="true">✓</span> : null}
+              {/* 번호는 순서 의무를 암시하는데 지갑 연결은 선택 단계다 */}
+              {label === "지갑 연결" && !active && !done ? `${label} — 나중에 가능` : label}
             </span>
             {step < STEPS.length ? <span aria-hidden="true" className="h-px w-3 bg-zinc-300" /> : null}
           </li>
