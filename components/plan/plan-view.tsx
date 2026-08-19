@@ -25,7 +25,13 @@ export function PlanView({ taxYear }: { taxYear: number }) {
         조회·판정·시뮬레이터는 계속 무료입니다. 명세 파일을 내려받을 때 과세연도당 한 번 결제합니다.
       </p>
 
-      <ul aria-label="플랜" className="mt-8 grid gap-4 sm:grid-cols-3">
+      {/*
+        3열로 벌리지 않는다. Tailwind의 `sm:`은 컨테이너가 아니라 뷰포트 폭을 보는데,
+        앱 껍데기는 어느 화면에서든 `max-w-md`(448px)로 고정이다(`app/layout.tsx`).
+        데스크톱 브라우저에서 `sm:grid-cols-3`를 켜면 448px 안에 카드 셋이 욱여넣어져
+        가격과 버튼 글자가 줄줄이 터진다 — 넓어진 것은 창이지 이 컨테이너가 아니다.
+      */}
+      <ul aria-label="플랜" className="mt-8 grid gap-4">
         {PLANS.map((definition) => {
           const active = plan !== null && plan.tier === definition.id;
           // 결제 대상이 아닌 카드는 tier가 없다. 좁힌 값을 const로 들고 있어야
