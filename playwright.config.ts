@@ -1,6 +1,8 @@
 import { defineConfig } from "@playwright/test";
 
-const BACKEND_ORIGIN = process.env.VERAWALLET_BACKEND_ORIGIN;
+import { backendOrigin } from "./lib/api-mode";
+
+const EFFECTIVE_ORIGIN = backendOrigin();
 
 export default defineConfig({
   testDir: "tests/e2e",
@@ -18,8 +20,12 @@ export default defineConfig({
     command: "pnpm exec next dev -p 3100",
     url: "http://localhost:3100",
     // ON 모드에서 이전 실행이 남긴 OFF 서버에 붙으면 조용히 다른 계약을 검증하게 된다.
-    reuseExistingServer: !process.env.CI && !BACKEND_ORIGIN,
+    // VERAWALLET_MOCK_MODE=true 강제 시 하네스가 ON으로 오분류하면 스폰된 서버와 테스트가 다른 계약을 본다.
+    reuseExistingServer: !process.env.CI && !EFFECTIVE_ORIGIN,
     timeout: 120_000,
-    env: BACKEND_ORIGIN ? { VERAWALLET_BACKEND_ORIGIN: BACKEND_ORIGIN } : {},
+    env: {
+      ...(EFFECTIVE_ORIGIN ? { VERAWALLET_BACKEND_ORIGIN: EFFECTIVE_ORIGIN } : {}),
+      ...(process.env.VERAWALLET_MOCK_MODE ? { VERAWALLET_MOCK_MODE: process.env.VERAWALLET_MOCK_MODE } : {}),
+    },
   },
 });

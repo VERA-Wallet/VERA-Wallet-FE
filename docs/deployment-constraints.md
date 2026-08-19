@@ -1,6 +1,6 @@
 # 배포 제약 (v1 mock 단계)
 
-이 저장소의 v1은 **mock 데이터 단계**다. 실제 백엔드·인덱서·OmniOne SDK·온체인 앵커링은 연결되어 있지 않다.
+이 저장소의 v1은 **mock 데이터 단계**다. 실제 백엔드·인덱서·OmniOne SDK·온체인 앵커링이 연결되지 않는 제약은 **OFF(mock) 모드에 한정**된다. ON 모드에서는 `proxy.ts`를 통해 BE에 연동한다.
 
 ## in-memory mock 저장소
 
@@ -48,9 +48,9 @@
 ## 온보딩 순서
 
 서버 가드(`lib/dal.ts`)가 DID → 지갑 → 대시보드 순서를 강제한다.
-FE mock(`app/api/auth/did/present/route.ts`)은 DID 제시 시 기존 지갑 클레임을 초기화해 역순(SIWE→DID) 우회를 차단한다.
-**BE는 그렇지 않다** — `FrontendAuthController.present`는 사용자를 upsert하고 JWT만 새로 발급하며 기존 바인딩을 유지한다
-(`tests/integration/be-siwe-contract.test.ts`가 이 차이를 고정한다). ON 모드에서 역순 우회 차단이 필요하면 BE 계약 변경이 선행돼야 한다.
+FE mock(`app/api/auth/did/present/route.ts`)과 BE(`FrontendAuthController.present`)는 DID 제시 시 기존 지갑 클레임을 보존한다.
+역순(SIWE→DID) 차단은 nonce·verify의 DID 가드와 challenge 세션 귀속이 담당한다.
+(`tests/integration/be-siwe-contract.test.ts`가 이 계약을 고정한다).
 
 ## 하이브리드 프록시 경로 소유권
 

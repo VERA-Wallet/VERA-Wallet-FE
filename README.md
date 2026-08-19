@@ -2,17 +2,18 @@ VeraWallet FE — Next.js 16 App Router 프론트엔드.
 
 ## 두 가지 실행 모드
 
-이 앱은 **OFF(로컬 mock)** 와 **ON(BE 연동)** 두 모드로 돈다. 결정 기준은 환경변수 하나다.
+이 앱은 **OFF(로컬 mock)** 와 **ON(BE 연동)** 두 모드로 돈다. 결정 기준은 환경변수다.
 
 | | OFF | ON |
 |---|---|---|
-| 트리거 | `VERAWALLET_BACKEND_ORIGIN` 미설정 | `VERAWALLET_BACKEND_ORIGIN` 설정 |
+| 트리거 | `VERAWALLET_BACKEND_ORIGIN` 미설정 또는 `VERAWALLET_MOCK_MODE=true` | `VERAWALLET_BACKEND_ORIGIN` 설정 및 `VERAWALLET_MOCK_MODE` 미설정 |
 | 세션 쿠키 | `vw_session` (FE 인메모리 저장소) | `vw_access_token` (BE JWT) |
 | `/api/auth/*`, `/api/events*`, `/api/anchor-proof` | FE Route Handler | `proxy.ts`가 BE로 전달 |
 | `/api/tax/*`, `/api/rulesets` | FE Route Handler | FE Route Handler (그대로) |
 | `/api/auth/test-login` | dev 전용 헬퍼 | **404** |
+`VERAWALLET_MOCK_MODE=true`는 백엔드 URL이 설정돼 있어도 FE mock을 강제하는 스위치다.
 
-모드는 **요청 시점에** 결정된다(`proxy.ts`). `next.config.ts`의 rewrite로 하지 않는 이유는 두 가지다.
+모드는 **요청 시점 판정**이다. 단, `sessionReader`는 모듈 로드 시점에 고정되고, `proxy`·`beFetch`·warm-up·`test-login`은 호출 시점에 판정된다 — 환경변수 변경은 반드시 프로세스를 재시작해야 한다. `next.config.ts`의 rewrite로 하지 않는 이유는 두 가지다.
 rewrite는 원 요청 Cookie를 그대로 상류로 보내고, `.next/routes-manifest.json`에 빌드 시점으로 박혀
 OFF로 빌드한 산출물에 env만 켜면 "인증은 ON, 브라우저 이벤트는 FE mock"인 혼합 모드가 된다.
 
@@ -53,7 +54,7 @@ node dist/main.js
 ### 2. Frontend
 
 ```bash
-cp .env.local.example .env.local     # VERAWALLET_BACKEND_ORIGIN 확인
+cp .env.example .env.local     # VERAWALLET_BACKEND_ORIGIN 확인
 VERAWALLET_BACKEND_ORIGIN=http://localhost:3200 pnpm dev -p 3100
 ```
 
@@ -72,11 +73,11 @@ curl -i -X POST -H 'content-type: application/json' -d '{"country":"KR"}' \
 ```
 
 `201` + `Set-Cookie: vw_access_token=…` 이면 BE에 도달한 것이다.
-OFF 모드에서 같은 요청은 `200` + `Set-Cookie: vw_session=…` 을 준다(`204`는 `/api/auth/test-login` 쪽이다).
+OFF 모드에서 같은 요청은 `201` + `Set-Cookie: vw_session=…` 을 준다(`204`는 `/api/auth/test-login` 쪽이다).
 
 ## 롤백
 
-**자동 failover가 아니다.** `VERAWALLET_BACKEND_ORIGIN`을 지우고 **FE 프로세스를 재시작**해야 OFF로 돌아간다.
+**자동 failover가 아니다.** `VERAWALLET_BACKEND_ORIGIN`을 지우거나 `VERAWALLET_MOCK_MODE=true`로 설정하고 **FE 프로세스를 재시작**해야 OFF로 돌아간다.
 이때 `SIWE_TRUSTED_ORIGIN`도 실제 FE origin과 맞는지 확인한다 — ON에서는 무시되던 값이 OFF에서는 다시 유효해진다.
 BE가 실행 중 죽어도 앱이 알아서 mock으로 넘어가지 않는다 — 장애를 로그인 화면으로 위장하지 않기 위한 의도된 동작이며,
 보호 페이지는 오류 화면을 보여준다. FE가 계속 소유하는 API(`/api/tax/*`, `/api/rulesets`)는
@@ -93,7 +94,7 @@ BE가 실행 중 죽어도 앱이 알아서 mock으로 넘어가지 않는다 �
   `/api/events`는 401을 준다. 화면은 `/connect-wallet`으로 가고 API는 거절하는 상태이므로 **재로그인**해야 한다.
 - **ON 모드 최초 진입 시 기존 FE demo 데이터는 보존되지 않는다.** 재분류 이력을 포함한 mock 저장소 상태는
   FE 프로세스 메모리에만 있었고 BE로 옮기지 않는다.
-- **DID 재제시가 지갑 바인딩을 지우지 않는다.** FE mock은 지웠지만 BE는 유지한다.
+- **DID 재제시가 지갑 바인딩을 지우지 않는다.** FE mock과 BE 모두 지갑 클레임을 보존한다. 역순(SIWE→DID) 차단은 nonce·verify의 DID 가드와 challenge 세션 귀속이 담당한다.
 - **`/api/auth/session`의 `chainId`는 바인딩이 있으면 하드코딩 `1`이다** (BE 후속 스키마 작업 대상).
 - **앵커 제출은 멱등이 아니다.** 같은 이벤트를 다시 sync하면 `tx_hash`/`anchored_at`이 바뀔 수 있다.
 
