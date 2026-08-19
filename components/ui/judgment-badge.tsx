@@ -3,18 +3,21 @@ import type { JudgmentGroup, JudgmentRow } from "@/lib/tax/types";
 /**
  * 판정 도장. 세금 금액이 아니라 "이 거래가 계산에서 어떻게 쓰였는지"를 찍는다.
  * 실제 문구(label)는 룰셋이 정하므로 여기서는 색만 그룹에 매핑한다.
+ *
+ * 색이 그룹마다 다르면 색 자체가 소음이 된다 — 유채색은 행동 필요(앰버)에만
+ * 양보하고, 나머지 정보성 판정은 저채도 외곽선으로 통일한다.
  */
 const GROUP_STYLE: Record<JudgmentGroup | "excluded", string> = {
-  acquire: "bg-slate-100 text-slate-700",
-  income: "bg-amber-100 text-amber-800",
-  taxable: "bg-red-100 text-red-700",
-  exempt: "bg-green-100 text-green-700",
-  offset: "bg-teal-100 text-teal-800",
-  carry: "bg-indigo-100 text-indigo-700",
-  ignored: "bg-zinc-200 text-zinc-700",
-  denied: "bg-orange-100 text-orange-800",
-  deferred: "bg-sky-100 text-sky-800",
-  pending: "bg-zinc-100 text-zinc-600",
+  acquire: "border border-zinc-300 bg-transparent text-zinc-600",
+  income: "border border-zinc-300 bg-transparent text-zinc-600",
+  taxable: "border border-zinc-300 bg-transparent text-zinc-600",
+  exempt: "border border-zinc-300 bg-transparent text-zinc-600",
+  offset: "border border-zinc-300 bg-transparent text-zinc-600",
+  carry: "border border-zinc-300 bg-transparent text-zinc-600",
+  ignored: "border border-zinc-300 bg-transparent text-zinc-600",
+  denied: "border border-zinc-300 bg-transparent text-zinc-600",
+  deferred: "border border-zinc-300 bg-transparent text-zinc-600",
+  pending: "bg-zinc-100 text-zinc-500",
   excluded: "bg-amber-100 text-amber-800",
 };
 
