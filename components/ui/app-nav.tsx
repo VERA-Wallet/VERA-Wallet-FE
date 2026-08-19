@@ -25,6 +25,16 @@ const items: NavItem[] = [
     ),
   },
   {
+    href: "/wallets",
+    label: "지갑",
+    icon: (
+      <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+        <path d="M4 7a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1h1a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z" strokeLinejoin="round" />
+        <path d="M15.5 13.2h.01" strokeLinecap="round" strokeWidth="2.4" />
+      </svg>
+    ),
+  },
+  {
     href: "/export",
     label: "내보내기",
     icon: (
@@ -44,7 +54,7 @@ export function AppNav() {
 
   return (
     <nav aria-label="주요 화면" data-testid="app-nav" className="border-t border-zinc-200 bg-white/95 backdrop-blur">
-      <ul className="grid grid-cols-3">
+      <ul className="grid grid-cols-4">
         {items.map((item) => {
           const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
           return (
