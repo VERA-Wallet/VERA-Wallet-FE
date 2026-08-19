@@ -2,10 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionInfrastructureError } from "@/lib/ports/session-reader";
 
 const requireCompletedOnboarding = vi.fn();
-vi.mock("@/lib/dal", () => ({ requireCompletedOnboarding }));
+const requireDidSession = vi.fn();
+vi.mock("@/lib/dal", () => ({ requireCompletedOnboarding, requireDidSession }));
 
 afterEach(() => {
   requireCompletedOnboarding.mockReset();
+  requireDidSession.mockReset();
 });
 
 type Handler = (request: Request, context?: { params: Promise<{ id: string }> }) => Promise<Response>;
@@ -14,6 +16,7 @@ const routes: Array<[string, () => Promise<Handler>, "GET" | "POST" | "PATCH", b
   ["events", async () => (await import("@/app/api/events/route")).GET as Handler, "GET", false],
   ["event by id", async () => (await import("@/app/api/events/[id]/route")).GET as Handler, "GET", true],
   ["event summary", async () => (await import("@/app/api/events/summary/route")).GET as Handler, "GET", false],
+  ["SIWE verify", async () => (await import("@/app/api/auth/verify/route")).POST as Handler, "POST", false],
   ["anchor proof", async () => (await import("@/app/api/anchor-proof/route")).GET as Handler, "GET", false],
   ["rulesets", async () => (await import("@/app/api/rulesets/route")).GET as Handler, "GET", false],
   ["tax estimate", async () => (await import("@/app/api/tax/estimate/route")).POST as Handler, "POST", false],
@@ -24,7 +27,9 @@ const routes: Array<[string, () => Promise<Handler>, "GET" | "POST" | "PATCH", b
 
 describe("protected route infrastructure contract", () => {
   it.each(routes)("maps %s session infrastructure failures to 502", async (_name, load, method, requiresParams) => {
-    requireCompletedOnboarding.mockRejectedValue(new SessionInfrastructureError("network", "offline"));
+    const infrastructureError = new SessionInfrastructureError("network", "offline");
+    requireCompletedOnboarding.mockRejectedValue(infrastructureError);
+    requireDidSession.mockRejectedValue(infrastructureError);
     const handler = await load();
     const response = await handler(new Request("http://localhost/api/test", { method }), requiresParams ? { params: Promise.resolve({ id: "event-1" }) } : undefined);
     expect(response.status).toBe(502);

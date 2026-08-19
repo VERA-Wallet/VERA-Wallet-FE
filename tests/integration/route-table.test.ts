@@ -12,39 +12,70 @@ beforeAll(async () => {
 }, 180_000);
 const BE = "http://localhost:3200";
 
-async function presentDid(origin: string): Promise<{ status: number; cookie: string | undefined }> {
+async function presentDid(origin: string): Promise<{ status: number; cookie: string | undefined; upstream: string | null }> {
   const response = await fetch(`${origin}/api/auth/did/present`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ country: "KR" }),
   });
-  return { status: response.status, cookie: response.headers.get("set-cookie")?.match(/vw_access_token=[^;]+/)?.[0] };
+  return {
+    status: response.status,
+    cookie: response.headers.get("set-cookie")?.match(/vw_access_token=[^;]+/)?.[0],
+    upstream: response.headers.get("x-verawallet-upstream"),
+  };
 }
 
 describe("hybrid proxy route table", () => {
   it("sends DID presentation to BE through the rewrite and returns its Set-Cookie", async () => {
-    // FE mock은 204/vw_session을, BE는 201/vw_access_token을 준다. 이 차이가 rewrite 도달의 판별자다.
-    // NestJS의 @Post 기본 성공 코드가 201이며 이 컨트롤러는 @HttpCode(200)으로 덮지 않는다.
+    // FE mock과 BE 모두 201을 반환하므로 상태 코드가 아니라 Set-Cookie 이름(vw_access_token vs vw_session)으로 rewrite 도달을 판별한다.
+    // x-verawallet-upstream은 프레임워크 기본 헤더가 아닌 BE 명시 계약 마커다.
     const proxied = await presentDid(FE);
     expect(proxied.status).toBe(201);
     expect(proxied.cookie).toBeDefined();
+    expect(proxied.upstream).toBe("be");
 
     const direct = await presentDid(BE);
     expect(direct.status).toBe(201);
+    expect(direct.upstream).toBe("be");
+  });
+
+  it("delivers the mobile-ID (OmniOne CX) token in the body all the way to BE validation", async () => {
+    // 이 회귀는 조용하다: BE `PresentDidDto`에 `cxToken`이 없으면 whitelist ValidationPipe가 필드를 말없이 지우고
+    // 응답은 그대로 201이라, 상태 코드만 보면 토큰이 도착한 것과 구분되지 않는다.
+    // 판별자로 빈 문자열을 쓴다 — 필드가 DTO에 바인딩돼 있을 때만 @MinLength(1)이 400을 만든다.
+    const empty = await fetch(`${FE}/api/auth/did/present`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ country: "KR", cxToken: "" }),
+    });
+    expect(empty.status).toBe(400);
+    expect((await empty.json() as { error?: { message?: string } }).error?.message).toContain("cxToken");
+
+    // 정상 토큰은 통과하고 BE 세션 쿠키가 나온다(= 프록시가 body를 온전히 넘겼고 컨트롤러가 그 값으로 신원을 검증했다).
+    const presented = await fetch(`${FE}/api/auth/did/present`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ country: "KR", cxToken: "cx-window-token" }),
+    });
+    expect(presented.status).toBe(201);
+    expect(presented.headers.get("set-cookie")).toContain("vw_access_token");
   });
 
   it("routes /api/events (exact and nested) to BE", async () => {
-    // 판별자: BE는 지갑 미바인딩 사용자에게 404를 준다(IndexerService.sync). FE mock에는 그 경로가 없고 401을 준다.
+    // FE와 BE가 같은 404를 주도록 정렬됐으므로 상태코드는 더 이상 판별자가 아니다.
+    // x-verawallet-upstream은 BE가 붙이는 명시적 계약 마커이며, rewrite를 거치면 FE 응답에도 보존된다.
     const { cookie } = await presentDid(FE);
     expect(cookie).toBeDefined();
 
     const list = await fetch(`${FE}/api/events`, { headers: { cookie: cookie! } });
     expect(list.status).toBe(404);
+    expect(list.headers.get("x-verawallet-upstream")).toBe("be");
     const listBody = await list.json() as { error?: { message?: string } };
     expect(listBody.error?.message).toContain("bound wallet");
 
     const summary = await fetch(`${FE}/api/events/summary`, { headers: { cookie: cookie! } });
     expect(summary.status).toBe(404);
+    expect(summary.headers.get("x-verawallet-upstream")).toBe("be");
   });
 
   it("keeps the dev-only test-login route closed while the proxy is on", async () => {
@@ -97,19 +128,34 @@ describe("hybrid proxy route table", () => {
   });
 
   it("keeps tax and ruleset routes on the frontend", async () => {
-    // allowlist에 없으므로 FE Route Handler가 처리한다. FE는 완료 온보딩을 요구하고 BE는 JWT만 요구하므로
-    // DID만 가진 쿠키로 호출하면 FE 계약(401 unauthorized envelope)이 그대로 드러난다.
+    // /api/tax/estimate는 프록시 allowlist 밖의 FE Route Handler다. DID-only 쿠키로 source=scenario를
+    // 보내면 FE 엔진은 지갑 없이도 200으로 계산하지만, BE는 source를 무시하고 지갑 이벤트를 읽어 bound-wallet 404를 준다.
+    // 이 상태 비대칭(연도는 현재 연도로 계산)은 "tax는 FE가 처리한다"는 프록시 경계의 판별자다.
     const { cookie } = await presentDid(FE);
-    const feRulesets = await fetch(`${FE}/api/tax/rulesets`, { headers: { cookie: cookie! } });
-    expect(feRulesets.status).toBe(401);
-    const feBody = await feRulesets.json() as { error?: { code?: string } };
-    expect(feBody.error?.code).toBe("unauthorized");
+    expect(cookie).toBeDefined();
+    const taxYear = new Date().getFullYear();
+    const estimateBody = { country: "KR", taxYear, source: "scenario" };
 
-    // 같은 쿠키로 BE를 직접 부르면 200이다 — FE는 완료 온보딩을 요구하고 BE는 JWT만 요구하기 때문이며,
-    // 이 상태 차이 자체가 "FE가 이 경로를 프록시하지 않았다"는 증거다.
-    // 개수는 판별자가 아니다: BE `listFrontendRuleSets()`도 12개국을 돌려준다(실측 확인).
-    const beRulesets = await fetch(`${BE}/api/tax/rulesets`, { headers: { cookie: cookie! } });
-    expect(beRulesets.status).toBe(200);
+    const feEstimate = await fetch(`${FE}/api/tax/estimate`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: cookie! },
+      body: JSON.stringify(estimateBody),
+    });
+    expect(feEstimate.status).toBe(200);
+    expect(feEstimate.headers.get("x-verawallet-upstream")).toBeNull();
+    const feRulesets = await fetch(`${FE}/api/tax/rulesets`, { headers: { cookie: cookie! } });
+    expect(feRulesets.status).toBe(200);
+    expect(feRulesets.headers.get("x-verawallet-upstream")).toBeNull();
+
+    const beEstimate = await fetch(`${BE}/api/tax/estimate`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: cookie! },
+      body: JSON.stringify(estimateBody),
+    });
+    expect(beEstimate.status).toBe(404);
+    const beBody = await beEstimate.json() as { error?: { code?: string; message?: string } };
+    expect(beBody.error?.code).toBe("not_found");
+    expect(beBody.error?.message).toContain("bound wallet");
   });
 });
 

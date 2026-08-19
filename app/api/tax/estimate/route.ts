@@ -1,17 +1,19 @@
-import { requireCompletedOnboarding } from "@/lib/dal";
-import { error, success, withSessionInfrastructureError } from "@/lib/auth-route";
+import { requireDidSession } from "@/lib/dal";
+import { error, success, unauthorizedResponse, walletNotBoundResponse, withSessionInfrastructureError } from "@/lib/auth-route";
 import { taxEngine } from "@/lib/composition-root.server";
 import { taxEstimateRequestSchema } from "@/lib/http/tax-dto";
 import { MarginalBudgetError, UnknownRuleSetError } from "@/lib/tax/engine";
 
 export async function POST(request: Request) {
-  const session = await withSessionInfrastructureError(() => requireCompletedOnboarding(request));
+  const session = await withSessionInfrastructureError(() => requireDidSession(request));
   if (session instanceof Response) return session;
-  if (!session) return Response.json(error("unauthorized", "Completed onboarding required."), { status: 401 });
+  if (!session) return unauthorizedResponse();
 
   const payload: unknown = await request.json().catch(() => null);
   const parsed = taxEstimateRequestSchema.safeParse(payload);
   if (!parsed.success) return Response.json(error("invalid_request", "Invalid estimate request.", parsed.error.issues), { status: 400 });
+  // BE는 source를 무시하고 항상 listOrSync를 타므로 지갑 없으면 404 — FE는 scenario 충실도를 지키되 wallet source만 BE와 같은 404.
+  if (parsed.data.source === "wallet" && session.walletAddress === null) return walletNotBoundResponse();
 
   try {
     return Response.json(success(await taxEngine.estimate(parsed.data)));
