@@ -20,7 +20,8 @@ import { abs, isNegative, isZero } from "@/lib/tax/decimal";
 const WIDTH = 600;
 const HEIGHT = 180;
 
-function omissionNotice(omitted: Record<string, number>): string | null {
+/** 사유별 세부 문장. 요약은 칩("선에 없는 N건")이 대신하므로, 이 문장은 접힘 안에서만 쓴다. */
+function omissionDetail(omitted: Record<string, number>): string | null {
   const parts = [
     omitted.unconfirmed > 0 ? `가격·분류 미확정 ${omitted.unconfirmed}건` : null,
     omitted.notFlow > 0 ? `자기 지갑 간 이체 ${omitted.notFlow}건` : null,
@@ -30,16 +31,23 @@ function omissionNotice(omitted: Record<string, number>): string | null {
   return parts.length > 0 ? `${parts.join(" · ")}은 선에 없습니다.` : null;
 }
 
+function omittedTotal(omitted: Record<string, number>): number {
+  return omitted.unconfirmed + omitted.notFlow + omitted.undated + omitted.otherCurrency;
+}
+
 export function FlowChart({
   events,
   state,
   truncated = false,
+  hideBalances = false,
 }: {
   events: NormalizedEvent[];
   /** 목록 조회 상태. 재조회·실패 중이면 이 선도 "지금 것"이 아니다. */
   state: FreshState;
   /** 목록을 일부만 받아왔는가. 그러면 선도 일부다. */
   truncated?: boolean;
+  /** 잔액 가리기 모드. 선의 형태는 유지하되 금액 텍스트만 가린다. */
+  hideBalances?: boolean;
 }) {
   const [rangeId, setRangeId] = useState<RangeId>("ALL");
   const series = buildFlowSeries(events);
@@ -48,7 +56,8 @@ export function FlowChart({
   const last = series.points[series.points.length - 1];
   const currency = series.currency;
   const geometry = slice ? flowGeometry(slice.plot, WIDTH, HEIGHT) : null;
-  const notice = omissionNotice(series.omitted);
+  const notice = omissionDetail(series.omitted);
+  const omitted = omittedTotal(series.omitted);
 
   const rangeClass = (active: boolean) =>
     `shrink-0 rounded-lg px-3 py-1.5 text-sm font-semibold ${active ? "bg-zinc-900 text-white" : "text-zinc-500"}`;
@@ -61,7 +70,7 @@ export function FlowChart({
           {/* 그릴 것이 없으면 금액 자리를 비운다. `—`도 0도 모두 "값이 있다"는 인상을 준다. */}
           {last && currency ? (
             <p data-testid="flow-total" className="mt-1 text-3xl font-bold tracking-tight text-zinc-900">
-              {formatFiat(last.value, currency)}
+              {hideBalances ? "•••••" : formatFiat(last.value, currency)}
             </p>
           ) : null}
           {last ? (
@@ -80,9 +89,15 @@ export function FlowChart({
                 className={`text-sm font-semibold ${isNegative(slice.change) ? "text-rose-700" : "text-emerald-700"}`}
               >
                 <span aria-hidden="true">{isNegative(slice.change) ? "▼" : "▲"}</span>{" "}
-                {isNegative(slice.change) ? "-" : "+"}
-                {formatFiat(abs(slice.change), currency)}
-                {slice.changePercent === null ? "" : ` · ${abs(slice.changePercent)}%`}
+                {hideBalances ? (
+                  "•••••"
+                ) : (
+                  <>
+                    {isNegative(slice.change) ? "-" : "+"}
+                    {formatFiat(abs(slice.change), currency)}
+                    {slice.changePercent === null ? "" : ` · ${abs(slice.changePercent)}%`}
+                  </>
+                )}
               </p>
             )}
             <p className="mt-1 text-xs text-zinc-400">{range.label} 변화</p>
@@ -157,12 +172,26 @@ export function FlowChart({
       ) : null}
 
       <div className="mt-2 border-t border-zinc-100 pt-2">
-        {/* 이 선이 무엇인지, 그리고 무엇이 아닌지를 같은 자리에서 말한다.
-            "평가액"으로 읽히는 순간, 우리가 갖고 있지 않은 현재 시세를 주장하는 화면이 된다. */}
-        <p className="text-xs leading-5 text-zinc-500">
-          받은 자산은 더하고 보낸 자산은 뺀 누적 금액입니다. 각 거래 시점의 가격이라 지금 시세로 평가한 금액이 아닙니다.
-        </p>
-        {notice ? <p className="mt-1 text-xs leading-5 text-zinc-500">{notice}</p> : null}
+        {/* 이 선이 무엇인지, 그리고 무엇이 아닌지는 여전히 같은 자리에서 말한다 — 다만 문장 그대로 깔면
+            정작 읽어야 할 그래프보다 고지문이 부피를 더 차지하므로 칩으로 강등하고 전문은 접어 보존한다. */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {omitted > 0 ? (
+            <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-semibold text-zinc-500">
+              선에 없는 {omitted}건
+            </span>
+          ) : null}
+          <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-semibold text-zinc-500">
+            현재 평가액 아님
+          </span>
+        </div>
+        <details className="mt-1.5">
+          <summary className="cursor-pointer text-xs font-medium text-zinc-400">무엇이 빠졌나</summary>
+          <div className="mt-1 space-y-1 text-xs leading-5 text-zinc-500">
+            {/* "평가액"으로 읽히는 순간, 우리가 갖고 있지 않은 현재 시세를 주장하는 화면이 된다. */}
+            <p>받은 자산은 더하고 보낸 자산은 뺀 누적 금액입니다. 각 거래 시점의 가격이라 지금 시세로 평가한 금액이 아닙니다.</p>
+            {notice ? <p>{notice}</p> : null}
+          </div>
+        </details>
         {truncated ? (
           <p className="mt-1 text-xs leading-5 text-amber-800">거래를 일부만 불러와 이 선도 일부입니다.</p>
         ) : null}
