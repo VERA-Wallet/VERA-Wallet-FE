@@ -1,6 +1,7 @@
 import "server-only";
 
 import { beFetch } from "@/lib/adapters/session/request-cookie.server";
+import { isMockApiMode } from "@/lib/api-mode";
 import { collectBoundedEvents, EventCollectionTruncatedError } from "@/lib/collect/bounded-event-collector";
 import { decodeResponse } from "@/lib/http/error-codec";
 import type { EventListDTO } from "@/lib/http/dto";
@@ -74,7 +75,7 @@ export type EventSyncWarmUpResult =
   | { status: "failed"; reason: "http_status" | "error"; detail: string };
 
 export async function warmUpBeEventSync(cookieHeader: string | undefined): Promise<EventSyncWarmUpResult> {
-  if (!process.env.VERAWALLET_BACKEND_ORIGIN) return { status: "skipped", reason: "off-mode" };
+  if (isMockApiMode()) return { status: "skipped", reason: "off-mode" };
   if (!cookieHeader) return { status: "skipped", reason: "no-cookie" };
 
   try {
