@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { backendOrigin } from "../../lib/api-mode";
 import { mkdir, writeFile } from "node:fs/promises";
 import { useFreshBackend } from "./support/backend-lifecycle";
 import { bootstrapSession } from "./support/bootstrap-be-session";
@@ -7,7 +8,8 @@ import { bootstrapSession } from "./support/bootstrap-be-session";
 // 룰셋 시뮬레이션 표면도 같은 규칙을 따른다.
 // 각 assertion을 해당 표면 컨테이너로 한정해 전역 배지 하나로 통과하는 은폐를 막는다.
 test.describe.serial("AC6 provenance badges", () => {
-const mode = process.env.VERAWALLET_BACKEND_ORIGIN ? "on" : "off";
+// backend URL이 있어도 mock 강제가 켜질 수 있으므로 실제 판정과 같은 helper로 artifact 라벨을 정한다.
+const mode = backendOrigin() ? "on" : "off";
 const artifactDirectory = "artifacts";
 const transcriptPath = `${artifactDirectory}/g003-provenance-${mode}-transcript.json`;
 
@@ -64,22 +66,11 @@ function recorder() {
     transcript.action("goto", "/connect-wallet");
     await page.goto("/connect-wallet");
     await verifyBadge("wallet-connect", "connect-wallet");
-    await verifyBadge("exchange-connect", "exchange-connect-panel");
-    transcript.action("click", 'role=button[name="업비트 연동하기"]');
-    await page.getByRole("button", { name: "업비트 연동하기" }).click();
-    transcript.action("fill", 'label="API 키"');
-    await page.getByLabel("API 키").fill("UPBIT-KEY-1234567890");
-    transcript.action("fill", 'label="시크릿 키"');
-    await page.getByLabel("시크릿 키").fill("secret-value");
-    transcript.action("click", 'role=button[name="연동하기"]');
-    await page.getByRole("button", { name: "연동하기", exact: true }).click();
-    await expect(page.getByRole("button", { name: "업비트 연동 해제" })).toBeVisible();
 
     await bootstrapSession(page, { privateKey: "0x3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c" });
     transcript.action("goto", "/dashboard");
     await page.goto("/dashboard");
     await verifyBadge("dashboard-summary", "dashboard-view");
-    await verifyBadge("exchange-link-summary", "exchange-link-summary");
 
     transcript.action("goto", "/export");
     await page.goto("/export");

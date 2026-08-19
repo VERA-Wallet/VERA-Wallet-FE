@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { backendOrigin } from "../../lib/api-mode";
 import { mkdir, writeFile } from "node:fs/promises";
 import { privateKeyToAccount } from "viem/accounts";
 import { useFreshBackend } from "./support/backend-lifecycle";
@@ -36,7 +37,9 @@ async function browserCompleteSession(page: import("@playwright/test").Page, act
   await page.getByRole("button", { name: "KR", exact: true }).click(); addAction("Select country", "role=button[name=KR]");
   await page.getByRole("button", { name: "QR/딥링크 제시" }).click(); addAction("Present DID", "role=button[name=QR/딥링크 제시]");
   await page.getByRole("button", { name: "제시 완료" }).click(); addAction("Confirm DID", "role=button[name=제시 완료]");
-  await page.getByRole("button", { name: "지갑 연결로 계속" }).click();
+  await page.getByRole("button", { name: "대시보드로 이동" }).click();
+  await page.waitForURL("**/dashboard"); addAction("Open dashboard (empty shell)", "url=/dashboard");
+  await page.getByRole("link", { name: "데이터 불러오기" }).click();
   await page.waitForURL("**/connect-wallet"); addAction("Open wallet connection", "url=/connect-wallet");
   await page.getByRole("button", { name: "지갑 연결하기" }).click(); addAction("Connect synthetic wallet", "role=button[name=지갑 연결하기]");
   await expect(page.getByRole("button", { name: "SIWE 서명으로 계속" })).toBeVisible();
@@ -48,7 +51,8 @@ async function browserCompleteSession(page: import("@playwright/test").Page, act
 
 // 이 스펙은 ON(하이브리드 프록시) 모드의 계약만 검증한다. OFF 모드에는 BE 자체가 없어 같은 전제를 재현할 수 없고,
 // OFF 등가 계약은 g001-session-gate-redteam·g002-wallet-siwe가 담당한다.
-const onModeOnly = process.env.VERAWALLET_BACKEND_ORIGIN ? test.describe.serial : test.describe.skip;
+// URL이 있어도 mock 강제가 켜질 수 있으므로 원시 환경변수 대신 실제 백엔드 origin으로 suite를 분류한다.
+const onModeOnly = backendOrigin() ? test.describe.serial : test.describe.skip;
 
 onModeOnly("G002 hybrid cutover adversarial browser QA", () => {
   useFreshBackend();

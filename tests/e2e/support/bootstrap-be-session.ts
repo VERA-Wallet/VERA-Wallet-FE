@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { privateKeyToAccount } from "viem/accounts";
 import { SiweMessage } from "siwe";
+import { isMockApiMode } from "../../../lib/api-mode";
 
 /**
  * 브라우저 컨텍스트에 완료 세션 쿠키를 심는다.
@@ -17,7 +18,7 @@ export async function bootstrapSession(
 ): Promise<void> {
   const request = page.context().request;
 
-  if (!process.env.VERAWALLET_BACKEND_ORIGIN) {
+  if (isMockApiMode()) {
     const response = await request.post("/api/auth/test-login");
     if (response.status() !== 204) throw new Error(`test-login failed with ${response.status()}.`);
     return;

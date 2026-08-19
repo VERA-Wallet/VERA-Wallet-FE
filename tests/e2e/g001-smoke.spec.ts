@@ -81,7 +81,7 @@ test.describe.serial("G001 contract red team", () => {
 
     // DID 단계 세션에서만 지갑 연결 화면에 접근할 수 있다.
     const didResponse = await request.post("/api/auth/did/present", { data: { country: "KR" } });
-    // FE mock은 200, BE는 201을 준다(NestJS @Post 기본 성공 코드). 어댑터는 response.ok로 판정하므로 둘 다 정상이다.
+    // FE mock과 BE 모두 201을 준다(NestJS @Post 기본 성공 코드). 어댑터는 response.ok로 판정하므로 둘 다 정상이다.
     record(cases, "auth-did-present", "DID claim issues a DID-stage session", "2xx", didResponse.status(), didResponse.ok());
     await checkPage("/connect-wallet", "지갑을 연결하세요", "지갑 연결하기");
 

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { isMockApiMode } from "../../lib/api-mode";
 import { mkdir, writeFile } from "node:fs/promises";
 
 const artifacts = "artifacts";
@@ -18,7 +19,8 @@ async function capture(page: import("@playwright/test").Page, name: string, expe
 // 이 스펙은 OFF(FE mock) 모드의 라우팅 계약을 고정한다.
 // ON 모드에서는 `test-login`이 404이고 세션이 BE JWT로 발급되므로 같은 전제를 재현할 수 없다 —
 // ON 모드의 동일 전이는 g001-smoke의 라우팅 검증과 route-table 통합 테스트가 담당한다.
-const offModeOnly = process.env.VERAWALLET_BACKEND_ORIGIN ? test.describe.skip : test.describe.serial;
+// URL이 있어도 mock 강제가 켜질 수 있으므로 원시 환경변수 대신 실제 모드로 suite를 분류한다.
+const offModeOnly = isMockApiMode() ? test.describe.serial : test.describe.skip;
 
 offModeOnly("G001 session gate OFF-mode browser red team", () => {
   // 이 앱은 모바일 폭(448px)에 콘텐츠를 몰아 넣는다. 기본 1280 뷰포트로 찍으면 증거의 대부분이 좌우 여백이다.
@@ -32,10 +34,15 @@ offModeOnly("G001 session gate OFF-mode browser red team", () => {
 
     await page.getByRole("button", { name: "QR/딥링크 제시" }).click();
     await page.getByRole("button", { name: "제시 완료" }).click();
-    await page.getByRole("button", { name: "지갑 연결로 계속" }).click();
+    await page.getByRole("button", { name: "대시보드로 이동" }).click();
     // 클라이언트 네비게이션이 끝나기 전에 URL을 읽으면 직전 경로가 잡힌다. 전이를 기다린 뒤 기록한다.
+    await page.waitForURL("**/dashboard");
+    entries.push({ action: "complete DID presentation through browser UI", expected: "/dashboard", actual: new URL(page.url()).pathname, verdict: new URL(page.url()).pathname === "/dashboard" ? "passed" : "failed", timestamp: new Date().toISOString() });
+    await capture(page, "did-dashboard-empty", "/dashboard", entries);
+    // DID-only 대시보드의 "데이터 불러오기" CTA로 지갑 연결 화면으로 이동한다.
+    await page.getByRole("link", { name: "데이터 불러오기" }).click();
     await page.waitForURL("**/connect-wallet");
-    entries.push({ action: "complete DID presentation through browser UI", expected: "/connect-wallet", actual: new URL(page.url()).pathname, verdict: new URL(page.url()).pathname === "/connect-wallet" ? "passed" : "failed", timestamp: new Date().toISOString() });
+    entries.push({ action: "follow 데이터 불러오기 CTA to wallet connect", expected: "/connect-wallet", actual: new URL(page.url()).pathname, verdict: new URL(page.url()).pathname === "/connect-wallet" ? "passed" : "failed", timestamp: new Date().toISOString() });
     await capture(page, "did-connect-wallet", "/connect-wallet", entries);
 
     const completedResponse = await page.context().request.post("/api/auth/test-login");
@@ -43,7 +50,7 @@ offModeOnly("G001 session gate OFF-mode browser red team", () => {
     if (completedCookie) await page.context().addCookies([{ name: "vw_session", value: completedCookie, url: "http://localhost:3100" }]);
     const completed = completedResponse.status();
     entries.push({ action: "POST /api/auth/test-login and install issued cookie into browser", expected: "204 with vw_session", actual: `${completed}; cookie=${Boolean(completedCookie)}`, verdict: completed === 204 && Boolean(completedCookie) ? "passed" : "failed", timestamp: new Date().toISOString() });
-    // `/`는 세션과 무관하게 항상 `/login`으로 보내는 기존 계약이다(app/page.tsx). 완료 세션은 보호 페이지로 직접 확인한다.
+    // 완료 세션은 보호 페이지로 직접 확인한다. (`/`·`/login`은 이제 세션이 있으면 /dashboard로 보낸다.)
     await page.goto("/dashboard");
     await capture(page, "completed-dashboard", "/dashboard", entries, "viewport");
 

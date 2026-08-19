@@ -1,4 +1,5 @@
 import { expect, test, type APIRequestContext } from "@playwright/test";
+import { isMockApiMode } from "../../lib/api-mode";
 import { mkdir, writeFile } from "node:fs/promises";
 import { privateKeyToAccount } from "viem/accounts";
 import { SiweMessage } from "siwe";
@@ -50,15 +51,15 @@ function siweMessage(nonce: Nonce, overrides: Partial<{ domain: string; uri: str
 
 async function issueNonce(request: APIRequestContext) {
   const response = await request.post("/api/auth/nonce", { data: { chainId: 1 } });
-  expect(response.status()).toBe(200);
+  expect(response.status()).toBe(201);
   return ((await response.json()) as { data: Nonce }).data;
 }
 
-// 이 스펙은 FE mock의 SIWE 계약(422 재사용/불일치, 익명 nonce 허용, DID 재제시 시 지갑 클레임 초기화)을 고정한다.
-// BE는 같은 상황에서 409/400을 주고 nonce에 JWT를 요구하며 DID 재제시로 바인딩을 지우지 않는다 —
-// 두 계약을 한 단언에 섞으면 어느 쪽 드리프트도 못 잡는다.
+// 이 스펙은 FE mock의 SIWE 계약(409 재사용/400 불일치 — BE와 status 정렬 완료, DID 없는 nonce 401, DID 재제시 시 지갑 클레임 보존)을 고정한다.
+// nonce는 FE mock도 BE처럼 DID 세션을 요구하며, DID 재제시는 양쪽 모두 바인딩을 유지한다.
 // ON 모드의 raw BE 계약은 tests/integration/be-siwe-contract.test.ts가 담당한다.
-const offModeOnly = process.env.VERAWALLET_BACKEND_ORIGIN ? test.describe.skip : test.describe.serial;
+// URL이 있어도 mock 강제가 켜질 수 있으므로 원시 환경변수 대신 실제 모드로 suite를 분류한다.
+const offModeOnly = isMockApiMode() ? test.describe.serial : test.describe.skip;
 
 offModeOnly("G002 synthetic wallet SIWE red team", () => {
   test("DID claim, synthetic EIP-1193 wallet SIWE, and authentication API defenses", async ({ page, request, browser }) => {
@@ -82,28 +83,26 @@ offModeOnly("G002 synthetic wallet SIWE red team", () => {
 
     const walletOnlyContext = await browser.newContext();
     const walletOnlyRequest = walletOnlyContext.request;
-    const walletOnlyNonce = await issueNonce(walletOnlyRequest);
-    const walletOnlyMessage = siweMessage(walletOnlyNonce);
-    const walletOnlyVerify = await walletOnlyRequest.post("/api/auth/verify", {
-      data: { message: walletOnlyMessage, signature: await account.signMessage({ message: walletOnlyMessage }) },
-    });
+    const walletOnlyNonce = await walletOnlyRequest.post("/api/auth/nonce", { data: { chainId: 1 } });
     const walletOnlyPage = await walletOnlyContext.newPage();
     act({ type: "goto", url: "/dashboard" });
     await walletOnlyPage.goto("/dashboard");
     const walletOnlyDashboardPath = new URL(walletOnlyPage.url()).pathname;
     const walletOnlyEvents = await walletOnlyRequest.get("/api/events");
     const walletOnlyRedirected = ["/connect-wallet", "/login"].includes(walletOnlyDashboardPath);
-    assertion("Wallet-only dashboard visit is redirected and events remain denied", walletOnlyVerify.status() === 200 && walletOnlyRedirected && walletOnlyEvents.status() === 401);
-    record(cases, "wallet-only-dashboard-page-guard", "SIWE without DID cannot open the dashboard or events API", { dashboard: ["/connect-wallet", "/login"], events: 401 }, { verify: walletOnlyVerify.status(), dashboard: walletOnlyDashboardPath, events: walletOnlyEvents.status() }, walletOnlyVerify.status() === 200 && walletOnlyRedirected && walletOnlyEvents.status() === 401);
-    // 역순 우회 차단: wallet-only 세션에서 DID를 제시해도 지갑 클레임이 초기화되어 완료 세션이 되지 않는다.
+    assertion("Wallet-only SIWE attempt is blocked at nonce and events remain denied", walletOnlyNonce.status() === 401 && walletOnlyRedirected && walletOnlyEvents.status() === 401);
+    record(cases, "wallet-only-dashboard-page-guard", "SIWE without DID is blocked at nonce and cannot open the dashboard or events API", { nonce: 401, dashboard: ["/connect-wallet", "/login"], events: 401 }, { nonce: walletOnlyNonce.status(), dashboard: walletOnlyDashboardPath, events: walletOnlyEvents.status() }, walletOnlyNonce.status() === 401 && walletOnlyRedirected && walletOnlyEvents.status() === 401);
+    // 역순 우회 차단은 nonce의 DID 가드가 담당한다. wallet-only 세션 자체가 불가능하고,
+    // 이후 DID를 제시하면 DID-only가 되어 대시보드는 껍데기(데이터 없음)만 보이고 events는 404다.
     const reverseDid = await walletOnlyRequest.post("/api/auth/did/present", { data: { country: "KR" } });
     act({ type: "goto", url: "/dashboard" });
     await walletOnlyPage.goto("/dashboard");
     const reversePath = new URL(walletOnlyPage.url()).pathname;
     const reverseEvents = await walletOnlyRequest.get("/api/events");
-    const reverseBlocked = reverseDid.status() === 200 && reversePath === "/connect-wallet" && reverseEvents.status() === 401;
+    const reverseEventsBody = (await reverseEvents.json()) as { error?: { message?: string } };
+    const reverseBlocked = walletOnlyNonce.status() === 401 && reverseDid.status() === 201 && reversePath === "/dashboard" && reverseEvents.status() === 404 && reverseEventsBody.error?.message?.includes("bound wallet") === true;
     assertion("Wallet-then-DID order cannot produce a completed session", reverseBlocked, "body");
-    record(cases, "reverse-order-bypass-blocked", "SIWE→DID reverse order clears wallet claims and stays incomplete", { dashboard: "/connect-wallet", events: 401 }, { did: reverseDid.status(), dashboard: reversePath, events: reverseEvents.status() }, reverseBlocked);
+    record(cases, "reverse-order-bypass-blocked", "SIWE→DID reverse order is stopped at nonce and stays DID-only (dashboard shows empty shell)", { nonce: 401, did: 201, dashboard: "/dashboard", events: 404 }, { nonce: walletOnlyNonce.status(), did: reverseDid.status(), dashboard: reversePath, events: reverseEvents.status() }, reverseBlocked);
     await walletOnlyContext.close();
 
     // personal_sign의 params[0]은 hex 인코딩 메시지 — raw 바이트로 EIP-191 서명해야 서버 복원 주소가 일치한다.
@@ -146,8 +145,11 @@ offModeOnly("G002 synthetic wallet SIWE red team", () => {
     await page.screenshot({ path: didScreenshot, fullPage: true, type: "jpeg", quality: 85 });
     record(cases, "wallet-connect-synthetic-provider", "US DID claim displays its ruleset badge", "US claim and US FIFO badge", { claim: await page.getByText("US 거주국 클레임이 확인되었습니다.").isVisible(), badge: await page.getByText("US FIFO").isVisible() }, true);
 
-    act({ type: "click", selector: "role=button[name='지갑 연결로 계속']" });
-    await page.getByRole("button", { name: "지갑 연결로 계속" }).click();
+    act({ type: "click", selector: "role=button[name='대시보드로 이동']" });
+    await page.getByRole("button", { name: "대시보드로 이동" }).click();
+    await expect(page).toHaveURL(/\/dashboard$/);
+    act({ type: "click", selector: "role=link[name='데이터 불러오기']" });
+    await page.getByRole("link", { name: "데이터 불러오기" }).click();
     await expect(page).toHaveURL(/\/connect-wallet$/);
     act({ type: "click", selector: "role=button[name='지갑 연결하기']" });
     await page.getByRole("button", { name: "지갑 연결하기" }).click();
@@ -171,14 +173,29 @@ offModeOnly("G002 synthetic wallet SIWE red team", () => {
     const anonymousRulesets = await request.get("/api/rulesets");
     record(cases, "anonymous-guards", "Anonymous events and rulesets requests are denied", { events: 401, rulesets: 401 }, { events: anonymousEvents.status(), rulesets: anonymousRulesets.status() }, anonymousEvents.status() === 401 && anonymousRulesets.status() === 401);
 
-    const didOnly = await request.post("/api/auth/did/present", { data: { country: "US" } });
-    const didOnlyEvents = await request.get("/api/events");
-    record(cases, "did-only-events-guard", "DID-only session cannot access events", 401, didOnlyEvents.status(), didOnly.status() === 200 && didOnlyEvents.status() === 401);
+    const repeatedDid = await request.post("/api/auth/did/present", { data: { country: "US" } });
+    const preservedSession = await request.get("/api/auth/session");
+    const preservedSessionBody = (await preservedSession.json()) as { data?: { walletAddress?: string | null } };
+    const preservedEvents = await request.get("/api/events");
+    const walletPreserved = repeatedDid.status() === 201
+      && preservedSession.status() === 200
+      && preservedSessionBody.data?.walletAddress?.toLowerCase() === account.address.toLowerCase()
+      && preservedEvents.status() === 200;
+    record(cases, "did-representation-preserves-wallet", "DID re-presentation preserves the existing wallet claim", { did: 201, walletAddress: account.address, events: 200 }, { did: repeatedDid.status(), walletAddress: preservedSessionBody.data?.walletAddress, events: preservedEvents.status() }, walletPreserved);
+
+    const didOnlyContext = await browser.newContext();
+    const didOnlyRequest = didOnlyContext.request;
+    const didOnly = await didOnlyRequest.post("/api/auth/did/present", { data: { country: "US" } });
+    const didOnlyEvents = await didOnlyRequest.get("/api/events");
+    const didOnlyEventsBody = (await didOnlyEvents.json()) as { error?: { message?: string } };
+    const didOnlyGuarded = didOnly.status() === 201 && didOnlyEvents.status() === 404 && didOnlyEventsBody.error?.message?.includes("bound wallet") === true;
+    record(cases, "did-only-events-guard", "DID-only session cannot access events", { did: 201, events: 404, error: "bound wallet" }, { did: didOnly.status(), events: didOnlyEvents.status(), message: didOnlyEventsBody.error?.message }, didOnlyGuarded);
+    await didOnlyContext.close();
 
     const foreignNonce = await request.post("/api/auth/nonce", { data: { chainId: 1, domain: "attacker.example", uri: "https://attacker.example/login", address: "0x000000000000000000000000000000000000dEaD" } });
     const foreignNonceData = ((await foreignNonce.json()) as { data: Nonce }).data;
     const expectedDomain = "localhost:3100";
-    record(cases, "nonce-trusted-origin", "Nonce ignores client-supplied domain, uri, and address", { domain: expectedDomain, uriNot: "https://attacker.example/login" }, { status: foreignNonce.status(), domain: foreignNonceData.domain, uri: foreignNonceData.uri }, foreignNonce.status() === 200 && foreignNonceData.domain === expectedDomain && foreignNonceData.uri !== "https://attacker.example/login" && foreignNonceData.uri.startsWith(`http://${expectedDomain}/`));
+    record(cases, "nonce-trusted-origin", "Nonce ignores client-supplied domain, uri, and address", { status: 201, domain: expectedDomain, uriNot: "https://attacker.example/login" }, { status: foreignNonce.status(), domain: foreignNonceData.domain, uri: foreignNonceData.uri }, foreignNonce.status() === 201 && foreignNonceData.domain === expectedDomain && foreignNonceData.uri !== "https://attacker.example/login" && foreignNonceData.uri.startsWith(`http://${expectedDomain}/`));
 
     const validNonce = await issueNonce(request);
     const validMessage = siweMessage(validNonce);
@@ -186,13 +203,13 @@ offModeOnly("G002 synthetic wallet SIWE red team", () => {
     const verify = await request.post("/api/auth/verify", { data: { message: validMessage, signature: validSignature } });
     const replay = await request.post("/api/auth/verify", { data: { message: validMessage, signature: validSignature } });
     const replayBody = (await replay.json()) as { error?: { code?: string } };
-    record(cases, "verify-and-replay", "Valid SIWE verifies once; replay is already-consumed", { verify: 200, replay: 422, replayCode: "already-consumed" }, { verify: verify.status(), replay: replay.status(), replayBody }, verify.status() === 200 && replay.status() === 422 && replayBody.error?.code === "already-consumed");
+    record(cases, "verify-and-replay", "Valid SIWE verifies once; replay is already-consumed", { verify: 201, replay: 409, replayCode: "already-consumed" }, { verify: verify.status(), replay: replay.status(), replayBody }, verify.status() === 201 && replay.status() === 409 && replayBody.error?.code === "already-consumed");
 
     const mismatchNonce = await issueNonce(request);
     const mismatchMessage = siweMessage(mismatchNonce, { domain: "attacker.example", uri: "https://attacker.example/login" });
     const mismatch = await request.post("/api/auth/verify", { data: { message: mismatchMessage, signature: await account.signMessage({ message: mismatchMessage }) } });
     const mismatchBody = (await mismatch.json()) as { error?: { code?: string } };
-    record(cases, "foreign-domain-message", "Foreign-domain signed message is rejected before verification", { status: 422, code: "challenge_mismatch" }, { status: mismatch.status(), code: mismatchBody.error?.code }, mismatch.status() === 422 && mismatchBody.error?.code === "challenge_mismatch");
+    record(cases, "foreign-domain-message", "Foreign-domain signed message is rejected before verification", { status: 400, code: "challenge_mismatch" }, { status: mismatch.status(), code: mismatchBody.error?.code }, mismatch.status() === 400 && mismatchBody.error?.code === "challenge_mismatch");
 
     const invalidNonce = await issueNonce(request);
     const invalidMessage = siweMessage(invalidNonce);
@@ -201,7 +218,7 @@ offModeOnly("G002 synthetic wallet SIWE red team", () => {
     const consumedAfterInvalid = await request.post("/api/auth/verify", { data: { message: invalidMessage, signature: await account.signMessage({ message: invalidMessage }) } });
     const invalidBody = (await invalidVerify.json()) as { error?: { code?: string } };
     const consumedBody = (await consumedAfterInvalid.json()) as { error?: { code?: string } };
-    record(cases, "invalid-signature-consumes-nonce", "Invalid signature is rejected and consumes its nonce", { invalid: 401, retry: 422, retryCode: "already-consumed" }, { invalid: invalidVerify.status(), invalidCode: invalidBody.error?.code, retry: consumedAfterInvalid.status(), retryCode: consumedBody.error?.code }, invalidVerify.status() === 401 && consumedAfterInvalid.status() === 422 && consumedBody.error?.code === "already-consumed");
+    record(cases, "invalid-signature-consumes-nonce", "Invalid signature is rejected and consumes its nonce", { invalid: 401, retry: 409, retryCode: "already-consumed" }, { invalid: invalidVerify.status(), invalidCode: invalidBody.error?.code, retry: consumedAfterInvalid.status(), retryCode: consumedBody.error?.code }, invalidVerify.status() === 401 && consumedAfterInvalid.status() === 409 && consumedBody.error?.code === "already-consumed");
 
     const session = await request.get("/api/auth/session");
     const sessionBody = (await session.json()) as { data?: { countryCode?: string; walletAddress?: string; chainId?: number } };
