@@ -21,22 +21,24 @@ async function presentDid(origin: string): Promise<{ status: number; cookie: str
   return {
     status: response.status,
     cookie: response.headers.get("set-cookie")?.match(/vw_access_token=[^;]+/)?.[0],
-    upstream: response.headers.get("x-verawallet-upstream"),
+    upstream: response.headers.get("x-verawallet-fe-rewrite"),
   };
 }
 
 describe("hybrid proxy route table", () => {
   it("sends DID presentation to BE through the rewrite and returns its Set-Cookie", async () => {
     // FE mock과 BE 모두 201을 반환하므로 상태 코드가 아니라 Set-Cookie 이름(vw_access_token vs vw_session)으로 rewrite 도달을 판별한다.
-    // x-verawallet-upstream은 프레임워크 기본 헤더가 아닌 BE 명시 계약 마커다.
+    // x-verawallet-fe-rewrite는 `proxy.ts`가 rewrite를 걸 때만 붙는다 — FE가 자기 라우트로 처리하면 없다.
     const proxied = await presentDid(FE);
     expect(proxied.status).toBe(201);
     expect(proxied.cookie).toBeDefined();
-    expect(proxied.upstream).toBe("be");
+    expect(proxied.upstream).toBeTruthy();
 
+    // BE를 직접 때리면 FE 프록시를 거치지 않으므로 이 마커가 없는 것이 맞다.
+    // 여기서 확인할 것은 같은 요청이 두 경로에서 같은 계약을 내놓는가다.
     const direct = await presentDid(BE);
     expect(direct.status).toBe(201);
-    expect(direct.upstream).toBe("be");
+    expect(direct.upstream).toBeNull();
   });
 
   it("delivers the mobile-ID (OmniOne CX) token in the body all the way to BE validation", async () => {
@@ -63,19 +65,19 @@ describe("hybrid proxy route table", () => {
 
   it("routes /api/events (exact and nested) to BE", async () => {
     // FE와 BE가 같은 404를 주도록 정렬됐으므로 상태코드는 더 이상 판별자가 아니다.
-    // x-verawallet-upstream은 BE가 붙이는 명시적 계약 마커이며, rewrite를 거치면 FE 응답에도 보존된다.
+    // x-verawallet-fe-rewrite의 유무가 "BE로 넘겼는가"와 "FE가 직접 처리했는가"를 가른다.
     const { cookie } = await presentDid(FE);
     expect(cookie).toBeDefined();
 
     const list = await fetch(`${FE}/api/events`, { headers: { cookie: cookie! } });
     expect(list.status).toBe(404);
-    expect(list.headers.get("x-verawallet-upstream")).toBe("be");
+    expect(list.headers.get("x-verawallet-fe-rewrite")).toBeTruthy();
     const listBody = await list.json() as { error?: { message?: string } };
     expect(listBody.error?.message).toContain("bound wallet");
 
     const summary = await fetch(`${FE}/api/events/summary`, { headers: { cookie: cookie! } });
     expect(summary.status).toBe(404);
-    expect(summary.headers.get("x-verawallet-upstream")).toBe("be");
+    expect(summary.headers.get("x-verawallet-fe-rewrite")).toBeTruthy();
   });
 
   it("keeps the dev-only test-login route closed while the proxy is on", async () => {
@@ -142,10 +144,10 @@ describe("hybrid proxy route table", () => {
       body: JSON.stringify(estimateBody),
     });
     expect(feEstimate.status).toBe(200);
-    expect(feEstimate.headers.get("x-verawallet-upstream")).toBeNull();
+    expect(feEstimate.headers.get("x-verawallet-fe-rewrite")).toBeNull();
     const feRulesets = await fetch(`${FE}/api/tax/rulesets`, { headers: { cookie: cookie! } });
     expect(feRulesets.status).toBe(200);
-    expect(feRulesets.headers.get("x-verawallet-upstream")).toBeNull();
+    expect(feRulesets.headers.get("x-verawallet-fe-rewrite")).toBeNull();
 
     const beEstimate = await fetch(`${BE}/api/tax/estimate`, {
       method: "POST",
