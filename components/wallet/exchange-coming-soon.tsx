@@ -11,8 +11,10 @@ import { EXCHANGES } from "@/lib/exchange/mock-links";
  */
 export function ExchangeComingSoon() {
   return (
-    <Card className="mt-4">
-      <div data-surface="exchange-coming-soon" className="flex items-center justify-between">
+    // 표면 마커는 카드 전체에 건다. 헤더에만 걸면 "이 패널 안에 무엇이 있는가"를 묻는
+    // 검사가 제목과 배지만 보게 되고, 정작 확인해야 할 거래소 목록은 범위 밖에 남는다.
+    <Card className="mt-4" data-surface="exchange-coming-soon">
+      <div className="flex items-center justify-between">
         <p className="font-semibold text-zinc-900">거래소 계정 연동</p>
         <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-semibold text-zinc-500">곧 지원</span>
       </div>

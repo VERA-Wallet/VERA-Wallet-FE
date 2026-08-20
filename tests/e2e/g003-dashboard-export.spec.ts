@@ -131,8 +131,13 @@ test.describe.serial("G003 dashboard and export contract red team", () => {
     record(cases, "dashboard-reclassification", "Bottom sheet applies one of five classifications and marks manual override", changedClassification, { classification: await classification.inputValue(), manualOverride: await manualOverride.count(), card: selectedLabel }, await classification.inputValue() === changedClassification && await manualOverride.count() > 0);
     await page.getByRole("button", { name: "닫기", exact: true }).click();
 
-    const stale = items[1] ?? items[0];
-    await cards.nth(items[1] ? 1 : 0).click();
+    // 목록은 최신순으로 정렬되므로 API 응답 순서와 화면 순서가 같지 않다. 순번을 두 세계에
+    // 걸쳐 재사용하면 다른 이벤트를 집는다 — 화면에서 고른 카드의 id로 원본 레코드를 찾는다.
+    const staleCard = cards.nth((await cards.count()) > 1 ? 1 : 0);
+    const staleEventId = await staleCard.getAttribute("data-event-id");
+    const stale = items.find(({ event }) => event.id === staleEventId)!;
+    expect(stale, `카드 ${staleEventId}가 목록 응답에 없다`).toBeDefined();
+    await staleCard.click();
     await expect(page.locator("#classification")).toHaveValue(String(stale.event.classification));
     const preemptClassification = String(stale.event.classification) === "SEND" ? "RECEIVE" : "SEND";
     const preempt = await page.context().request.patch(`/api/events/${stale.event.id}`, { data: { classification: preemptClassification, reason: "G003 stale-version preemption", expectedVersion: stale.version } });
