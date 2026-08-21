@@ -23,6 +23,7 @@ import type { AssetFlow } from "@/lib/review";
 import { isNegative, isZero } from "@/lib/tax/decimal";
 import { taxYearFor } from "@/lib/tax/engine";
 import { omitsCharge } from "@/lib/tax/status";
+import { useTaxYear } from "@/lib/tax/tax-year-context";
 import type { Classification, NormalizedEvent } from "@/lib/schema/normalized-event";
 import type { JudgmentGroup, JudgmentRow, TaxEstimate } from "@/lib/tax/types";
 
@@ -534,7 +535,11 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
   const referencePeriod = isGroundedPeriod(summaryFresh.data?.period)
     ? summaryFresh.data!.period.from
     : null;
-  const taxYear = taxYearFor(countryCode ?? "KR", referencePeriod ?? new Date().toISOString());
+  // 기본 귀속연도는 마지막 활동연도(요약 기간)에서 파생한다. 하지만 사용자가 세금 화면 셀렉터로
+  // 다른 연도를 고르면 그 선택이 전역 소스에 있고, 이 화면도 같은 연도를 봐야 desync가 없다.
+  // 선택이 없으면(초기) 파생값을 그대로 쓴다 — 초기값 규칙은 한 곳(마지막 활동연도)이다.
+  const derivedTaxYear = taxYearFor(countryCode ?? "KR", referencePeriod ?? new Date().toISOString());
+  const [taxYear] = useTaxYear(derivedTaxYear);
   const judgments = useJudgments(countryCode ?? "KR", taxYear, referencePeriod !== null);
   const items = events.data?.items ?? [];
   // 레퍼런스 관례대로 최신이 위. 원본 배열은 건드리지 않는다 — 누적 그래프는 시간순으로 받아야 한다.

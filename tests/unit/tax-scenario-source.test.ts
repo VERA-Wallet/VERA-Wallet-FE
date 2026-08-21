@@ -52,11 +52,11 @@ describe("데모 시나리오 출처", () => {
     const result = await engine.estimate({ country: "KR", taxYear: 2027, source: "scenario" });
 
     expect(result.status).toBe("PARTIAL");
-    // 양도·교환 손익 10,380,500 − 기본공제 2,500,000 = 과세표준 7,880,500
-    expect(result.lines.find((line) => line.key === "net_gains")?.amount).toBe("10380500");
-    expect(result.totals.taxableBase).toBe("7880500");
-    // 소득세 1,576,100 + 개인지방소득세 157,610
-    expect(result.totals.estimatedCharge).toBe("1733710");
+    // 거주자별 총평균법: 양도·교환 손익 9,229,625.62 − 기본공제 2,500,000 = 과세표준 6,729,625.62
+    expect(result.lines.find((line) => line.key === "net_gains")?.amount).toBe("9229625.62");
+    expect(result.totals.taxableBase).toBe("6729625.62");
+    // 소득세 1,345,925.12 + 개인지방소득세 134,592.51
+    expect(result.totals.estimatedCharge).toBe("1480517.64");
     expect(result.totals.effectiveRatePercent).toBe("22");
     // 스테이킹·에어드랍 수령분은 조문이 없어 총수입금액에서 빠진다.
     expect(result.lines.find((line) => line.key === "pending_income")?.amount).toBe("2750000");
@@ -69,7 +69,7 @@ describe("데모 시나리오 출처", () => {
     expect(before.status).toBe("SCHEDULED");
     expect(before.totals.estimatedCharge).toBe("0");
     // 원장 집계는 같은 규모로 보인다 — 시행 여부만 다르다.
-    expect(before.lines.find((line) => line.key === "ledger_gains")?.amount).toBe("10380500");
+    expect(before.lines.find((line) => line.key === "ledger_gains")?.amount).toBe("9229625.62");
   });
 
   it("지갑 이력에도 시행 가정을 적용해 실제 부담을 보여준다", async () => {

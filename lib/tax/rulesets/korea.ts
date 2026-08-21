@@ -1,7 +1,8 @@
 import { ZERO, add, clampPositive, isNegative, isPositive, isZero, min, percentOf, sub, sum } from "@/lib/tax/decimal";
+import type { Decimal } from "@/lib/tax/decimal";
 import { finalizeEstimate } from "@/lib/tax/estimate";
 import { COST_METHOD_SUFFIX, DEEMED_COST_SUFFIX, RECEIPT_COST_SUFFIX, limitationOf } from "@/lib/tax/limitations";
-import type { GainRow, IncomeRow, JudgmentVerdict, Limitation, RuleSetDefinition } from "@/lib/tax/types";
+import type { GainRow, IncomeRow, JudgmentVerdict, Limitation, RuleSetDefinition, TaxEvent } from "@/lib/tax/types";
 
 /**
  * 한국 — 가상자산 양도·대여 기타소득(분리과세).
@@ -23,7 +24,7 @@ const RATE = "20";
 const LOCAL_SURTAX_RATE = "10";
 
 const BASIS_TRANSFER = "소득세법 제21조제1항제27호 (양도·대여 기타소득)";
-const BASIS_COST = "소득세법 제37조제1항제3호 · 시행령 제88조제1항 (가상자산주소별 선입선출법)";
+const BASIS_COST = "소득세법 제37조제1항제3호 · 시행령 제88조제1항 (거주자별 총평균법)";
 const BASIS_CHARGE = "소득세법 제64조의3제2항 (기본공제 250만원 · 세율 20%)";
 const BASIS_EFFECTIVE = "소득세법 부칙 (2027.1.1 이후 양도·대여분부터 적용)";
 const BASIS_SWAP = "소득세법 시행령 제88조제3항 (기축가상자산 가액 × 교환비율)";
@@ -51,16 +52,34 @@ function isTaxableIncome(row: IncomeRow): boolean {
   return row.incomeKind === "LENDING";
 }
 
-/** 시행일 전에 취득한 lot을 소비한 처분 — 의제취득가액(Max(시가, 실제)) 적용 대상. */
-function needsDeemedCost(row: GainRow): boolean {
-  return row.acquiredAt !== null && Date.parse(row.acquiredAt) < Date.parse(DEEMED_COST_BOUNDARY);
+/**
+ * 시행 경계(2027-01-01) 전에 취득해 **계속 보유한** 자산 목록.
+ *
+ * 총평균법은 취득일을 특정하지 않아 처분 행(acquiredAt=null)으로는 의제취득가액 대상을 알 수 없다.
+ * 대신 원본 이벤트로 경계 전 순보유(취득·수령 − 처분)를 자산별로 세어, 보유분이 남은 자산을 신호로 쓴다.
+ * 이 자산에 2026-12-31 시가가 입력되면 seed가 Max(시가, 실제)를 반영하고, 미입력이면 정직한 한계를 낸다.
+ */
+function assetsHeldBeforeBoundary(events: TaxEvent[]): string[] {
+  const boundary = Date.parse(DEEMED_COST_BOUNDARY);
+  const net = new Map<string, Decimal>();
+  const bump = (asset: string, qty: Decimal) => net.set(asset, add(net.get(asset) ?? ZERO, qty));
+  for (const event of events) {
+    if (Date.parse(event.at) >= boundary) continue;
+    if (event.kind === "ACQUIRE" || event.kind === "INCOME") bump(event.asset, event.quantity);
+    else if (event.kind === "DISPOSE") {
+      bump(event.asset, sub(ZERO, event.quantity));
+      // 과세 교환의 수취분도 seed의 acquisitionSchedule과 같게 취득으로 센다.
+      if (event.receives) bump(event.receives.asset, event.receives.quantity);
+    }
+  }
+  return [...net.entries()].filter(([, qty]) => isPositive(qty)).map(([asset]) => asset);
 }
 
 export const korea: RuleSetDefinition = {
   code: "KR",
   label: "한국",
   currency: "KRW",
-  cost_basis: "per_address",
+  cost_basis: "resident_total_average",
   badge_label: "KR 기타소득 20% · 2027 시행",
   demoPriority: null,
   // 법률은 확정됐고 시행일만 남았다.
@@ -71,15 +90,17 @@ export const korea: RuleSetDefinition = {
   aggregateAdjustment: ({ taxYear, assumeEffective }) =>
     applies(taxYear, assumeEffective ?? false) ? "allowance" : "none",
   ledger: {
-    // 시행령 제88조제1항: 가상자산주소별로 이동평균법(사업자 경유) 또는 선입선출법(그 외).
-    // 지갑 데이터는 사업자 경유 여부를 알 수 없어 선입선출법으로 계산하고 그 사실을 한계로 낸다.
-    method: "FIFO",
-    scope: "WALLET",
+    // 시행령 제88조제1항: 거주자별 총평균법. 그 사람의 전체(주소·지갑 무관)를 통산해
+    // 자산별 단일 평균단가를 낸다 — GLOBAL scope가 인별 통산을 뜻한다.
+    method: "PERIOD_AVERAGE",
+    scope: "GLOBAL",
     cryptoToCryptoTaxable: true,
     carryHoldingPeriod: false,
     // 취득·양도 부대비용은 필요경비로 인정된다.
     feeDeductible: true,
     zeroBasisIncomeKinds: [],
+    // 경계 전 보유분은 Max(2026-12-31 시가, 실제 취득단가)로 의제한다. 시가가 입력된 자산만 반영.
+    deemedCostBoundary: DEEMED_COST_BOUNDARY,
   },
   topics: [
     { topic: "CAPITAL_GAINS", status: "SCHEDULED", basis: BASIS_TRANSFER, note: "2027.1.1 이후 양도·대여분부터 기타소득 분리과세 20%" },
@@ -110,7 +131,7 @@ export const korea: RuleSetDefinition = {
       : { group: "pending", label: "판정 보류 · 명문 규정 부재", basis: BASIS_RECEIPT };
   },
 
-  compute({ ledger, taxYear, excludedEventIds, assumeEffective }) {
+  compute({ ledger, events, deemedCost, taxYear, excludedEventIds, assumeEffective }) {
     const netGains = sum(ledger.gains.map((row) => row.gain));
     const lendingRows = ledger.income.filter(isTaxableIncome);
     const pendingRows = ledger.income.filter((row) => !isTaxableIncome(row));
@@ -136,7 +157,6 @@ export const korea: RuleSetDefinition = {
     };
     const requiredInputs = [
       "2026-12-31 24시 기준 가상자산별 시가 (의제취득가액)",
-      "가상자산사업자 경유 여부 (이동평균법 적용 대상 판정)",
     ];
 
     if (!applies(taxYear, assumeEffective)) {
@@ -192,7 +212,14 @@ export const korea: RuleSetDefinition = {
     const taxableGains = min(taxBase, clampPositive(netGains));
     const exemptGains = sub(clampPositive(netGains), taxableGains);
 
-    const deemedRows = ledger.gains.filter(needsDeemedCost);
+    // 의제취득가액 신호는 처분 행(acquiredAt=null)이 아니라 seed 계층과 같은 원본 이벤트에서 온다.
+    const heldPreAssets = assetsHeldBeforeBoundary(events);
+    // 경계 전 보유분이 있는데 그 자산 시가가 미입력이면 seed가 실제 취득단가를 그대로 써 손익이 과대될 수 있다.
+    const missingFmvAssets = heldPreAssets.filter((asset) => deemedCost?.(asset) === undefined);
+    const deemedRows = ledger.gains.filter((row) => missingFmvAssets.includes(row.asset));
+    // MUST FIX 4: 원장은 조회 연도 기간말까지 누적 취득을 매년 다시 평균낸다(engine.ts). 시행 첫해(2027)만 정확하고,
+    // 그 이후 연도는 의제 opening이 다년에 걸쳐 재희석된다 — 연도별 종료 풀을 잇는 재풀링은 후속 과제다.
+    const multiYearRepool = taxYear > EFFECTIVE_TAX_YEAR && heldPreAssets.length > 0;
     const limitations: Limitation[] = [
       ...ledger.limitations,
       // 없는 대상에 대해 "반영하지 못했다"고 말하면, 흔들리지 않는 답을 흔들린다고 하는 것이다.
@@ -202,7 +229,9 @@ export const korea: RuleSetDefinition = {
       ...(pendingRows.length > 0
         ? [limitationOf(`판정 보류 수령분 ${pendingRows.length}건 —${RECEIPT_COST_SUFFIX}`, [])]
         : []),
-      limitationOf(`취득가액 산정 —${COST_METHOD_SUFFIX}`, []),
+      // 구현 E: 다중 출처 통산 전이라 총평균 분모가 상시 부분집계다. 예상 부담을 0으로 억제하지 않고
+      // (억제하면 marginalContributions가 0으로 붕괴되고 화면이 부담 자체를 감춘다) 잠정치로 표기한다.
+      limitationOf(`취득가액 통산 —${COST_METHOD_SUFFIX}`, []),
     ];
 
     return finalizeEstimate({
@@ -214,8 +243,8 @@ export const korea: RuleSetDefinition = {
       status: "PARTIAL",
       taxYear,
       method: assumed
-        ? `가상자산주소별 선입선출법 · ${EFFECTIVE_TAX_YEAR} 시행 가정`
-        : "가상자산주소별 선입선출법 (사업자 경유분은 이동평균법)",
+        ? `거주자별 총평균법 · ${EFFECTIVE_TAX_YEAR} 시행 가정`
+        : "거주자별 총평균법",
       taxableGains,
       exemptGains,
       incomeTotal: lendingIncome,
@@ -243,27 +272,54 @@ export const korea: RuleSetDefinition = {
         "양도·대여 소득만 과세 대상입니다. 스테이킹·에어드랍 수령분은 규정이 없어 총수입금액에 넣지 않았습니다.",
         "연간 손익을 통산해 250만원을 공제한 뒤 20%를 적용하고, 개인지방소득세 10%를 더했습니다(합계 22%).",
         "손실 이월공제 규정이 없어 통산 후 남은 손실은 다음 해로 넘기지 않았습니다.",
+        // 구현 E: 다중 출처 통산은 후속 과제다. 총평균 분모가 부분집계라 예상 부담은 잠정치임을 결과 안에서 말한다.
+        "여러 출처(거래소·지갑)를 아직 통산하지 못해 거주자별 총평균 분모가 부분집계입니다. 예상 부담은 잠정치이며 실제와 다를 수 있습니다.",
         "다음연도 5월 1일~31일 종합소득세 신고기간에 분리과세 기타소득으로 신고합니다. (소득세법 제70조제2항)",
-        deemedRows.length > 0
-          ? `${EFFECTIVE_TAX_YEAR}-01-01 전 취득분을 소비한 처분 ${deemedRows.length}건은 의제취득가액(2026-12-31 시가와 실제 취득가액 중 큰 금액)을 적용해야 합니다.`
-          : `${EFFECTIVE_TAX_YEAR}-01-01 전 취득분을 소비한 처분이 없어 의제취득가액을 적용할 대상이 없습니다.`,
+        // 경계 전 보유분이 실제로 있으면 "대상 없음"을 말하지 않는다. 시가 입력 여부로만 갈린다.
+        missingFmvAssets.length > 0
+          ? `${EFFECTIVE_TAX_YEAR}-01-01 전 취득해 계속 보유한 분이 있어 의제취득가액(2026-12-31 시가와 실제 취득가액 중 큰 금액)을 적용해야 하나, 시가가 입력되지 않아 실제 취득가액으로 계산했습니다.`
+          : heldPreAssets.length > 0
+            ? `${EFFECTIVE_TAX_YEAR}-01-01 전 취득해 계속 보유한 분에 의제취득가액(2026-12-31 시가와 실제 취득가액 중 큰 금액)을 반영했습니다.`
+            : `${EFFECTIVE_TAX_YEAR}-01-01 전 취득해 계속 보유한 분이 없어 의제취득가액을 적용할 대상이 없습니다.`,
+        // MUST FIX 4: 시행 첫해(2027)만 정확하다. 이후 연도는 누적 평균을 매년 재산정해 의제 opening이 재희석됨을 명시한다.
+        ...(multiYearRepool
+          ? [
+              `${taxYear}년은 시행 첫 과세연도(${EFFECTIVE_TAX_YEAR}) 이후입니다. 현재 계산은 조회 연도 기간말까지 누적 취득을 매년 다시 평균내며, 의제취득가액 opening이 다년에 걸쳐 재희석됩니다 — 연도별 종료 풀을 다음 해로 잇는 재풀링은 후속 과제입니다.`,
+            ]
+          : []),
         ...ledger.warnings,
       ],
       limitations,
       openQuestions: [
-        {
-          topic: "CAPITAL_GAINS",
-          status: "PARTIAL",
-          reason: `${BASIS_DEEMED} — 기준이 되는 2026-12-31 시가(시가고시가상자산사업자 공시가 평균)를 지갑 데이터만으로는 알 수 없습니다.`,
-          affectedEventIds: deemedRows.map((row) => row.eventId),
-          benchmark: "시가가 입력되면 취득가액을 Max(시가, 실제 취득가액)로 올려 손익이 줄어듭니다.",
-        },
+        // 시가가 입력되면 seed가 이미 Max(시가, 실제)를 반영하므로 이 미결 질문은 사라진다.
+        ...(missingFmvAssets.length > 0
+          ? [
+              {
+                topic: "CAPITAL_GAINS" as const,
+                status: "PARTIAL" as const,
+                reason: `${BASIS_DEEMED} — 기준이 되는 2026-12-31 시가(시가고시가상자산사업자 공시가 평균)를 지갑 데이터만으로는 알 수 없습니다.`,
+                affectedEventIds: deemedRows.map((row) => row.eventId),
+                benchmark: "시가가 입력되면 취득가액을 Max(시가, 실제 취득가액)로 올려 손익이 줄어듭니다.",
+              },
+            ]
+          : []),
         {
           topic: "CRYPTO_TO_CRYPTO",
           status: "PARTIAL",
           reason: "교환 대가는 기축가상자산 가액에 교환비율을 적용해야 하나, 목 가격원은 기축가상자산 시세를 구분하지 않습니다.",
           affectedEventIds: ledger.gains.filter((row) => row.trigger === "CRYPTO").map((row) => row.eventId),
         },
+        // MUST FIX 4: 다년 재풀링 미구현을 미결 질문으로 남긴다(현재 동작은 시행 첫해 기준으로만 정확).
+        ...(multiYearRepool
+          ? [
+              {
+                topic: "CAPITAL_GAINS" as const,
+                status: "PARTIAL" as const,
+                reason: `누적 총평균을 과세연도마다 재산정하므로 ${EFFECTIVE_TAX_YEAR} 이후 연도는 의제취득가액 opening이 재희석됩니다. 연도별 종료 풀을 다음 해로 잇는 재풀링은 아직 구현되지 않았습니다.`,
+                affectedEventIds: ledger.gains.map((row) => row.eventId),
+              },
+            ]
+          : []),
         receiptQuestion,
         carryQuestion,
       ],

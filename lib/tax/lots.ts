@@ -60,13 +60,25 @@ export class StandardLotLedger implements LotLedger {
   private readonly lots = new Map<string, Lot[]>();
   /** 총평균법 전용: 기간 전체 평균 취득단가(자산별). */
   private readonly periodUnitCost = new Map<string, Decimal>();
+  /**
+   * 의제취득가액(KR)으로 uplift된 자산. 이 자산은 pool.cost를 실제 취득원가가 아니라
+   * seed 단가 기준(unit × quantity)으로 쌓는다 — 그래야 처분이 풀을 완전히 비울 때
+   * dispose의 잔차흡수 분기(lot.cost 반환)가 seed 총액을 돌려주어 uplift가 사라지지 않는다.
+   * 비의제 자산(JP·CA 등)은 seed 단가=실제 평균이라 이 집합에 들지 않고 동작이 완전히 동일하다.
+   */
+  private readonly deemedAssets = new Set<string>();
   private sequence = 0;
 
   constructor(private readonly policy: LedgerPolicy) {}
 
-  /** 총평균법은 기간 내 모든 취득을 선반영해야 하므로 사전 계산된 단가를 주입받는다. */
-  seedPeriodAverage(asset: string, unit: Decimal): void {
+  /**
+   * 총평균법은 기간 내 모든 취득을 선반영해야 하므로 사전 계산된 단가를 주입받는다.
+   * `deemed`가 참이면(KR 의제취득가액) 이 자산의 pool.cost를 seed 단가 기준으로 쌓아
+   * 전량 처분까지 seed 단가가 authoritative하게 한다.
+   */
+  seedPeriodAverage(asset: string, unit: Decimal, deemed = false): void {
     this.periodUnitCost.set(asset, unit);
+    if (deemed) this.deemedAssets.add(asset);
   }
 
   acquire(input: AcquireInput): void {
@@ -75,7 +87,9 @@ export class StandardLotLedger implements LotLedger {
     if (this.policy.method === "MOVING_AVERAGE" || this.policy.method === "PERIOD_AVERAGE") {
       const pool = bucket[0] ?? { id: `pool-${key}`, asset: input.asset, wallet: input.wallet, at: null, quantity: ZERO, cost: ZERO };
       pool.quantity = add(pool.quantity, input.quantity);
-      pool.cost = add(pool.cost, input.cost);
+      // 의제 uplift 자산은 seed 단가로, 그 외는 실제 취득원가로 pool.cost를 쌓는다.
+      // seed 단가=실제 평균인 비의제 자산은 두 경로가 같은 값이라 byte-for-byte 동일하다.
+      pool.cost = add(pool.cost, this.deemedAssets.has(input.asset) ? mul(this.periodUnitCost.get(input.asset) ?? ZERO, input.quantity) : input.cost);
       this.lots.set(key, [pool]);
       return;
     }

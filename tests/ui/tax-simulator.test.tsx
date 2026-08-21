@@ -118,14 +118,14 @@ describe("TaxSimulator", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "시행 가정으로 보기" }));
 
-    // 2025년 데모 시나리오에 2027 시행 규칙을 그대로 적용한 값.
+    // 2025년 데모 시나리오에 2027 시행 규칙(거주자별 총평균법)을 그대로 적용한 값.
     await waitFor(() =>
-      expect(screen.getByTestId("estimated-charge").textContent).toContain("₩1,733,710"),
+      expect(screen.getByTestId("estimated-charge").textContent).toContain("₩1,480,517.64"),
     );
     // 큰 금액 옆에 가정이라는 사실이 계속 있어야 한다.
     expect(screen.getByText(/시행 가정으로 보는 중입니다/)).toBeInTheDocument();
     // 방식 라벨도 가정임을 밝힌다 — 내보낸 결과만 봐도 알 수 있어야 한다.
-    expect(within(screen.getByLabelText("계산 요약")).getByText(/선입선출법 · 2027 시행 가정/)).toBeInTheDocument();
+    expect(within(screen.getByLabelText("계산 요약")).getByText(/거주자별 총평균법 · 2027 시행 가정/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "가정 끄기" }));
     await waitFor(() => expect(screen.getByTestId("estimated-charge").textContent).toBe("과세 대상 아님"));
@@ -144,9 +144,9 @@ describe("TaxSimulator", () => {
     fireEvent.click(await screen.findByRole("button", { name: /2027/ }));
 
     await screen.findByText("한국 · 2027");
-    // 시행 후 규칙이 실제로 돌아간다: 과세표준 7,880,500 × 20% + 지방소득세 10%
+    // 시행 후 규칙이 실제로 돌아간다: 과세표준 6,729,625.62 × 20% + 지방소득세 10%
     await waitFor(() =>
-      expect(screen.getByTestId("estimated-charge").textContent).toContain("₩1,733,710"),
+      expect(screen.getByTestId("estimated-charge").textContent).toContain("₩1,480,517.64"),
     );
     // 미래 연도를 아무 말 없이 계산하면 사용자는 확정된 답으로 읽는다.
     // 이제는 배지로 보이고, 전문은 그 배지를 펼쳐야 나오는 접힘 안에 보존된다.

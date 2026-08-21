@@ -13,6 +13,7 @@ import type { RuleSetSummary } from "@/lib/tax/types";
 import { round, sum } from "@/lib/tax/decimal";
 import { canonicalCountryCode } from "@/lib/tax/rulesets";
 import { noChargeHeadline, omitsCharge } from "@/lib/tax/status";
+import { useTaxYear } from "@/lib/tax/tax-year-context";
 import type {
   ConfirmationStatus,
   JudgmentGroup,
@@ -224,7 +225,9 @@ export function TaxSimulator({
   // 자정을 넘긴 순간 선택된 버튼이 사라지고, SSR과 hydration도 갈린다.
   // "올해"로 고정하면 올해 거래가 없는 지갑은 진입하자마자 12개 룰셋이 전부 "계산할 거래 없음"을 말한다.
   // 그건 비교가 아니라 빈 화면이다. 마지막 거래가 있는 해를 알면 거기서 연다.
-  const [taxYear, setTaxYear] = useState(latestActivityYear ?? currentYear);
+  // 선택된 연도는 전역 단일 소스(TaxYearProvider)에 둔다 — 여기서 바꾸면 대시보드·거래 상세도 같은 기간을 본다.
+  // 프로바이더가 없는 격리 렌더에서는 로컬 상태로 물러나 예전 동작을 그대로 지킨다.
+  const [taxYear, setTaxYear] = useTaxYear(latestActivityYear ?? currentYear);
   // 기본은 내 지갑이다. 데모 시나리오는 명시적으로 고를 때만 쓴다.
   // 지갑 미연결이면 낼 지갑 이력이 없으므로 데모 시나리오로 연다.
   const [source, setSource] = useState<TaxEventSource>(walletConnected ? "wallet" : "scenario");
@@ -433,7 +436,24 @@ export function TaxSimulator({
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-xl font-bold text-zinc-900">{result.countryLabel} · {result.taxYear}</h2>
               <StatusBadge status={result.status} />
-              <span className="text-sm text-zinc-500">{result.method}</span>
+              {/* 계산 전제(예: 한국의 "거주자별 총평균법")를 답 바로 위에 상시 둔다.
+                  엔진의 method가 진실원천이라 나라·연도가 바뀌면 이 배지도 따라 바뀐다 — 하드코딩하지 않는다. */}
+              <span
+                data-testid="method-premise"
+                className="inline-flex rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-semibold text-zinc-700"
+              >
+                {result.method}
+              </span>
+              {/* 부분확정(PARTIAL)은 단가·부담이 아직 잠정이라는 뜻이다(엔진 note: "예상 부담은 잠정치…").
+                  큰 금액 옆에 그 사실이 계속 있어야 근거처럼 읽히지 않는다. */}
+              {result.status === "PARTIAL" ? (
+                <span
+                  data-testid="provisional-charge"
+                  className="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800"
+                >
+                  단가·부담 잠정
+                </span>
+              ) : null}
             </div>
             {/* 과세기간은 화면이 다시 계산하면 안 된다. 영국 4/6~·호주 7/1~ 때문에 역년과 다르다. */}
             <p className="mt-1 text-sm text-zinc-500">과세기간 {halfOpenPeriodLabel(result.period)}</p>

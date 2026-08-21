@@ -3,6 +3,7 @@
 import { Card } from "@/components/ui/card";
 import { MockProvenanceChip } from "@/components/ui/mock-provenance-chip";
 import { PLANS, usePlan } from "@/lib/plan/use-plan";
+import { useTaxYear } from "@/lib/tax/tax-year-context";
 
 /**
  * 플랜 화면 — 결제는 **데모**다.
@@ -11,8 +12,11 @@ import { PLANS, usePlan } from "@/lib/plan/use-plan";
  * 그래서 화면은 활성 배지 옆에 늘 "실제 결제 아님"을 함께 말한다 — 배지만 보이면
  * 사용자는 청구가 일어났다고 오해한다.
  */
-export function PlanView({ taxYear }: { taxYear: number }) {
+export function PlanView({ taxYear: fallbackTaxYear }: { taxYear: number }) {
   const { plan, activate, deactivate } = usePlan();
+  // 결제 단위는 과세연도다. 세금 화면에서 고른 연도가 있으면 결제도 그 연도에 귀속돼야 한다 —
+  // 서버가 내려준 값은 사용자가 아직 고르지 않았을 때의 기본값(마지막 활동연도)으로만 쓴다.
+  const [taxYear] = useTaxYear(fallbackTaxYear);
 
   return (
     <main className="min-h-dvh px-5 py-8">
