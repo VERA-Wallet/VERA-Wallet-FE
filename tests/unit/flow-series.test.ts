@@ -5,7 +5,7 @@ import type { NormalizedEvent } from "@/lib/schema/normalized-event";
 
 /** 선 계산에 실제로 쓰이는 칸만 바꿔가며 만든다. 나머지는 계산과 무관한 고정값이다. */
 function event(overrides: Partial<NormalizedEvent> & { id: string }): NormalizedEvent {
-  return {
+  const merged: NormalizedEvent = {
     tx_hash: `0x${overrides.id}`,
     chain_id: 1,
     log_index: 0,
@@ -25,11 +25,19 @@ function event(overrides: Partial<NormalizedEvent> & { id: string }): Normalized
     classification: "RECEIVE",
     confidence: 0.9,
     user_override: null,
+    value_override: null,
     price_status: "RESOLVED",
     fiat_value: "1000",
     fiat_currency: "KRW",
     ...overrides,
   };
+  // 방향을 지정하지 않은 케이스는 분류에 맞춰 준다(SEND는 OUT, 그 외는 IN).
+  // 이 파일의 관심사는 흐름 부호이지 데이터 정합이 아니라 direction을 비워 두었는데,
+  // 이제 방향·분류 정합 게이트가 SEND+IN을 모순으로 잡으므로 정상 SEND에 맞는 방향을 준다.
+  if (overrides.direction === undefined) {
+    merged.direction = merged.classification === "SEND" ? "OUT" : "IN";
+  }
+  return merged;
 }
 
 const rangeOf = (id: string) => FLOW_RANGES.find((range) => range.id === id)!;

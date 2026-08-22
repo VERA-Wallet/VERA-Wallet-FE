@@ -14,14 +14,15 @@ import { AMOUNT_KIND_LABEL, GROUP_SHORT_LABEL, JudgmentBadge } from "@/component
 import { MockProvenanceChip } from "@/components/ui/mock-provenance-chip";
 import { SummaryCard } from "@/components/ui/summary-card";
 import { useHideBalances } from "@/lib/privacy/use-hide-balances";
-import { assetLabel, chainLabel, explorerTxUrl, formatDate, formatFiat, formatFiatExact, formatSignedTokenAmount, formatTokenAmount, nativeSymbol, shortHash, UTC_NOTICE } from "@/lib/format";
-import { eventSummaryQueryKey, useEventDetail, useEventList, useEventSummary, useReclassify } from "@/lib/queries/events";
+import { assetLabel, chainLabel, explorerTxUrl, formatDate, formatDateTime, formatFiat, formatFiatExact, formatSignedTokenAmount, formatTokenAmount, nativeSymbol, shortHash, UTC_NOTICE } from "@/lib/format";
+import { eventSummaryQueryKey, useEventDetail, useEventList, useEventSummary, useReclassify, useSetValueOverride } from "@/lib/queries/events";
 import { useTaxEstimate } from "@/lib/queries/tax";
 import { useJudgments } from "@/lib/queries/judgments";
 import { assetFlow, effectiveClassification, needsReview, reviewReason } from "@/lib/review";
 import type { AssetFlow } from "@/lib/review";
 import { isNegative, isZero } from "@/lib/tax/decimal";
 import { taxYearFor } from "@/lib/tax/engine";
+import { estimateConfidence, estimateHeadline, hasConfidenceSignal } from "@/lib/tax/estimate-summary";
 import { omitsCharge } from "@/lib/tax/status";
 import { useTaxYear } from "@/lib/tax/tax-year-context";
 import type { Classification, NormalizedEvent } from "@/lib/schema/normalized-event";
@@ -226,8 +227,9 @@ function EventDetails({
         </div>
         <ClassificationBadge classification={effectiveClassification(event)} />
       </div>
+      {/* 거래 상세는 정확한 "언제"가 중요한 자리라 시각을 UTC·KST로 병기한다(한국 신고용). 목록 머리글은 UTC 날짜 그대로다. */}
       <p className="mt-1 text-sm text-zinc-500">
-        {formatDate(event.block_timestamp)} · {event.price_status === "UNKNOWN" ? "가격 미확인" : formatFiat(event.fiat_value, event.fiat_currency)}
+        {formatDateTime(event.block_timestamp)} · {event.price_status === "UNKNOWN" ? "가격 미확인" : formatFiat(event.fiat_value, event.fiat_currency)}
         {event.price_status === "ESTIMATED" ? " (추정)" : ""}
       </p>
 
@@ -408,7 +410,127 @@ function EventDetails({
         <input id="reason" className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2.5" placeholder="예: 본인 지갑 간 이동" value={reason} onChange={(event) => setReason(event.target.value)} />
         <button type="button" className="mt-4 w-full rounded-lg bg-primary-500 px-4 py-3 font-semibold text-white disabled:opacity-50" disabled={reclassify.isPending} onClick={apply}>적용</button>
       </section>
+      <ValueOverrideEditor
+        event={event}
+        version={current.version}
+        onSaved={(mutation) => {
+          setCurrent(mutation);
+          // 내가 만든 변경이다. 이후 목록 갱신으로 같은 version이 들어와도 외부 변경으로 오인하지 않는다.
+          setSyncedVersion(mutation.version);
+        }}
+      />
     </BottomSheet>
+  );
+}
+
+/**
+ * 한 거래의 금액 override 입력 — 취득가·양도가·부대비용·가스비·가격출처·증빙·50% 필요경비 의제.
+ *
+ * 재분류 state와 섞지 않으려고 독립 컴포넌트로 둔다(각자 자기 입력만 동기화한다).
+ * 저장하면 estimate·요약·판정 캐시가 무효화돼(useSetValueOverride) 취득가 0원 경고가 사라지고 부담이 다시 계산된다.
+ */
+function ValueOverrideEditor({
+  event,
+  version,
+  onSaved,
+}: {
+  event: NormalizedEvent;
+  version: number;
+  onSaved: (mutation: EventRecord) => void;
+}) {
+  const setOverride = useSetValueOverride();
+  const vo = event.value_override;
+  const [acquisitionCost, setAcquisitionCost] = useState(vo?.acquisition_cost ?? "");
+  const [disposalValue, setDisposalValue] = useState(vo?.disposal_value ?? "");
+  const [incidentalCost, setIncidentalCost] = useState(vo?.incidental_cost ?? "");
+  const [gasFee, setGasFee] = useState(vo?.gas_fee ?? "");
+  const [priceSource, setPriceSource] = useState(vo?.price_source ?? "");
+  const [evidenceUrl, setEvidenceUrl] = useState(vo?.evidence_url ?? "");
+  const [deemed50, setDeemed50] = useState(vo?.deemed_expense_50 ?? false);
+  const [saved, setSaved] = useState(false);
+  const [conflict, setConflict] = useState(false);
+
+  const flow = assetFlow(event);
+  const isDisposal = flow === "out";
+  // 빈 입력은 "비움"(null)으로 저장한다. 공백만 남긴 것도 같게 본다.
+  const clean = (value: string): string | null => {
+    const trimmed = value.trim();
+    return trimmed === "" ? null : trimmed;
+  };
+
+  const save = () => {
+    setSaved(false);
+    setConflict(false);
+    setOverride.mutate(
+      {
+        id: event.id,
+        input: {
+          expectedVersion: version,
+          value_override: {
+            acquisition_cost: clean(acquisitionCost),
+            disposal_value: clean(disposalValue),
+            incidental_cost: clean(incidentalCost),
+            gas_fee: clean(gasFee),
+            price_source: clean(priceSource),
+            evidence_url: clean(evidenceUrl),
+            deemed_expense_50: deemed50,
+          },
+        },
+      },
+      {
+        onSuccess: (result) => {
+          if (result.status === "not_found") return;
+          onSaved({ event: result.event, version: result.version });
+          setConflict(result.status === "conflict");
+          setSaved(result.status === "ok");
+        },
+      },
+    );
+  };
+
+  const fieldClass = "mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2.5";
+  const labelClass = "mt-3 block text-sm font-medium text-zinc-700";
+
+  return (
+    <section className="mt-6 border-t border-zinc-200 pt-5" data-surface="value-override">
+      <h3 className="font-bold text-zinc-900">취득가·부대비용 입력</h3>
+      <p className="mt-1 text-sm text-zinc-500">지갑 데이터로 확정되지 않은 금액을 직접 채우면 &ldquo;취득가 0원&rdquo; 경고가 사라지고 계산에 반영됩니다.</p>
+      {conflict ? <p role="alert" className="mt-3 rounded-lg bg-orange-50 px-3 py-2 text-sm text-orange-700">다른 곳에서 변경됨, 다시 확인</p> : null}
+      {saved && !conflict ? <p role="status" className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">금액을 저장했습니다.</p> : null}
+
+      {isDisposal ? (
+        <>
+          <label className={labelClass} htmlFor="vo-disposal">양도가액 (원)</label>
+          <input id="vo-disposal" inputMode="numeric" className={fieldClass} placeholder="예: 5000000" value={disposalValue} onChange={(e) => setDisposalValue(e.target.value)} />
+        </>
+      ) : (
+        <>
+          <label className={labelClass} htmlFor="vo-acquisition">취득가액 (원)</label>
+          <input id="vo-acquisition" inputMode="numeric" className={fieldClass} placeholder="예: 1000000" value={acquisitionCost} onChange={(e) => setAcquisitionCost(e.target.value)} />
+        </>
+      )}
+
+      <label className={labelClass} htmlFor="vo-incidental">부대비용 (원)</label>
+      <input id="vo-incidental" inputMode="numeric" className={fieldClass} placeholder="예: 5000" value={incidentalCost} onChange={(e) => setIncidentalCost(e.target.value)} />
+
+      <label className={labelClass} htmlFor="vo-gas">가스비 (원)</label>
+      <input id="vo-gas" inputMode="numeric" className={fieldClass} placeholder="예: 3000" value={gasFee} onChange={(e) => setGasFee(e.target.value)} />
+
+      <label className={labelClass} htmlFor="vo-source">가격 출처 (선택)</label>
+      <input id="vo-source" className={fieldClass} placeholder="예: 업비트 종가" value={priceSource} onChange={(e) => setPriceSource(e.target.value)} />
+
+      <label className={labelClass} htmlFor="vo-evidence">증빙 링크 (선택)</label>
+      <input id="vo-evidence" className={fieldClass} placeholder="https://" value={evidenceUrl} onChange={(e) => setEvidenceUrl(e.target.value)} />
+
+      {isDisposal ? (
+        <label className="mt-3 flex items-start gap-2 text-sm text-zinc-700">
+          <input type="checkbox" className="mt-0.5" checked={deemed50} onChange={(e) => setDeemed50(e.target.checked)} />
+          <span>취득가 입증이 어려우면 양도가액의 50%를 필요경비로 인정</span>
+        </label>
+      ) : null}
+
+      <button type="button" className="mt-4 w-full rounded-lg bg-primary-500 px-4 py-3 font-semibold text-white disabled:opacity-50" disabled={setOverride.isPending} onClick={save}>금액 저장</button>
+    </section>
   );
 }
 
@@ -659,6 +781,13 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
   // 연도가 하나뿐이면 고를 것이 없다(체인 필터와 같은 규칙). 목록은 최신순이라 칩도 최신 연도가 먼저다.
   const yearFilters = yearCounts.size > 1 ? [...yearCounts.entries()].sort((left, right) => right[0] - left[0]) : [];
   const estimate = judgments.estimate;
+  // 헤드라인 손익·건수는 이제 요약(이벤트 직접 집계)이 아니라 **세금 화면과 같은 estimate**에서 파생한다.
+  // 그래야 같은 귀속연도에서 대시보드·세금·내보내기가 한 숫자를 말한다(P1-5).
+  // 판정을 다시 계산하는 중이면 옛 estimate로 손익을 단정하지 않는다 — 카드가 두 이야기를 하지 않도록 보류한다.
+  const headline = judgmentsPending || estimate === undefined ? undefined : estimateHeadline(estimate);
+  const headlineCurrency = estimate?.currency ?? summaryFresh.data?.currency ?? "KRW";
+  // 신뢰도 칩(P1-9)도 같은 estimate에서 파생한다 — 세금 화면 "흔들리는 지점"과 같은 소스를 압축해 보인다.
+  const confidence = headline === undefined || estimate === undefined ? undefined : estimateConfidence(estimate);
   const selected = selectedKey
     ? annotated.find((item) => item.record.event.id === selectedKey.eventId && item.occurrence === selectedKey.occurrence) ?? null
     : null;
@@ -702,30 +831,30 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
       <ExchangeLinkSummary />
 
       <section className="mt-6 grid gap-3">
-        {/* 계산에 들어간 이벤트가 없으면 "0"은 손익이 아니라 계산할 것이 없었다는 뜻이다. */}
+        {/* 계산에 들어간 이벤트가 없으면 "0"은 손익이 아니라 계산할 것이 없었다는 뜻이다.
+            손익은 세금 화면과 같은 estimate에서 파생한다 — 판정을 못 냈으면(headline 미정) 요약 상태를 그대로 말한다. */}
         <SummaryCard
           label="예상 손익"
           value={
-            !summaryFresh.data
+            headline === undefined
               ? "—"
-              : summaryFresh.data.computableEventCount === 0
+              : headline.computableEventCount === 0
                 ? "계산할 거래 없음"
                 : hideBalances
                   ? "•••••"
-                  : formatFiat(summaryFresh.data.periodPnl, summaryFresh.data.currency)
+                  : formatFiat(headline.periodPnl, headlineCurrency)
           }
           supportingText={
-            summaryFresh.data && summaryFresh.data.computableEventCount === 0
+            headline !== undefined && headline.computableEventCount === 0
               ? "가격·분류를 확정한 거래가 아직 없습니다."
               : undefined
           }
         />
-        {/* 이 건수는 가격·분류만 보고 센다. 룰셋이 미확정인 나라에서는 "과세 대상"이라 단정할 수 없다. */}
+        {/* 이 건수는 세금 계산에 실제로 들어간 기간 내 이벤트 수다(estimate 판정에서 파생). */}
         <SummaryCard
-          // 이 건수는 가격·분류가 확정돼 **계산에 들어간** 이벤트 수다.
           // 실제 과세 여부는 판정 그룹(취득·비과세·상계 소멸…)이 정하므로 "과세 대상"이라 부르면 과장이다.
           label="계산 대상 이벤트"
-          value={summaryFresh.data ? `${summaryFresh.data.taxableEventCount}건` : "—"}
+          value={headline !== undefined ? `${headline.computableEventCount}건` : "—"}
           supportingText={
             summaryFresh.data
               ? estimate !== undefined && estimate.status !== "UNDETERMINED"
@@ -734,6 +863,29 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
               : (freshNotice(summaryFresh.state, "요약") ?? undefined)
           }
         />
+        {/* 신뢰도 칩(P1-9) — 세금 화면 "흔들리는 지점"과 같은 estimate에서 파생한 건수를 헤드라인 옆에 압축한다.
+            문구·건수는 하드코딩하지 않는다. 흔들릴 게 없으면(정상) 칩을 달지 않는다 — 없는 문제를 만들지 않기 위해서다.
+            색만으로 구분하지 않도록 각 칩은 뜻과 건수를 글자로 함께 말한다. */}
+        {confidence !== undefined && hasConfidenceSignal(confidence) ? (
+          <div data-surface="dashboard-confidence" className="flex flex-wrap items-center gap-2" aria-label="계산 신뢰도">
+            <span className="text-xs font-medium text-zinc-500">신뢰도</span>
+            {confidence.notReflected > 0 ? (
+              <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
+                미반영 {confidence.notReflected}
+              </span>
+            ) : null}
+            {confidence.zeroBasis > 0 ? (
+              <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-900">
+                원가0원 {confidence.zeroBasis}
+              </span>
+            ) : null}
+            {confidence.partial ? (
+              <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
+                부분집계
+              </span>
+            ) : null}
+          </div>
+        ) : null}
       </section>
 
       <section className="mt-8">

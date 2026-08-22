@@ -17,6 +17,13 @@ describe("dynamic summary", () => {
         const classification = event.user_override?.classification ?? event.classification;
         if (classification === "UNKNOWN" || classification === "INTERNAL_TRANSFER") return false;
         if (event.price_status === "UNKNOWN" || event.fiat_value === null) return false;
+        // 방향·분류 모순(자동 분류 기준)은 엔진에 넣지 않는다.
+        if (
+          (event.classification === "RECEIVE" && event.direction === "OUT") ||
+          (event.classification === "SEND" && event.direction === "IN")
+        ) {
+          return false;
+        }
         return Number(event.raw_amount) > 0;
       })
       .map((event) => event.id);
@@ -35,6 +42,8 @@ describe("dynamic summary", () => {
           event.price_status === "UNKNOWN" ||
           event.fiat_value === null ||
           Number(event.raw_amount) <= 0 ||
+          (event.classification === "RECEIVE" && event.direction === "OUT") ||
+          (event.classification === "SEND" && event.direction === "IN") ||
           event.confidence < 0.5
         );
       })
@@ -50,7 +59,9 @@ describe("dynamic summary", () => {
 
   it("recalculates taxable count after reclassification deterministically", () => {
     const store = new MockEventStore();
-    const event = store.list({ limit: 15 }).items.find(({ event }) => event.classification === "INTERNAL_TRANSFER" && event.price_status !== "UNKNOWN")!;
+    // OUT으로 들어온 자기 지갑 간 이체를 SEND(처분)로 확정한다 — 방향과 분류가 맞아야
+    // 방향·분류 정합 게이트에 걸리지 않고 과세 대상으로 편입된다(IN을 SEND로 바꾸면 모순이다).
+    const event = store.list({ limit: 15 }).items.find(({ event }) => event.classification === "INTERNAL_TRANSFER" && event.price_status !== "UNKNOWN" && event.direction === "OUT")!;
     const initial = store.summary();
     store.reclassify(event.event.id, { classification: "SEND", expectedVersion: event.version });
     expect(store.summary().taxableEventCount).toBe(initial.taxableEventCount + 1);

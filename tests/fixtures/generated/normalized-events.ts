@@ -86,6 +86,8 @@ function buildEvent({ eventNumber, at, classification, unknownPrice, lowConfiden
           overridden_at: new Date(at.getTime() + 3_600_000).toISOString(),
         }
       : null,
+    // 금액 override는 사용자가 상세 편집에서 채운다. 기본 픽스처는 비워 둔다.
+    value_override: null,
     price_status: unknownPrice ? "UNKNOWN" : index % 3 === 0 ? "ESTIMATED" : "RESOLVED",
     // 표시통화가 원화다. 건당 1,000원짜리 거래로 두면 어떤 한국 규칙도(기본공제 250만원)
     // 화면에서 작동하는 모습을 볼 수 없다 — 원화로 말이 되는 규모를 쓴다.

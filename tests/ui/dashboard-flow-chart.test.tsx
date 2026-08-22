@@ -5,7 +5,7 @@ import { FlowChart } from "@/components/dashboard/flow-chart";
 import type { NormalizedEvent } from "@/lib/schema/normalized-event";
 
 function event(overrides: Partial<NormalizedEvent> & { id: string }): NormalizedEvent {
-  return {
+  const merged: NormalizedEvent = {
     tx_hash: `0x${overrides.id}`,
     chain_id: 1,
     log_index: 0,
@@ -25,11 +25,18 @@ function event(overrides: Partial<NormalizedEvent> & { id: string }): Normalized
     classification: "RECEIVE",
     confidence: 0.9,
     user_override: null,
+    value_override: null,
     price_status: "RESOLVED",
     fiat_value: "1000000",
     fiat_currency: "KRW",
     ...overrides,
   };
+  // 방향을 지정하지 않은 케이스는 분류에 맞춰 준다(SEND는 OUT, 그 외는 IN).
+  // 방향·분류 정합 게이트가 SEND+IN을 모순으로 걸러 선에서 빼지 않도록, 정상 SEND에 맞는 방향을 준다.
+  if (overrides.direction === undefined) {
+    merged.direction = merged.classification === "SEND" ? "OUT" : "IN";
+  }
+  return merged;
 }
 
 /** 1/10 +100만 → 2/10 −40만 → 3/10 +20만. 마지막 누적은 80만원이다. */

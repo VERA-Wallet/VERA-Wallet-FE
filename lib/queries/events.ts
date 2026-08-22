@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { eventRepository, summaryProvider } from "@/lib/composition-root.client";
 import { collectBoundedEvents } from "@/lib/collect/bounded-event-collector";
-import type { ReclassifyRequestDTO } from "@/lib/http/dto";
+import type { ReclassifyRequestDTO, SetValueOverrideRequestDTO } from "@/lib/http/dto";
 
 // React Query 무효화는 접두 매칭이라 list 키를 ["events","list"]로 분리해 둔다.
 // 성공·409 충돌 모두 응답에 최신 이벤트가 실려 오므로 summary와 tax 판정을 함께 무효화한다.
@@ -56,6 +56,23 @@ export function useReclassify() {
       // 성공이든 충돌이든 응답에는 최신 이벤트가 실려 온다.
       // 판정·요약을 갱신하지 않으면 새 분류 옆에 옛 도장이 남거나
       // 확인 필요 탭은 비었는데 요약 카드만 옛 건수를 말하게 된다.
+      await queryClient.invalidateQueries({ queryKey: ["tax", "estimate"] });
+      await queryClient.invalidateQueries({ queryKey: eventSummaryQueryKey });
+    },
+  });
+}
+
+export function useSetValueOverride() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: SetValueOverrideRequestDTO }) =>
+      eventRepository.setValueOverride(id, input),
+    onSuccess: async (result, variables) => {
+      // 금액 override는 취득가 0원·확인 필요 판정을 바꾼다 — 목록·상세·판정·요약을 모두 갱신해야
+      // 큐에서 빠진 항목과 줄어든 부담이 화면 전체에서 같은 이야기를 한다.
+      await queryClient.invalidateQueries({ queryKey: eventQueryKey });
+      await queryClient.invalidateQueries({ queryKey: ["events", "detail", variables.id] });
       await queryClient.invalidateQueries({ queryKey: ["tax", "estimate"] });
       await queryClient.invalidateQueries({ queryKey: eventSummaryQueryKey });
     },

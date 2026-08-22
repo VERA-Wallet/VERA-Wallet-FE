@@ -28,8 +28,9 @@ export type EstimateInput = {
    */
   assumeEffective?: boolean;
   /**
-   * 자산별 2026-12-31 간주취득가액(시가). seed 계층까지 전달만 하는 통로다(US-001).
-   * 현재 원장은 아직 소비하지 않으므로 지정해도 결과는 달라지지 않는다.
+   * 자산별 2026-12-31 간주취득가액(시가). KR 거주자별 총평균 seed가 소비해
+   * 경계 전 보유분의 취득가액을 Max(시가, 실제)로 올린다 — 지정하면 KR 처분 손익·zeroBasis가 줄어든다.
+   * deemedCostBoundary를 선언하지 않은 타국 룰셋은 resolver가 있어도 기존 seed를 그대로 써 회귀가 0이다.
    */
   deemedFmv?: Record<string, Decimal>;
 };

@@ -1,4 +1,5 @@
-import { ZERO } from "@/lib/tax/decimal";
+import { ZERO, mul, sum } from "@/lib/tax/decimal";
+import type { Decimal } from "@/lib/tax/decimal";
 import { effectiveClassification, eventQuantity, taxExclusionReason } from "@/lib/review";
 import type { NormalizedEvent } from "@/lib/schema/normalized-event";
 import type { TaxEvent } from "@/lib/tax/types";
@@ -63,9 +64,9 @@ export function deriveTaxEvents(events: NormalizedEvent[]): DerivedTaxEvents {
       excludedByReason.set(exclusion, [...(excludedByReason.get(exclusion) ?? []), event.id]);
       continue;
     }
-    // 여기까지 왔으면 taxExclusionReason이 가격 확정을 보증한다(review.ts가 유일한 판정).
-    const fiatValue = event.fiat_value;
-    if (fiatValue === null) throw new Error(`제외 판정과 가격 상태가 어긋났습니다: ${event.id}`);
+    // 여기까지 왔으면 taxExclusionReason이 가격 확정을 보증한다(review.ts가 유일한 판정) —
+    // 지갑 가격이 미확정이어도 value_override가 원화 금액을 제공하면 통과한다.
+    const vo = event.value_override;
     const quantity = eventQuantity(event);
     const base = {
       id: event.id,
@@ -80,23 +81,46 @@ export function deriveTaxEvents(events: NormalizedEvent[]): DerivedTaxEvents {
       assumptions.add(LIMITATION_MESSAGE.ESTIMATED_PRICE);
     }
     // 가스비는 네이티브 수량이라 법정통화 환산 없이는 원가에 넣을 수 없다.
-    assumptions.add(LIMITATION_MESSAGE.GAS_FEE);
+    // 사용자가 원화 가스비를 입력한 이벤트는 반영했으므로 이 한계에서 뺀다.
+    if (vo?.gas_fee == null) {
+      assumptions.add(LIMITATION_MESSAGE.GAS_FEE);
+    }
+
+    // 부대비용·가스비(원화)를 필요경비(fee)로 합산한다. 둘 다 없으면 기존대로 0.
+    const feeParts = [vo?.incidental_cost, vo?.gas_fee].filter((value): value is Decimal => value != null);
+    const fee = feeParts.length > 0 ? sum(feeParts) : ZERO;
 
     // 분류가 방향을 이긴다. direction은 체인에서 유도한 메타데이터고,
     // classification은 사용자가 확정할 수 있는 의미 판단이다.
     // 여기까지 온 분류는 RECEIVE/SEND/EXCHANGE뿐이라(UNKNOWN·INTERNAL_TRANSFER는 위에서 걸러짐)
     // direction 폴백이 필요 없다. 폴백을 두면 "송금"으로 확정한 거래에 "취득" 도장이 찍힌다.
     if (classification === "RECEIVE") {
-      derived.push({ kind: "ACQUIRE", ...base, cost: fiatValue, fee: ZERO });
+      // 사용자가 입력한 취득가액이 있으면 그것이 원가다. 없으면 지갑이 확정한 fiat_value.
+      const cost = vo?.acquisition_cost ?? event.fiat_value;
+      if (cost === null) throw new Error(`취득가액을 정할 수 없습니다: ${event.id}`);
+      derived.push({ kind: "ACQUIRE", ...base, cost, fee });
       continue;
     }
+    // SEND·EXCHANGE → 처분. 사용자가 입력한 양도가액이 있으면 그것이 수취액.
+    const proceeds = vo?.disposal_value ?? event.fiat_value;
+    if (proceeds === null) throw new Error(`양도가액을 정할 수 없습니다: ${event.id}`);
     if (classification === "EXCHANGE") {
       // 교환 상대 자산 메타데이터가 없어 피아트 처분으로 근사한다(비과세 교환 국가에서는 과대계상 가능).
       assumptions.add(LIMITATION_MESSAGE.EXCHANGE_APPROXIMATION);
-      derived.push({ kind: "DISPOSE", ...base, proceeds: fiatValue, fee: ZERO, trigger: "FIAT" });
-      continue;
     }
-    derived.push({ kind: "DISPOSE", ...base, proceeds: fiatValue, fee: ZERO, trigger: "FIAT" });
+    // 취득가 입증 곤란: 50% 필요경비 의제가 취득가액 직접 입력보다 우선한다.
+    // cost가 지정되면 원장이 lot 매칭 대신 이 값을 처분 원가로 써 "취득가 0원"을 없앤다.
+    const disposeCost = vo?.deemed_expense_50
+      ? mul(proceeds, "0.5")
+      : vo?.acquisition_cost ?? undefined;
+    derived.push({
+      kind: "DISPOSE",
+      ...base,
+      proceeds,
+      fee,
+      trigger: "FIAT",
+      ...(disposeCost !== undefined ? { cost: disposeCost } : {}),
+    });
   }
 
   return {

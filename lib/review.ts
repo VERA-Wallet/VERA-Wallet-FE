@@ -25,7 +25,47 @@ export function eventQuantity(event: NormalizedEvent): Decimal {
   return div(event.raw_amount, `1${"0".repeat(Math.max(0, event.decimals))}`);
 }
 
-export type TaxExclusionReason = "분류 확인 필요" | "가격 확인 필요" | "수량 확인 필요";
+export type TaxExclusionReason = "분류 확인 필요" | "가격 확인 필요" | "수량 확인 필요" | "방향·분류 불일치";
+
+/**
+ * 체인에서 유도한 `direction`과 파이프라인이 매긴 `classification`이 서로를 부정하는가.
+ *
+ * `direction`은 자산이 지갑에 들어왔는지(IN)·나갔는지(OUT)의 체인 사실이고,
+ * `classification`은 그 흐름의 의미다. 취득(RECEIVE)은 들어온 것이라 IN이어야 하고,
+ * 처분(SEND)은 나간 것이라 OUT이어야 한다. 뒤집히면(RECEIVE+OUT·SEND+IN) 둘 중 하나가 틀렸다 —
+ * 그대로 엔진에 넣으면 나간 자산을 취득으로, 들어온 자산을 처분으로 기록해 총평균 단가를 오염시킨다.
+ *
+ * EXCHANGE·INTERNAL_TRANSFER는 방향을 강제하지 않는다: 교환은 한쪽 자산이 나가고 다른 쪽이 들어오며
+ * 어느 다리가 이 이벤트인지에 따라 IN·OUT 둘 다 정상이고, 자기 지갑 간 이체도 보내는 쪽은 OUT,
+ * 받는 쪽은 IN으로 양쪽이 다 옳다. UNKNOWN은 방향 제약이 없다(분류 자체가 미확정이라 별도 사유로 걸린다).
+ *
+ * **유효 분류가 아니라 파이프라인이 원래 매긴 `classification`을 본다.** 이 게이트가 잡으려는 것은
+ * 사용자 손이 닿기 전, 자동 분류와 체인 방향이 서로를 부정하며 들어온 **원본 데이터 결함**이다.
+ * 사용자가 방향과 일치하는 원본 위에 다른 분류를 덧씌운 것(예: 체인 IN·자동 RECEIVE를 SEND로 재분류)은
+ * 정합한 데이터에 대한 의도적 판단이라 결함이 아니고, 유효 분류로 보면 이런 정상 재분류가 오검출된다.
+ * 반대로 원본이 이미 어긋난 건(체인 IN·자동 SEND)은 사용자가 같은 분류를 확정해도 원본 모순은 남으므로 잡는다.
+ */
+export function directionClassificationConflict(event: NormalizedEvent): boolean {
+  if (event.classification === "RECEIVE") return event.direction === "OUT";
+  if (event.classification === "SEND") return event.direction === "IN";
+  return false;
+}
+
+/**
+ * 사용자가 입력한 금액 override가 이 이벤트의 흐름에 맞는 원화 금액을 제공하는지.
+ *
+ * 취득(RECEIVE)은 취득가액을, 처분(SEND·EXCHANGE)은 양도가액을 본다. 값이 있으면
+ * 지갑 가격이 미확정(price_status=UNKNOWN·fiat_value=null)이어도 계산 대상으로 인정한다 —
+ * 이것이 "취득가 0원" 이벤트를 확인 필요 큐에서 빼고 계산에 넣는 통로다.
+ */
+export function overrideFiatValue(event: NormalizedEvent): Decimal | null {
+  const vo = event.value_override;
+  if (!vo) return null;
+  const flow = assetFlow(event);
+  if (flow === "in") return vo.acquisition_cost;
+  if (flow === "out") return vo.disposal_value;
+  return null;
+}
 
 /**
  * 세금 계산에 넣을 수 없는 사유. 넣을 수 있으면 null.
@@ -33,8 +73,14 @@ export type TaxExclusionReason = "분류 확인 필요" | "가격 확인 필요"
  */
 export function taxExclusionReason(event: NormalizedEvent): TaxExclusionReason | null {
   if (effectiveClassification(event) === "UNKNOWN") return "분류 확인 필요";
-  if (event.price_status === "UNKNOWN" || event.fiat_value === null) return "가격 확인 필요";
+  // 지갑 가격이 미확정이어도 사용자가 원화 금액을 입력했으면 계산 대상이다.
+  if ((event.price_status === "UNKNOWN" || event.fiat_value === null) && overrideFiatValue(event) === null) {
+    return "가격 확인 필요";
+  }
   if (!isPositive(eventQuantity(event))) return "수량 확인 필요";
+  // 방향·분류 정합은 마지막에 본다. 가격·수량 같은 다른 사유가 있으면 그쪽을 먼저 고쳐야 하고,
+  // 그 사유가 없는데도 방향과 의미가 뒤집혀 있으면 여기서 게이트로 잡아 엔진에 넘기지 않는다.
+  if (directionClassificationConflict(event)) return "방향·분류 불일치";
   return null;
 }
 

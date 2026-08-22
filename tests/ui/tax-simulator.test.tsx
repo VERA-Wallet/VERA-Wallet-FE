@@ -279,7 +279,7 @@ describe("TaxSimulator 제외 배너", () => {
     await renderWithWallet([
       { ...base, id: "no-price", price_status: "UNKNOWN", fiat_value: null },
       { ...base, id: "estimated", price_status: "ESTIMATED" },
-      { ...base, id: "sold", classification: "SEND", user_override: null },
+      { ...base, id: "sold", classification: "SEND", direction: "OUT", user_override: null },
     ]);
     const shaky = await screen.findByLabelText("흔들리는 것");
     const grounds = screen.queryByLabelText("계산 근거");
@@ -299,7 +299,7 @@ describe("TaxSimulator 제외 배너", () => {
     await renderWithWallet([
       { ...base, id: "no-price", price_status: "UNKNOWN", fiat_value: null },
       { ...base, id: "estimated", price_status: "ESTIMATED" },
-      { ...base, id: "sold", classification: "SEND", user_override: null },
+      { ...base, id: "sold", classification: "SEND", direction: "OUT", user_override: null },
     ]);
     const section = await screen.findByLabelText("흔들리는 것");
 

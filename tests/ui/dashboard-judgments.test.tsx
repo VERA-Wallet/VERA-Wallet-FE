@@ -1057,7 +1057,9 @@ describe("부담이 0이어도 내역 화면은 부담을 말하지 않는다", 
     // 손실만 있는 지갑을 만들어 부담을 0으로 만든다.
     // 취득만 있는 지갑은 처분·소득이 없어 부담이 반드시 0이다.
     const acquireOnly = events
-      .filter((event) => event.classification === "RECEIVE" && event.price_status !== "UNKNOWN")
+      // 방향이 IN인 진짜 취득만 고른다 — RECEIVE인데 OUT인 건은 방향·분류 모순으로 게이트돼
+      // "취득"이 아니라 "계산 제외"로 찍힌다.
+      .filter((event) => event.classification === "RECEIVE" && event.direction === "IN" && event.price_status !== "UNKNOWN")
       .slice(0, 2);
     expect(acquireOnly.length, "픽스처에 취득 이벤트가 있어야 한다").toBeGreaterThan(0);
     setListEvents(acquireOnly);
@@ -1365,6 +1367,9 @@ describe("부담을 산출하지 않는 룰셋은 한계 기여도를 답하지 
 
 describe("없는 것을 계산된 것처럼 말하지 않는다", () => {
   it("계산할 거래가 없으면 ₩0을 손익이라 하지 않는다", async () => {
+    // 손익·건수는 세금 화면과 같은 estimate에서 파생하므로, "계산할 것 없음"도 estimate로 낸다 —
+    // 목록·엔진을 함께 비워야(setListEvents) estimate에 기간 내 판정이 없어 카드가 "계산할 거래 없음"이 된다.
+    setListEvents([]);
     ports.getSummary.mockResolvedValue({
       periodPnl: "0",
       computableEventCount: 0,
@@ -1399,7 +1404,9 @@ describe("없는 것을 계산된 것처럼 말하지 않는다", () => {
       period: { from: "", to: "" },
     });
     const { container } = renderDashboard("DE");
-    await screen.findByText("계산할 거래 없음");
+    // 기준 기간이 없으면 estimate를 아예 요청하지 않아 손익 카드는 "—"다.
+    // 정착 신호는 요약이 도착해야 뜨는 헤더의 "기간 미정"으로 잡는다(판정 미계산 배너는 로딩 중에도 떠서 이르다).
+    await screen.findByText("기간 미정");
     // 헤더에 ` ~ `만 보이면 기간이 있는 것처럼 말하는 셈이다.
     const header = container.querySelector('[data-surface="dashboard-summary"]')!;
     expect(header.textContent).toContain("기간 미정");
@@ -1428,7 +1435,9 @@ describe("잘못된 기간에서 헤더와 판정 안내가 갈리지 않는다"
         period,
       });
       const { container } = renderDashboard("DE");
-      await screen.findByText("계산할 거래 없음");
+      // 기준 기간이 없으면 estimate를 요청하지 않아 손익 카드는 "—"다.
+      // 정착 신호는 요약이 도착해야 뜨는 헤더의 "기간 미정"으로 잡는다(판정 미계산 배너는 로딩 중에도 떠서 이르다).
+      await screen.findByText("기간 미정");
 
       const header = container.querySelector('[data-surface="dashboard-summary"]')!;
       expect(header.textContent).toContain("기간 미정");

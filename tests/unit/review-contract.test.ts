@@ -112,6 +112,13 @@ describe("서버 요약도 같은 술어를 쓴다", () => {
       if (event.price_status === "UNKNOWN" || event.fiat_value === null) return true;
       // Number()는 극소수 raw에서 Decimal 정규화와 갈릴 수 있다 — 문자열로 0 여부를 본다.
       if (/^0+(\.0+)?$/.test(event.raw_amount)) return true;
+      // 방향·분류 모순(자동 분류 기준): RECEIVE는 IN, SEND는 OUT이어야 한다.
+      if (
+        (event.classification === "RECEIVE" && event.direction === "OUT") ||
+        (event.classification === "SEND" && event.direction === "IN")
+      ) {
+        return true;
+      }
       // 신뢰도 하한 0.5 — 이 숫자가 바뀌면 이 테스트가 먼저 깨져야 한다.
       return event.confidence < 0.5;
     });
@@ -157,7 +164,9 @@ describe("분류 배지와 판정 도장이 어긋나지 않는가", () => {
     expect(derived.events[0].kind).toBe("DISPOSE");
   });
 
-  it("수신으로 확정하면 방향이 OUT이어도 취득이다", () => {
+  it("자동 분류가 RECEIVE인데 방향이 OUT이면 모순으로 게이트한다", () => {
+    // 파이프라인이 취득(RECEIVE)이라 했는데 자산은 나갔다(OUT). 그대로 엔진에 넣으면
+    // 나간 자산을 취득으로 기록해 총평균 단가를 오염시킨다 — 진입 전에 확인 필요로 잡는다.
     const receiveButOut: NormalizedEvent = {
       ...healthy,
       id: "recv-out",
@@ -165,7 +174,9 @@ describe("분류 배지와 판정 도장이 어긋나지 않는가", () => {
       classification: "RECEIVE",
       user_override: null,
     };
-    expect(deriveTaxEvents([receiveButOut]).events[0].kind).toBe("ACQUIRE");
+    expect(taxExclusionReason(receiveButOut)).toBe("방향·분류 불일치");
+    expect(needsReview(receiveButOut)).toBe(true);
+    expect(deriveTaxEvents([receiveButOut]).excludedEventIds).toEqual(["recv-out"]);
   });
 
   it("파생된 모든 이벤트의 종류가 유효 분류와 일치한다", () => {

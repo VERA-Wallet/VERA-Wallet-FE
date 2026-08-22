@@ -88,8 +88,10 @@ describe("데모 시나리오 출처", () => {
     expect(assumed.lines.find((line) => line.key === "net_gains")?.amount).toBe(
       fact.lines.find((line) => line.key === "ledger_gains")?.amount,
     );
-    expect(assumed.totals.taxableBase).toBe("40300000");
-    expect(assumed.totals.estimatedCharge).toBe("8866000");
+    // 방향·분류 모순 4건(2025년 event-06·07·16·17)이 엔진 진입 전 게이트에서 빠져 과세표준이 줄었다.
+    // 30,700,000 × 22%(KR) = 6,754,000.
+    expect(assumed.totals.taxableBase).toBe("30700000");
+    expect(assumed.totals.estimatedCharge).toBe("6754000");
     expect(assumed.notes[0]).toContain("실제 부담은 0원입니다");
   });
 });

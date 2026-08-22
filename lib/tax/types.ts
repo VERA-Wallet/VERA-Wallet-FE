@@ -62,6 +62,13 @@ export type DisposeEvent = TaxEventBase & {
   trigger: DisposalTrigger;
   /** trigger === "CRYPTO"인 경우 교환으로 취득한 자산. */
   receives?: { asset: string; symbol: string; quantity: Decimal };
+  /**
+   * 사용자가 직접 정한 취득가액(원가). 미지정 시 원장 lot 매칭이 원가를 정한다.
+   *
+   * derive가 value_override(취득가액 직접 입력) 또는 50% 필요경비 의제에서 채운다.
+   * 지정되면 원장은 lot 매칭 대신 이 값을 처분 원가로 써서 "취득가 0원"(원장 미보유분) 경고를 없앤다.
+   */
+  cost?: Decimal;
 };
 
 export type IncomeEvent = TaxEventBase & {

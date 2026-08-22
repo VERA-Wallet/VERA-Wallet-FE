@@ -184,7 +184,10 @@ describe("연도 필터", () => {
         yearOf(event) === FIXTURE_TAX_YEAR + 1 &&
         event.classification !== "UNKNOWN" &&
         event.price_status !== "UNKNOWN" &&
-        event.confidence >= 0.5,
+        event.confidence >= 0.5 &&
+        // 방향·분류 모순도 확인 필요 항목이다 — "확인 필요 없는 해"를 만들려면 함께 걸러야 한다.
+        !(event.classification === "RECEIVE" && event.direction === "OUT") &&
+        !(event.classification === "SEND" && event.direction === "IN"),
     );
     expect(cleanNextYear.length).toBeGreaterThan(0);
     const baseYear = TWO_YEARS.filter((event) => yearOf(event) === FIXTURE_TAX_YEAR);

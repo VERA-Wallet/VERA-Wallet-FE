@@ -181,9 +181,12 @@ export function runLedger(events: TaxEvent[], policy: LedgerPolicy, lookahead: T
 
     const consumption = ledger.dispose({ asset: event.asset, wallet: event.wallet, at: event.at, quantity: event.quantity });
     if (isPositive(consumption.shortfall)) {
-      const message = `${event.id}: 원장에 없는 수량 ${consumption.shortfall} ${event.symbol} —${ZERO_BASIS_SUFFIX}`;
-      warnings.push(message);
-      warned.push({ message, eventId: event.id });
+      // 사용자가 처분 원가(취득가액 직접 입력·50% 의제)를 정했으면 "취득가 0원"이 아니다 — 경고를 달지 않는다.
+      if (event.cost === undefined) {
+        const message = `${event.id}: 원장에 없는 수량 ${consumption.shortfall} ${event.symbol} —${ZERO_BASIS_SUFFIX}`;
+        warnings.push(message);
+        warned.push({ message, eventId: event.id });
+      }
       consumption.matches.push({ lotId: `${event.id}:missing`, quantity: consumption.shortfall, cost: ZERO, acquiredAt: null });
     }
 
@@ -216,15 +219,25 @@ export function runLedger(events: TaxEvent[], policy: LedgerPolicy, lookahead: T
     // (예: 1300을 1:2로 나누면 999.999999999999999999가 되어 면세한계 비교가 뒤집힌다)
     // 마지막 lot이 잔차를 흡수해 합계를 보존한다.
     const totalFee = policy.feeDeductible ? event.fee : ZERO;
+    // 사용자가 정한 처분 원가(취득가액 직접 입력·50% 의제). 지정 시 lot 매칭 원가 대신 이 값을 lot마다 안분한다.
+    const overrideCost = event.cost;
     let allocatedProceeds = ZERO;
     let allocatedFee = ZERO;
+    let allocatedCost = ZERO;
     consumption.matches.forEach((match, index) => {
       const isLast = index === consumption.matches.length - 1;
       const share = isPositive(event.quantity) ? div(match.quantity, event.quantity) : ZERO;
       const proceeds = isLast ? sub(event.proceeds, allocatedProceeds) : mul(event.proceeds, share);
       const fee = isLast ? sub(totalFee, allocatedFee) : mul(totalFee, share);
+      const cost =
+        overrideCost === undefined
+          ? match.cost
+          : isLast
+            ? sub(overrideCost, allocatedCost)
+            : mul(overrideCost, share);
       allocatedProceeds = add(allocatedProceeds, proceeds);
       allocatedFee = add(allocatedFee, fee);
+      allocatedCost = add(allocatedCost, cost);
       gains.push({
         eventId: event.id,
         at: event.at,
@@ -232,9 +245,9 @@ export function runLedger(events: TaxEvent[], policy: LedgerPolicy, lookahead: T
         symbol: event.symbol,
         quantity: match.quantity,
         proceeds,
-        cost: match.cost,
+        cost,
         fee,
-        gain: sub(sub(proceeds, match.cost), fee),
+        gain: sub(sub(proceeds, cost), fee),
         holdingDays: match.acquiredAt ? holdingDays(match.acquiredAt, event.at) : null,
         acquiredAt: match.acquiredAt,
         trigger: event.trigger,

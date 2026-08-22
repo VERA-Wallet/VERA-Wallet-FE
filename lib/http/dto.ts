@@ -17,6 +17,23 @@ export type ReclassifyRequestDTO = {
   reason?: string;
   expectedVersion: number;
 };
+/**
+ * 사용자가 입력한 금액 override. overridden_at은 서버가 찍는다.
+ * 각 칸 미지정(undefined)은 "비움"(null)과 같게 저장한다. value_override 전체를 null로 보내면 override를 제거한다.
+ */
+export type ValueOverrideInput = {
+  acquisition_cost?: string | null;
+  disposal_value?: string | null;
+  incidental_cost?: string | null;
+  gas_fee?: string | null;
+  price_source?: string | null;
+  evidence_url?: string | null;
+  deemed_expense_50?: boolean;
+};
+export type SetValueOverrideRequestDTO = {
+  value_override: ValueOverrideInput | null;
+  expectedVersion: number;
+};
 export type SummaryDTO = {
   periodPnl: string;
   /**
@@ -67,5 +84,20 @@ export const summarySchema: z.ZodType<SummaryDTO> = z.object({
 export const reclassifyRequestSchema: z.ZodType<ReclassifyRequestDTO> = z.object({
   classification: classificationSchema,
   reason: z.string().optional(),
+  expectedVersion: z.number().int().positive(),
+});
+
+const valueOverrideInputSchema = z.object({
+  acquisition_cost: decimalString.nullable().optional(),
+  disposal_value: decimalString.nullable().optional(),
+  incidental_cost: decimalString.nullable().optional(),
+  gas_fee: decimalString.nullable().optional(),
+  price_source: z.string().min(1).nullable().optional(),
+  evidence_url: z.string().min(1).nullable().optional(),
+  deemed_expense_50: z.boolean().optional(),
+});
+
+export const setValueOverrideRequestSchema: z.ZodType<SetValueOverrideRequestDTO> = z.object({
+  value_override: valueOverrideInputSchema.nullable(),
   expectedVersion: z.number().int().positive(),
 });

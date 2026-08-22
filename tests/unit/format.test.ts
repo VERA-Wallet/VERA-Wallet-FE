@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { assetLabel, explorerTxUrl, formatDate, formatFiat } from "@/lib/format";
+import { assetLabel, explorerTxUrl, formatDate, formatDateTime, formatFiat } from "@/lib/format";
 import { isoDay } from "@/lib/period";
 import { taxYearFor } from "@/lib/tax/engine";
 
@@ -139,6 +139,31 @@ describe("날짜 표기는 계산과 같은 시간대를 쓴다", () => {
   it("자정 직후도 같은 규칙을 따른다", () => {
     expect(formatDate("2026-01-01T00:30:00.000Z")).toBe("2026. 1. 1.");
     expect(taxYearFor("KR", "2026-01-01T00:30:00.000Z")).toBe(2026);
+  });
+});
+
+describe("거래 시각은 UTC와 KST를 함께, 브라우저와 무관하게 찍는다", () => {
+  const boundary = "2025-12-31T20:00:00.000Z";
+
+  it("한 시각을 UTC·KST 병기로 보인다(KST = UTC+9)", () => {
+    // UTC 20:00은 KST로 다음 날 05:00 — 두 시간대를 함께 보여야 신고자가 어느 날 거래인지 오해하지 않는다.
+    expect(formatDateTime(boundary)).toBe("2025. 12. 31. 20:00 UTC · 2026. 1. 1. 05:00 KST");
+    expect(formatDateTime("2025-01-02T00:00:00.000Z")).toBe("2025. 1. 2. 00:00 UTC · 2025. 1. 2. 09:00 KST");
+  });
+
+  it("실행 환경의 로컬 TZ를 바꿔도 같은 문자열을 낸다(toLocaleString drift 없음)", () => {
+    // 시간대를 명시해 못 박았으므로 ambient TZ와 무관하다 — export가 브라우저마다 다른 시각을 보이던 결함의 회귀 가드.
+    const original = process.env.TZ;
+    try {
+      const outputs = ["UTC", "America/New_York", "Asia/Kolkata"].map((tz) => {
+        process.env.TZ = tz;
+        return formatDateTime(boundary);
+      });
+      expect(new Set(outputs).size).toBe(1);
+      expect(outputs[0]).toBe("2025. 12. 31. 20:00 UTC · 2026. 1. 1. 05:00 KST");
+    } finally {
+      process.env.TZ = original;
+    }
   });
 });
 
