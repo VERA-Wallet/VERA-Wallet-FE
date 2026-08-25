@@ -276,8 +276,9 @@ describe("거래 탭이 세금 대신 판정 도장을 찍는다", () => {
     const row = screen.getByText(rowLabel(acquired!)).closest("button");
     expect(row).not.toBeNull();
     await waitFor(() => expect(row!.textContent).toMatch(/취득/), { timeout: SETTLE_TIMEOUT });
-    // 목록은 온체인 사실만 말한다. 통화 기호가 새면 사용자가 그 숫자를 세금으로 읽는다.
-    expect(row!.textContent ?? "", "거래 카드에 법정통화 금액이 새면 안 된다").not.toMatch(/[€₩$]/);
+    // 카드는 이제 실현 손익(₩)을 도장과 함께 보인다. 다만 취득은 처분이 아니라 실현 손익이 없으므로
+    // 이 카드의 손익 줄은 "—"이고, 취득가액 같은 다른 통화 금액은 여전히 새면 안 된다(상세에서 근거와 함께만).
+    expect(row!.textContent ?? "", "취득 카드에는 실현 손익이 없어 통화 금액이 새면 안 된다").not.toMatch(/[€₩$]/);
     // 금액 칸이 세금이 아니라 **취득가액**임을 밝힌다. 넷 중 아무거나 허용하면 라벨이 뒤바뀌어도 통과한다.
     fireEvent.click(row!);
     const section = (await screen.findByText("이 손익이 계산에서 어떻게 쓰였나")).parentElement!;
@@ -1588,7 +1589,7 @@ describe("거래 카드는 온체인 사실 네 가지와 도장만 말한다", 
     for (const card of cardsOf(container)) expect(card.textContent).not.toMatch(/\d{4}\. \d{1,2}\./);
   });
 
-  it("체인·수량·거래방법을 싣고 법정통화 금액은 싣지 않는다", async () => {
+  it("체인·수량·거래방법·실현 손익(₩)을 싣고, 그 밖의 통화 금액은 싣지 않는다", async () => {
     const { container } = renderDashboard("DE");
     await settled();
     const cards = cardsOf(container);
@@ -1604,8 +1605,11 @@ describe("거래 카드는 온체인 사실 네 가지와 도장만 말한다", 
       // 계산에 들어가지 않는 값은 목록에 없다. 가스는 픽스처 전 건이 같은 값이라 25줄을 채우고도
       // 아무것도 구분해주지 않으며, 어떤 판정도 바꾸지 않는다 — 상세에서만 답한다.
       expect(text, event.id).not.toContain("가스");
-      // 카드에 통화 기호가 새면 사용자는 그 숫자를 세금으로 읽는다. 금액은 상세에서 근거와 함께만 보인다.
-      expect(text, event.id).not.toMatch(/[€₩$]/);
+      // 카드는 이제 실현 손익(₩)을 summ의 Gain 컬럼처럼 도장과 함께 보인다 — 그 자리에만 통화 금액이 허용된다.
+      // 손익 줄(data-surface="event-gain")을 뺀 나머지에 통화 기호가 새면 사용자는 그 숫자를 세금·평가액으로 읽는다.
+      const withoutGain = card.cloneNode(true) as HTMLElement;
+      withoutGain.querySelector('[data-surface="event-gain"]')?.remove();
+      expect(withoutGain.textContent ?? "", event.id).not.toMatch(/[€₩$]/);
     }
   });
 
@@ -1681,5 +1685,109 @@ describe("DeFi 수익은 종류 배지로 드러난다", () => {
     // 분류(수신)는 상세 상단 배지에 그대로 남는다(재분류 select의 option과 구분해 span 배지를 확인한다).
     const sheet = screen.getByText("거래 상세").closest("div")!.parentElement!;
     expect(within(sheet).getAllByText("수신").some((node) => node.tagName === "SPAN")).toBe(true);
+  });
+});
+
+describe("목록이 실현 손익(₩)을 상세와 같은 소스에서 뽑아 노출한다", () => {
+  it("처분 행에 실현 손익 금액(부호·색)을 summ Gain 컬럼처럼 찍고, 손익 없는 행은 —로 둔다", async () => {
+    const target = events.find((event) => derived.events.some((tax) => tax.id === event.id && tax.kind === "DISPOSE"))!;
+    expect(target, "처분 이벤트가 픽스처에 있어야 한다").toBeDefined();
+    // 상세 손익 근거표와 같은 판정 행을 심는다: 손익 1,980(양도 3,000 − 취득 1,000 − 수수료 20), 수익률 +198%.
+    ports.estimate.mockImplementation(async (input: Parameters<TaxEngineService["estimate"]>[0]) => {
+      const base = await engine.estimate(input);
+      return {
+        ...base,
+        judgments: [
+          {
+            eventId: target.id,
+            at: target.block_timestamp,
+            asset: "eip155:1/native",
+            symbol: "ETH",
+            quantity: "1",
+            amountKind: "gain" as const,
+            holdingDays: 400,
+            acquiredAt: "2024-01-01T00:00:00.000Z",
+            lots: 1,
+            leg: "single" as const,
+            inPeriod: true,
+            breakdown: { proceeds: "3000", cost: "1000", fee: "20" },
+            group: "taxable" as const,
+            label: "과세 대상",
+            basis: "§23 EStG",
+            amount: "1980",
+          },
+        ],
+      };
+    });
+
+    renderDashboard("DE");
+    await settled();
+
+    const gainCard = screen.getByText(rowLabel(target)).closest("button")!;
+    const gainRow = gainCard.querySelector('[data-surface="event-gain"]')!;
+    expect(gainRow.textContent).toContain("손익");
+    // 손익 금액이 주(主)다 — 부호(+)와 통화 금액을 함께 보인다. 상세 손익과 같은 소스라 값이 일치한다.
+    const gainText = formatFiat("1980", "EUR");
+    expect(gainRow.textContent).toContain(`+${gainText}`);
+    // 상승은 색으로도 표시하되(브랜드 receive), 색만으로 구분하지 못하도록 부호를 함께 둔다.
+    const stamp = gainRow.querySelector(".text-receive");
+    expect(stamp, "상승 손익은 receive 색을 쓴다").not.toBeNull();
+    // 수익률(%)은 금액 옆에 보조로만 덧댄다.
+    expect(gainRow.textContent).toContain("+198%");
+
+    // 목록의 손익이 상세의 손익 근거표와 같은 값인지 대조한다(같은 판정 행이 소스).
+    fireEvent.click(gainCard);
+    const evidence = (await screen.findByText("손익은 이렇게 나왔습니다")).parentElement!;
+    await waitFor(() => expect(evidence.textContent).toContain(`= 손익${gainText}`), { timeout: SETTLE_TIMEOUT });
+
+    // 손익이 없는 자기 지갑 간 이체는 판정이 도착해도 손익을 —로 둔다(목록과 상세가 일관).
+    const internal = events.find((event) => event.classification === "INTERNAL_TRANSFER")!;
+    const internalGain = screen.getByText(rowLabel(internal)).closest("button")!.querySelector('[data-surface="event-gain"]')!;
+    expect(internalGain.textContent).toContain("손익");
+    expect(internalGain.textContent).toContain("—");
+    expect(internalGain.textContent ?? "").not.toMatch(/[€₩$]/);
+  });
+
+  it("잔액 가리기를 켜면 행 손익도 마스킹한다(요약 손익·이력 그래프와 같은 규칙)", async () => {
+    const target = events.find((event) => derived.events.some((tax) => tax.id === event.id && tax.kind === "DISPOSE"))!;
+    ports.estimate.mockImplementation(async (input: Parameters<TaxEngineService["estimate"]>[0]) => {
+      const base = await engine.estimate(input);
+      return {
+        ...base,
+        judgments: [
+          {
+            eventId: target.id,
+            at: target.block_timestamp,
+            asset: "eip155:1/native",
+            symbol: "ETH",
+            quantity: "1",
+            amountKind: "gain" as const,
+            holdingDays: 400,
+            acquiredAt: "2024-01-01T00:00:00.000Z",
+            lots: 1,
+            leg: "single" as const,
+            inPeriod: true,
+            breakdown: { proceeds: "3000", cost: "1000", fee: "20" },
+            group: "taxable" as const,
+            label: "과세 대상",
+            basis: "§23 EStG",
+            amount: "1980",
+          },
+        ],
+      };
+    });
+    renderDashboard("DE");
+    await settled();
+    // 가리기를 켜면 카드 제목(수량)도 마스킹되어 라벨로 못 찾는다 — data-event-id로 카드를 붙잡는다.
+    const card = screen.getByText(rowLabel(target)).closest("button")!;
+    const eventId = card.getAttribute("data-event-id")!;
+    fireEvent.click(screen.getByRole("button", { name: "금액 가리기" }));
+
+    // 손익 금액은 돈이므로 잔액 가리기에서 요약 손익·이력 선과 같이 마스킹된다.
+    await waitFor(() => {
+      const gainRow = document.querySelector(`button[data-event-id="${eventId}"] [data-surface="event-gain"]`)!;
+      expect(gainRow.textContent).toContain("•••••");
+      expect(gainRow.textContent ?? "").not.toMatch(/[€₩$]/);
+    });
   });
 });

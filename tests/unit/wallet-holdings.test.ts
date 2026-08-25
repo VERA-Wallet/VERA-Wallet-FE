@@ -6,8 +6,12 @@ import {
   demoDefiPositions,
   demoNftHoldings,
   demoWalletHoldings,
+  holdingGainUsd,
+  holdingsGainSummary,
   multiplyDecimal,
   portfolioTotalUsd,
+  returnPercent,
+  subtractDecimal,
   totalValueUsd,
 } from "@/lib/wallet/holdings";
 
@@ -32,6 +36,22 @@ describe("decimal math", () => {
   it("sums holding values into a portfolio total", () => {
     expect(totalValueUsd(demoWalletHoldings())).toBe("3750");
   });
+
+  it("subtracts decimal strings across differing scales", () => {
+    expect(subtractDecimal("2400", "1800.00")).toBe("600");
+    expect(subtractDecimal("850", "900.00")).toBe("-50");
+    expect(subtractDecimal("500", "500")).toBe("0");
+  });
+
+  it("computes return percent to two decimals, null when cost is zero", () => {
+    // 600 gain on 1,800 cost = +33.33%.
+    expect(returnPercent("1800.00", "600")).toBe("33.33");
+    // -50 gain on 900 cost = -5.56%.
+    expect(returnPercent("900.00", "-50")).toBe("-5.56");
+    expect(returnPercent("480.00", "20")).toBe("4.17");
+    expect(returnPercent("1000", "0")).toBe("0");
+    expect(returnPercent("0", "10")).toBeNull();
+  });
 });
 
 describe("demoWalletHoldings", () => {
@@ -51,6 +71,35 @@ describe("demoWalletHoldings", () => {
     for (let index = 1; index < values.length; index += 1) {
       expect(compareDecimal(values[index - 1], values[index])).toBeGreaterThanOrEqual(0);
     }
+  });
+
+  it("carries a mock cost basis and derives gain/return per holding", () => {
+    const holdings = demoWalletHoldings();
+    const eth = holdings.find((holding) => holding.symbol === "ETH")!;
+    const usdt = holdings.find((holding) => holding.symbol === "USDT")!;
+    const usdc = holdings.find((holding) => holding.symbol === "USDC")!;
+
+    expect(eth.costUsd).toBe("1800.00");
+    expect(holdingGainUsd(eth)).toBe("600"); // 2,400 − 1,800, a gain
+    expect(returnPercent(eth.costUsd, holdingGainUsd(eth))).toBe("33.33");
+
+    expect(usdt.costUsd).toBe("900.00");
+    expect(holdingGainUsd(usdt)).toBe("-50"); // 850 − 900, a loss
+    expect(returnPercent(usdt.costUsd, holdingGainUsd(usdt))).toBe("-5.56");
+
+    expect(usdc.costUsd).toBe("480.00");
+    expect(holdingGainUsd(usdc)).toBe("20");
+  });
+});
+
+describe("holdingsGainSummary", () => {
+  it("aggregates value, cost, gain, and return for the token holdings", () => {
+    // value 3,750 − cost (1,800 + 900 + 480 = 3,180) = +570 → +17.92%.
+    const summary = holdingsGainSummary(demoWalletHoldings());
+    expect(summary.valueUsd).toBe("3750");
+    expect(summary.costUsd).toBe("3180");
+    expect(summary.gainUsd).toBe("570");
+    expect(summary.returnPercent).toBe("17.92");
   });
 });
 

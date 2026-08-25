@@ -48,6 +48,32 @@ describe("wallet home (portfolio + account)", () => {
     expect(screen.queryByText("검증됨")).toBeNull();
   });
 
+  it("shows per-holding gain/return with brand receive/dispose tones", () => {
+    const { container } = renderConnected();
+    const rows = container.querySelectorAll('[data-surface="holding-row"]');
+
+    // ETH: 2,400 − 1,800 cost = +US$600.00 (+33.33%), a gain → brand receive (green).
+    expect(rows[0]).toHaveTextContent("+US$600.00");
+    expect(rows[0]).toHaveTextContent("+33.33%");
+    expect(rows[0].querySelector(".text-receive")).not.toBeNull();
+    // USDT: 850 − 900 cost = -US$50.00 (-5.56%), a loss → brand dispose (red).
+    expect(rows[1]).toHaveTextContent("-US$50.00");
+    expect(rows[1]).toHaveTextContent("-5.56%");
+    expect(rows[1].querySelector(".text-dispose")).not.toBeNull();
+  });
+
+  it("summarizes the token holdings value, gain, and return at the top of the token tab", () => {
+    const { container } = renderConnected();
+    const summary = container.querySelector('[data-surface="wallet-holdings-summary"]')!;
+    expect(summary).not.toBeNull();
+    // value 3,750 − cost 3,180 = +US$570.00 (+17.92%).
+    expect(summary).toHaveTextContent("US$3,750.00");
+    expect(summary).toHaveTextContent("평가손익");
+    expect(summary).toHaveTextContent("+US$570.00");
+    expect(summary).toHaveTextContent("+17.92%");
+    expect(summary.querySelector(".text-receive")).not.toBeNull();
+  });
+
   it("copies the wallet address to the clipboard", async () => {
     const user = userEvent.setup();
     renderConnected();

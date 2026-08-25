@@ -7,7 +7,16 @@ import { ChainIcon } from "@/components/ui/chain-icon";
 import { TokenIcon, hasTokenMark } from "@/components/ui/token-icon";
 import { WalletMark } from "@/components/wallet/wallet-mark";
 import { chainLabel, formatFiat, shortHash } from "@/lib/format";
-import { portfolioTotalUsd, type DefiPosition, type Holding, type NftHolding } from "@/lib/wallet/holdings";
+import {
+  compareDecimal,
+  holdingGainUsd,
+  holdingsGainSummary,
+  portfolioTotalUsd,
+  returnPercent,
+  type DefiPosition,
+  type Holding,
+  type NftHolding,
+} from "@/lib/wallet/holdings";
 
 type Tab = "token" | "nft" | "defi";
 
@@ -22,6 +31,26 @@ function seededColor(seed: string, offset: number): string {
 
 function initials(text: string): string {
   return text.replace(/[^A-Za-z0-9]/g, "").slice(0, 3).toUpperCase() || "?";
+}
+
+/**
+ * 평가손익·수익률 한 조각. 상승은 브랜드 receive(녹색), 하락은 dispose(적색) 토큰을 쓰고,
+ * 색만으로 구분하지 못하는 사용자를 위해 부호(`+`/`−`)를 늘 함께 둔다. 손익은 mock 취득원가로
+ * 계산한 **표시 산술**이다(세무 엔진이 아니다).
+ */
+function GainInline({ gainUsd, costUsd }: { gainUsd: string; costUsd: string }): React.JSX.Element {
+  const direction = compareDecimal(gainUsd, "0");
+  const tone = direction > 0 ? "text-receive" : direction < 0 ? "text-dispose" : "text-zinc-500";
+  const percent = returnPercent(costUsd, gainUsd);
+  // formatFiat은 음수에 이미 `-`를 붙인다 — 양수일 때만 `+`를 더한다.
+  const gainText = `${direction > 0 ? "+" : ""}${formatFiat(gainUsd, "USD")}`;
+  const percentText = percent === null ? null : `${direction > 0 ? "+" : ""}${percent}%`;
+  return (
+    <span className={`tabular-nums ${tone}`}>
+      {gainText}
+      {percentText ? ` · ${percentText}` : ""}
+    </span>
+  );
 }
 
 /** 자산 마크 + 우하단 네트워크 배지. */
@@ -61,11 +90,33 @@ function TokenRow({ holding }: { holding: Holding }) {
       </div>
       <div className="shrink-0 text-right">
         <p className="font-semibold tabular-nums text-zinc-900">{formatFiat(holding.valueUsd, "USD")}</p>
+        <p className="mt-0.5 text-xs font-medium">
+          <GainInline gainUsd={holdingGainUsd(holding)} costUsd={holding.costUsd} />
+        </p>
         <p className="mt-0.5 text-xs tabular-nums text-zinc-400">
           {holding.amount} {holding.symbol}
         </p>
       </div>
     </li>
+  );
+}
+
+/**
+ * 토큰 탭 상단 요약. 보이는 토큰들의 전체 평가액·평가손익·수익률을 한눈에 보인다.
+ * NFT·디파이는 mock 취득원가가 없어 이 요약은 **토큰 보유분**만 집계한다 —
+ * 상단 큰 총액(portfolioTotalUsd)과 뜻이 갈리지 않도록 무엇을 집계했는지 라벨로 밝힌다.
+ */
+function TokenHoldingsSummary({ holdings }: { holdings: Holding[] }): React.JSX.Element {
+  const summary = holdingsGainSummary(holdings);
+  return (
+    <div data-surface="wallet-holdings-summary" className="mt-3 rounded-card border border-zinc-100 p-4 shadow-card">
+      <p className="text-xs text-zinc-500">보유 토큰 평가액</p>
+      <p className="mt-1 text-2xl font-bold tabular-nums text-zinc-900">{formatFiat(summary.valueUsd, "USD")}</p>
+      <p className="mt-1 text-sm font-semibold">
+        <span className="text-zinc-500">평가손익 </span>
+        <GainInline gainUsd={summary.gainUsd} costUsd={summary.costUsd} />
+      </p>
+    </div>
   );
 }
 
@@ -298,11 +349,14 @@ export function WalletPortfolio({
             ))}
           </ul>
         ) : (
-          <ul className="mt-1 divide-y divide-zinc-100">
-            {shownTokens.map((holding) => (
-              <TokenRow key={holding.key} holding={holding} />
-            ))}
-          </ul>
+          <>
+            <TokenHoldingsSummary holdings={shownTokens} />
+            <ul className="mt-1 divide-y divide-zinc-100">
+              {shownTokens.map((holding) => (
+                <TokenRow key={holding.key} holding={holding} />
+              ))}
+            </ul>
+          </>
         )}
       </section>
     </main>

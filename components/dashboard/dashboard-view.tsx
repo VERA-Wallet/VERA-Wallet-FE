@@ -21,7 +21,7 @@ import { useTaxEstimate } from "@/lib/queries/tax";
 import { useJudgments } from "@/lib/queries/judgments";
 import { assetFlow, effectiveClassification, needsReview, reviewReason } from "@/lib/review";
 import type { AssetFlow } from "@/lib/review";
-import { isNegative, isZero } from "@/lib/tax/decimal";
+import { div, isNegative, isPositive, isZero, mul, round, sum } from "@/lib/tax/decimal";
 import { taxYearFor } from "@/lib/tax/engine";
 import { estimateConfidence, estimateHeadline, hasConfidenceSignal } from "@/lib/tax/estimate-summary";
 import { omitsCharge } from "@/lib/tax/status";
@@ -47,6 +47,56 @@ const FLOW_TEXT_CLASS: Record<AssetFlow, string> = {
   out: "text-rose-700",
   neutral: "text-zinc-900",
 };
+
+/**
+ * 손익 판정 행에서 합산한 **실현 손익 금액**. 상세의 "손익은 이렇게 나왔습니다" 근거표가 쓰는 것과
+ * **같은 소스**(amountKind==="gain")라 목록과 상세가 갈리지 않는다. 손익 판정이 없는 건
+ * (NFT·수령분·자기 지갑 간 이체·보류·중복·제외로 rows가 빔)은 null → 목록은 "—"로 둔다.
+ * 세무 엔진을 다시 돌리지 않고 이미 계산된 값을 합칠 뿐이다.
+ */
+function gainAmount(rows: JudgmentRow[]): string | null {
+  const gainRows = rows.filter((row) => row.amountKind === "gain");
+  if (gainRows.length === 0) return null;
+  return sum(gainRows.map((row) => row.amount));
+}
+
+/**
+ * 손익 판정 행에서 뽑은 수익률(%). 손익 금액과 **같은 소스**(judgment gain 행)를 쓰므로 목록·상세가 갈리지 않는다.
+ * 이미 계산된 값(손익/취득가액)을 표시 산술로 나눌 뿐이다. 원가를 알 수 없으면(취득가 0·근거 없음) null.
+ */
+function gainReturnPercent(rows: JudgmentRow[]): string | null {
+  const gainRows = rows.filter((row) => row.amountKind === "gain" && row.breakdown !== undefined);
+  if (gainRows.length === 0) return null;
+  const gainSum = sum(gainRows.map((row) => row.amount));
+  const costSum = sum(gainRows.map((row) => row.breakdown!.cost));
+  if (isZero(costSum)) return null;
+  return round(div(mul(gainSum, "100"), costSum), 2);
+}
+
+/**
+ * 실현 손익 금액 도장 — summ의 Gain 컬럼처럼 카드에 노출한다(₩ 손익만 허용하는 완화된 규칙).
+ *
+ * 상승은 브랜드 receive(녹색), 하락은 dispose(적색) 토큰을 쓰고, 색만으로 구분하지 못하는 사용자를 위해
+ * 부호(`+`/`-`)를 늘 함께 둔다. `formatFiat`은 음수에 이미 `-`를 붙이므로 양수일 때만 `+`를 더한다.
+ * 금액이 주(主)이고 수익률(%)은 크기를 괄호로 보조한다 — 상세의 손익 근거표와 같은 판정 행에서 나온다.
+ */
+function GainStamp({ amount, currency, percent }: { amount: string; currency: string; percent: string | null }): React.JSX.Element {
+  const tone = isPositive(amount) ? "text-receive" : isNegative(amount) ? "text-dispose" : "text-zinc-500";
+  return (
+    <span className={`tabular-nums ${tone}`}>
+      <span className="font-semibold">
+        {isPositive(amount) ? "+" : ""}
+        {formatFiat(amount, currency)}
+      </span>
+      {percent !== null ? (
+        <span className="ml-1 font-normal text-zinc-400">
+          ({isPositive(percent) ? "+" : ""}
+          {percent}%)
+        </span>
+      ) : null}
+    </span>
+  );
+}
 
 const COMPARISON_COUNTRIES = ["DE", "IN", "PT"] as const;
 
@@ -543,6 +593,7 @@ function EventRow({
   record,
   onSelect,
   rows,
+  currency,
   isExcluded,
   inPeriod,
   judgmentError,
@@ -553,6 +604,8 @@ function EventRow({
   record: EventRecord;
   onSelect: () => void;
   rows: JudgmentRow[];
+  /** 손익을 그릴 통화(estimate와 같은 소스). rows가 비면 손익도 없어 통화는 쓰이지 않는다. */
+  currency: string;
   isExcluded: boolean;
   inPeriod: boolean | null;
   judgmentError?: boolean;
@@ -566,6 +619,9 @@ function EventRow({
   // `이동 · 처분 아님`은 분류가 아니라 **판정** 주장이다. 판정이 보류면 이것도 단정하지 않는다.
   const isInternalTransfer =
     inPeriod !== null && effectiveClassification(event) === "INTERNAL_TRANSFER" && rows.length === 0;
+  // 손익·수익률은 상세와 같은 판정 손익 행에서만 나온다 — 보류·중복·제외 때는 rows가 비어 자연히 null이 된다.
+  const gain = gainAmount(rows);
+  const returnPercent = gainReturnPercent(rows);
 
   return (
     // 카드는 이벤트 id로 식별한다. 금액 라벨은 유효 분류에 따라 부호가 뒤집히므로(재분류 후 +0.01 → -0.01)
@@ -635,6 +691,23 @@ function EventRow({
                       />
                     : <JudgmentBadge group="excluded" label="계산 결과 없음 · 확인 필요" />}
       </div>
+      {/* 실현 손익(₩). summ의 Gain 컬럼처럼 카드에 노출한다 — 상세의 "손익은 이렇게 나왔습니다" 근거표와
+          같은 판정 행(amountKind==="gain")을 합산하므로 목록과 상세가 갈리지 않는다. 금액이 주(主)이고
+          수익률(%)은 크기를 보조로만 덧댄다. 손익이 없는 건(NFT·수령분·자기 지갑 간 이체 등)은 "—",
+          판정이 아직 오지 않았으면(보류) 아예 두지 않는다 — 이미 배지가 그 상태를 말한다.
+          손익 외 다른 통화 금액(거래 평가액 등)은 여기 싣지 않는다(상세에서 근거와 함께만 보인다). */}
+      {isExcluded || isDuplicate || inPeriod !== null ? (
+        <p data-surface="event-gain" className="mt-2 flex flex-wrap items-baseline gap-x-1.5 text-xs font-medium text-zinc-500">
+          손익{" "}
+          {gain === null ? (
+            <span className="tabular-nums text-zinc-400">—</span>
+          ) : hideBalances ? (
+            <span className="tabular-nums text-zinc-500">•••••</span>
+          ) : (
+            <GainStamp amount={gain} currency={currency} percent={returnPercent} />
+          )}
+        </p>
+      ) : null}
     </button>
   );
 }
@@ -1052,6 +1125,7 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
                   record={record}
                   onSelect={() => setSelectedKey({ eventId: record.event.id, occurrence })}
                   rows={isDuplicate || judgmentsPending ? [] : judgments.rowsOf(record.event.id)}
+                  currency={estimate?.currency ?? "KRW"}
                   isExcluded={!judgmentsPending && judgments.excluded.has(record.event.id)}
                   inPeriod={judgmentsPending ? null : judgments.inPeriod(record.event.block_timestamp)}
                   judgmentError={judgments.isError}

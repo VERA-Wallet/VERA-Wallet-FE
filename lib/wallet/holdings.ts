@@ -16,6 +16,9 @@ export interface Holding {
   amount: string; // 사람이 읽는 수량(십진 문자열)
   priceUsd: string; // 단가(USD, 십진 문자열)
   valueUsd: string; // 평가액 = amount × priceUsd (USD, 십진 문자열)
+  // 취득 평가액(USD, 십진 문자열) — **데모 예시 mock**이다. 실시간 원가 추적이 아니다.
+  // 실 BE가 붙으면 원장 취득가로 교체한다. 화면은 이 값으로 평가손익·수익률을 **표시만** 한다.
+  costUsd: string;
 }
 
 // ── 십진 문자열 산술 ─────────────────────────────────────────────────────────
@@ -56,6 +59,55 @@ export function addDecimal(a: string, b: string): string {
   return fromScaledInt(toScaledInt(a, scale) + toScaledInt(b, scale), scale);
 }
 
+/** 두 십진 문자열의 차(a − b). 평가손익(평가액 − 취득원가) 표시 산술용. */
+export function subtractDecimal(a: string, b: string): string {
+  const scale = Math.max(fractionLength(a), fractionLength(b));
+  return fromScaledInt(toScaledInt(a, scale) - toScaledInt(b, scale), scale);
+}
+
+/** 자리수를 보존한 반올림 정수 나눗셈(divisor > 0). 절반은 0에서 멀어지는 방향으로 올린다. */
+function roundedDiv(numerator: bigint, divisor: bigint): bigint {
+  const negative = numerator < BigInt(0);
+  const magnitude = negative ? -numerator : numerator;
+  const quotient = (magnitude + divisor / BigInt(2)) / divisor;
+  return negative ? -quotient : quotient;
+}
+
+/**
+ * 취득원가 대비 평가손익 수익률(%)을 소수 둘째 자리까지 십진 문자열로 낸다.
+ * 세무 엔진이 아니라 **표시 산술**이다 — 원가가 0이면 수익률을 정의할 수 없어 null.
+ * 부호는 손익을 따른다("12.5" / "-5.56" / "0").
+ */
+export function returnPercent(costUsd: string, gainUsd: string): string | null {
+  const scale = Math.max(fractionLength(costUsd), fractionLength(gainUsd));
+  const cost = toScaledInt(costUsd, scale);
+  if (cost === BigInt(0)) return null;
+  const gain = toScaledInt(gainUsd, scale);
+  const absCost = cost < BigInt(0) ? -cost : cost;
+  // 백분율을 소수 2자리(× 100)까지 스케일해 반올림한다: gain / cost × 100 × 100.
+  return fromScaledInt(roundedDiv(gain * BigInt(10000), absCost), 2);
+}
+
+/** 보유 자산 한 줄의 평가손익(평가액 − 취득원가, USD). */
+export function holdingGainUsd(holding: Holding): string {
+  return subtractDecimal(holding.valueUsd, holding.costUsd);
+}
+
+/** 토큰 보유 묶음의 평가액·취득원가·평가손익·수익률(표시용 합산). */
+export interface HoldingsGainSummary {
+  valueUsd: string;
+  costUsd: string;
+  gainUsd: string;
+  returnPercent: string | null;
+}
+
+export function holdingsGainSummary(holdings: Holding[]): HoldingsGainSummary {
+  const valueUsd = holdings.reduce((total, holding) => addDecimal(total, holding.valueUsd), "0");
+  const costUsd = holdings.reduce((total, holding) => addDecimal(total, holding.costUsd), "0");
+  const gainUsd = subtractDecimal(valueUsd, costUsd);
+  return { valueUsd, costUsd, gainUsd, returnPercent: returnPercent(costUsd, gainUsd) };
+}
+
 /** 십진 문자열 비교(a<b:-1, a>b:1, 같음:0). */
 export function compareDecimal(a: string, b: string): number {
   const scale = Math.max(fractionLength(a), fractionLength(b));
@@ -71,10 +123,12 @@ export function totalValueUsd(holdings: Holding[]): string {
 
 // ── 데모 보유 자산 ───────────────────────────────────────────────────────────
 // 이 앱은 목/데모 모드다. 지갑 홈은 ETH·USDT·USDC 세 자산을 데모 시세와 함께 보여준다.
-const DEMO_TOKENS: ReadonlyArray<{ symbol: string; name: string; chainId: number; amount: string; priceUsd: string }> = [
-  { symbol: "ETH", name: "Ethereum", chainId: 1, amount: "0.75", priceUsd: "3200.00" },
-  { symbol: "USDT", name: "Tether USD", chainId: 137, amount: "850", priceUsd: "1.00" },
-  { symbol: "USDC", name: "USD Coin", chainId: 8453, amount: "500", priceUsd: "1.00" },
+// costUsd는 데모용 mock 취득 평가액(USD)이다. 실시간 원가 추적이 아니라, 평가손익·수익률을 화면이
+// **표시만** 하도록 그럴듯한 값을 담는다: ETH는 이익, USDT는 소폭 손실, USDC는 소폭 이익.
+const DEMO_TOKENS: ReadonlyArray<{ symbol: string; name: string; chainId: number; amount: string; priceUsd: string; costUsd: string }> = [
+  { symbol: "ETH", name: "Ethereum", chainId: 1, amount: "0.75", priceUsd: "3200.00", costUsd: "1800.00" },
+  { symbol: "USDT", name: "Tether USD", chainId: 137, amount: "850", priceUsd: "1.00", costUsd: "900.00" },
+  { symbol: "USDC", name: "USD Coin", chainId: 8453, amount: "500", priceUsd: "1.00", costUsd: "480.00" },
 ];
 
 /**
@@ -92,6 +146,7 @@ export function demoWalletHoldings(): Holding[] {
     amount: token.amount,
     priceUsd: token.priceUsd,
     valueUsd: multiplyDecimal(token.amount, token.priceUsd),
+    costUsd: token.costUsd,
   })).sort((left, right) => {
     const byValue = compareDecimal(right.valueUsd, left.valueUsd);
     if (byValue !== 0) return byValue;
