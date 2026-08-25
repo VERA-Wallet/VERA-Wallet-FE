@@ -18,6 +18,13 @@ vi.mock("@/lib/composition-root.client", () => ({
   taxEngine: { estimate: ports.estimate, listRuleSets: ports.listRuleSets },
 }));
 
+// 리포트 금액(₩183,333.34 등) 노출은 이제 구독 전제다 — 활성 플랜을 심어 마스킹을 걷는다.
+vi.mock("@/lib/plan/use-plan", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/plan/use-plan")>();
+  const plusPlan = { tier: "plus" as const, taxYear: 2027, activatedAt: "2027-01-01T00:00:00.000Z" };
+  return { ...actual, usePlan: () => ({ plan: plusPlan, activate: vi.fn(), deactivate: vi.fn() }) };
+});
+
 import { ExportView } from "@/components/export/export-view";
 
 // 데이터(요약 기간)는 2025년이라 fallback = 2025. 시행연도(2027)는 룰셋에서 온다.

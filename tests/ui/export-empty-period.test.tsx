@@ -10,6 +10,13 @@ vi.mock("@/lib/composition-root.client", () => ({
   anchorProofProvider: { getProof: ports.getProof },
 }));
 
+// 다운로드는 이제 구독 전제다 — 활성 플랜을 심어야 버튼이 열려 파일명 검증까지 도달한다.
+vi.mock("@/lib/plan/use-plan", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/plan/use-plan")>();
+  const plusPlan = { tier: "plus" as const, taxYear: 2026, activatedAt: "2026-01-01T00:00:00.000Z" };
+  return { ...actual, usePlan: () => ({ plan: plusPlan, activate: vi.fn(), deactivate: vi.fn() }) };
+});
+
 describe("빈 지갑 내보내기", () => {
   it("기간이 없으면 빈 범위를 그대로 보이지 않는다", async () => {
     ports.list.mockResolvedValue({ items: [], nextCursor: null });
