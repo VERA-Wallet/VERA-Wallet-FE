@@ -94,7 +94,7 @@ test.describe.serial("G001 contract red team", () => {
     // 여백이 많은 fullPage 대신 콘텐츠 밀집 영역을 캡처해 비균일 증거를 보존한다.
     transcript.act({ type: "screenshot", selector: "main", target: dashboardPath });
     await page.locator("main").first().screenshot({ path: dashboardPath, type: "jpeg", quality: 85 });
-    await checkPage("/export", "거래 명세를 저장하세요", "CSV 다운로드");
+    await checkPage("/export", "리포트", "직접 신고용 내려받기");
 
     const listResponse = await request.get("/api/events?limit=100");
     const listBody = (await responseBody(listResponse)) as { data?: { items?: Array<{ event: NormalizedEvent; version?: number }> }; meta?: { provenance?: string } };

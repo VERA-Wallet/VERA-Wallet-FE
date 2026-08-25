@@ -15,6 +15,7 @@ import type { Decimal } from "@/lib/tax/decimal";
 import { canonicalCountryCode } from "@/lib/tax/rulesets";
 import { noChargeHeadline, omitsCharge } from "@/lib/tax/status";
 import { useTaxYear } from "@/lib/tax/tax-year-context";
+import { taxYearWindow } from "@/lib/tax/year-window";
 import type {
   ConfirmationStatus,
   JudgmentGroup,
@@ -49,21 +50,6 @@ const TOPIC_LABEL: Record<RuleTopic, string> = {
   WRAPPING: "랩핑",
   LOSS_OFFSET: "손실 상계",
 };
-
-/**
- * 과세연도 선택 창. 고정 배열이면 해가 바뀌는 순간 "올해"를 못 고른다.
- * 마지막 거래가 이 창보다 오래됐다면 그 해도 함께 넣는다 —
- * 목록에 없으면 사용자는 자기 거래가 있는 해로 돌아갈 방법이 없다.
- *
- * 미래 연도는 **시계로는 절대 만들지 않는다**. 룰셋이 시행 예정 연도를 선언했을 때만
- * 그 해를 넣는다(한국 2027) — 그러지 않으면 시행 후 계산을 볼 방법이 없다.
- */
-function taxYearWindow(current: number, latestActivity?: number, effective?: number): number[] {
-  const years = new Set([current - 3, current - 2, current - 1, current]);
-  if (latestActivity !== undefined) years.add(latestActivity);
-  if (effective !== undefined) years.add(effective);
-  return [...years].sort((left, right) => left - right);
-}
 
 /**
  * L2 — "왜 이 금액인가".

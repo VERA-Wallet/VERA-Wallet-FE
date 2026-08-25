@@ -16,7 +16,8 @@ describe("fixture coverage", () => {
   it("covers every required state deterministically", () => {
     const events = fixtures();
     expect(events).toEqual(fixtures());
-    expect(events).toHaveLength(35);
+    // 25(기준) + 10(다음 해) + 10(시행연도 2027 처분 쇼케이스) = 45.
+    expect(events).toHaveLength(45);
     expect(new Set(events.map((event) => event.classification))).toEqual(ALL_CLASSIFICATIONS);
     expect(new Set(events.map((event) => event.chain_id))).toEqual(ALL_CHAINS);
     expect(new Set(events.map((event) => event.fiat_currency))).toEqual(new Set(["KRW"]));
@@ -40,12 +41,24 @@ describe("fixture coverage", () => {
   it("다음 해 배치도 같은 종류의 상태를 담는다", () => {
     // 두 번째 해가 정상 거래만 담으면 연도를 바꿔 볼 때 확인 필요·제외 상태가 사라진다 —
     // 연도 필터가 "문제가 없는 해"를 보여주는 셈이 된다.
-    const next = fixtures().slice(25);
+    // 다음 해 배치는 25~34번(10건)이고, 그 뒤 35~40번은 시행연도(2027) 처분 쇼케이스다.
+    const next = fixtures().slice(25, 35);
     expect(next).toHaveLength(10);
     expect(next.every((event) => event.block_timestamp.startsWith(String(FIXTURE_TAX_YEAR + 1)))).toBe(true);
     expect(new Set(next.map((event) => event.classification))).toEqual(ALL_CLASSIFICATIONS);
     expect(new Set(next.map((event) => event.chain_id))).toEqual(ALL_CHAINS);
     expect(next.filter((event) => event.price_status === "UNKNOWN")).toHaveLength(1);
     expect(next.filter((event) => event.confidence < 0.5)).toHaveLength(1);
+  });
+
+  it("시행연도(2027) 처분 쇼케이스 배치는 처분만 담는다", () => {
+    // 시행연도 리포트를 데모에서 보이게 하려면 그 해에 처분이 있어야 한다(취득만 있으면 부담 0).
+    // 이 배치는 미래(2027) 날짜라 정상이면 미래 필터에 걸리지만, mock 쇼케이스라 의도적으로 살린다.
+    const showcase = fixtures().slice(35);
+    expect(showcase).toHaveLength(10);
+    expect(showcase.every((event) => event.block_timestamp.startsWith(String(FIXTURE_TAX_YEAR + 2)))).toBe(true);
+    // SEND·EXCHANGE(처분)만 — RECEIVE(취득)·INTERNAL_TRANSFER·UNKNOWN은 없다.
+    expect(new Set(showcase.map((event) => event.classification))).toEqual(new Set(["SEND", "EXCHANGE"]));
+    expect(new Set(showcase.map((event) => event.id)).size).toBe(10);
   });
 });

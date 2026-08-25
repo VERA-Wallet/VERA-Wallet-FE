@@ -156,7 +156,7 @@ test.describe.serial("G003 dashboard and export contract red team", () => {
     await page.goto("/export");
     await expect(page.getByText("앵커링 증명")).toBeVisible();
     await expect(page.getByText("Merkle root")).toBeVisible();
-    const [csvDownload] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "CSV 다운로드" }).click()]);
+    const [csvDownload] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "직접 신고용 내려받기" }).click()]);
     const csvTempPath = await csvDownload.path();
     expect(csvTempPath).not.toBeNull();
     const csvPath = `${artifactDirectory}/export.csv`;
@@ -169,7 +169,7 @@ test.describe.serial("G003 dashboard and export contract red team", () => {
     expect(csvPassed).toBeTruthy();
     record(cases, "export-csv-contract", "BOM, ordered 20-column header, and blank UNKNOWN fiat values", { columns: EXPORT_COLUMNS, unknownRows: ">=1" }, { bom: csvBytes.subarray(0, 3).toString("hex"), header: csvRows[0], unknownRows: unknownRows.length, unknownFiatValues: unknownRows.map((row) => row[fiatIndex]) }, csvPassed);
 
-    const [xlsxDownload] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "XLSX 다운로드" }).click()]);
+    const [xlsxDownload] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "세무사 전달용 내려받기" }).click()]);
     const xlsxTempPath = await xlsxDownload.path();
     expect(xlsxTempPath).not.toBeNull();
     const xlsxPath = `${artifactDirectory}/export.xlsx`;
