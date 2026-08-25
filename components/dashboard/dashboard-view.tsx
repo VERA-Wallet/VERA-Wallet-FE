@@ -8,6 +8,7 @@ import { FlowChart } from "@/components/dashboard/flow-chart";
 import { ChainIcon } from "@/components/ui/chain-icon";
 import { AssetMark } from "@/components/ui/asset-mark";
 import { CLASSIFICATION_LABEL, ClassificationBadge } from "@/components/ui/classification-badge";
+import { INCOME_KIND_LABEL, IncomeKindBadge } from "@/components/ui/income-kind-badge";
 import { isGroundedPeriod, isoDay, periodLabel } from "@/lib/period";
 import { fresh, freshNotice, type FreshState } from "@/lib/queries/fresh";
 import { AMOUNT_KIND_LABEL, GROUP_SHORT_LABEL, JudgmentBadge } from "@/components/ui/judgment-badge";
@@ -252,6 +253,10 @@ function EventDetails({
           </dd>
         </div>
         <div><dt className="text-zinc-500">방향</dt><dd className="mt-1 font-medium text-zinc-900">{DIRECTION_LABEL[event.direction]}</dd></div>
+        {/* DeFi 수익 수령이면 무슨 수익인지 밝힌다. 과세/보류 여부는 아래 판정 배지가 말하므로 여기선 종류만 둔다. */}
+        {event.income_kind
+          ? <div><dt className="text-zinc-500">수익 종류</dt><dd className="mt-1 font-medium text-zinc-900">{INCOME_KIND_LABEL[event.income_kind]}</dd></div>
+          : null}
         {/* 심볼은 사칭할 수 있다. 대조 결과를 자산 정보 옆에 붙여 이름만 믿지 않게 한다. */}
         <div>
           <dt className="text-zinc-500">자산 타입</dt>
@@ -571,7 +576,12 @@ function EventRow({
           <ChainIcon chainId={event.chain_id} />
           {chainLabel(event.chain_id)}
         </p>
-        <ClassificationBadge classification={effectiveClassification(event)} />
+        {/* income_kind가 있으면 이 수신은 매수가 아니라 DeFi 수익 수령이다.
+            "수신"보다 "스테이킹 보상" 같은 종류가 목록에서 한눈에 더 의미 있으므로 주 배지로 쓴다.
+            분류(수신) 자체는 상세 상단 배지에 그대로 유지한다. */}
+        {event.income_kind
+          ? <IncomeKindBadge kind={event.income_kind} />
+          : <ClassificationBadge classification={effectiveClassification(event)} />}
       </div>
       {/* 목록은 온체인 사실만 말한다. 법정통화 금액·손익·보유기간은 상세에서
           계산 근거(양도가액 − 취득가액 − 수수료)와 함께 보여야 검증이 된다.

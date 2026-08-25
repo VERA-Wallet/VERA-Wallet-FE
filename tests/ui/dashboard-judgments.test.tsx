@@ -1636,3 +1636,50 @@ describe("거래 카드는 온체인 사실 네 가지와 도장만 말한다", 
     expect(gas.textContent).toContain(`${formatTokenAmount(target.gas_fee_native, 0)} ${nativeSymbol(target.chain_id)}`);
   });
 });
+
+describe("DeFi 수익은 종류 배지로 드러난다", () => {
+  it("income_kind 이벤트 카드는 수신 대신 수익 종류를 주 배지로 찍는다", async () => {
+    renderDashboard("DE");
+    await settled();
+
+    const cases: Array<{ kind: NormalizedEvent["income_kind"]; label: string }> = [
+      { kind: "STAKING", label: "스테이킹 보상" },
+      { kind: "DEFI_REWARD", label: "디파이 보상" },
+      { kind: "LENDING", label: "대여 이자" },
+    ];
+    for (const { kind, label } of cases) {
+      const income = events.find((event) => event.income_kind === kind);
+      expect(income, `픽스처에 ${kind} 수익 이벤트가 있어야 한다`).toBeDefined();
+      const card = screen.getByText(rowLabel(income!)).closest("button")!;
+      // 목록에서 한눈에 무슨 DeFi 수익인지 보여야 한다.
+      expect(within(card).getByText(label)).toBeInTheDocument();
+      // 종류가 주 배지이므로 "수신"이 그 자리를 대신 차지하면 안 된다.
+      expect(within(card).queryByText("수신")).not.toBeInTheDocument();
+    }
+  });
+
+  it("income_kind가 없는 수신은 기존 '수신' 배지 그대로다", async () => {
+    renderDashboard("DE");
+    await settled();
+    const plainReceive = events.find(
+      (event) => event.income_kind === null && effectiveClassificationOf(event) === "RECEIVE",
+    );
+    expect(plainReceive, "income_kind 없는 수신 이벤트가 픽스처에 있어야 한다").toBeDefined();
+    const card = screen.getByText(rowLabel(plainReceive!)).closest("button")!;
+    expect(within(card).getByText("수신")).toBeInTheDocument();
+    expect(within(card).queryByText(/스테이킹 보상|디파이 보상|대여 이자/)).not.toBeInTheDocument();
+  });
+
+  it("상세는 수익 종류 행을 두고 분류 배지는 유지한다", async () => {
+    renderDashboard("DE");
+    await settled();
+    const income = events.find((event) => event.income_kind === "STAKING")!;
+    fireEvent.click(screen.getByText(rowLabel(income)).closest("button")!);
+    await screen.findByText("거래 상세");
+    const kindRow = (await screen.findByText("수익 종류")).parentElement!;
+    expect(kindRow.textContent).toContain("스테이킹 보상");
+    // 분류(수신)는 상세 상단 배지에 그대로 남는다(재분류 select의 option과 구분해 span 배지를 확인한다).
+    const sheet = screen.getByText("거래 상세").closest("div")!.parentElement!;
+    expect(within(sheet).getAllByText("수신").some((node) => node.tagName === "SPAN")).toBe(true);
+  });
+});
