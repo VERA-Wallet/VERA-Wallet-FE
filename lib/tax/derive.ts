@@ -98,6 +98,13 @@ export function deriveTaxEvents(events: NormalizedEvent[]): DerivedTaxEvents {
       // 사용자가 입력한 취득가액이 있으면 그것이 원가다. 없으면 지갑이 확정한 fiat_value.
       const cost = vo?.acquisition_cost ?? event.fiat_value;
       if (cost === null) throw new Error(`취득가액을 정할 수 없습니다: ${event.id}`);
+      // DeFi 수익(수령분)은 매수가 아니라 소득이다. income_kind가 있으면 ACQUIRE 대신 INCOME으로
+      // 매핑한다 — 원장이 수령 시점 fmv를 소득으로 인식하고 동시에 그 값을 새 lot 취득가액으로 써
+      // 이중과세를 막는다(fmv = 원화 평가액). income_kind가 없으면 종래대로 취득이다.
+      if (event.income_kind !== null) {
+        derived.push({ kind: "INCOME", ...base, fmv: cost, incomeKind: event.income_kind });
+        continue;
+      }
       derived.push({ kind: "ACQUIRE", ...base, cost, fee });
       continue;
     }

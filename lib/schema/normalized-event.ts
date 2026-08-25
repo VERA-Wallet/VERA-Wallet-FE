@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import type { IncomeKind } from "@/lib/tax/types";
+
 const decimalString = z.string().regex(/^-?\d+(?:\.\d+)?$/);
 
 export const classificationSchema = z.enum([
@@ -9,6 +11,21 @@ export const classificationSchema = z.enum([
   "INTERNAL_TRANSFER",
   "UNKNOWN",
 ]);
+
+/**
+ * 수령분(INCOME)의 소득 종류. `lib/tax/types.ts`의 `IncomeKind`가 단일 진실 원천이며,
+ * `satisfies`로 그 유니온을 벗어난 값이 섞이면 컴파일 타임에 잡는다.
+ */
+const INCOME_KINDS = [
+  "STAKING",
+  "LENDING",
+  "AIRDROP",
+  "AIRDROP_INITIAL",
+  "MINING",
+  "DEFI_REWARD",
+] as const satisfies readonly IncomeKind[];
+
+export const incomeKindSchema = z.enum(INCOME_KINDS);
 
 export const normalizedEventSchema = z
   .object({
@@ -94,6 +111,15 @@ export const normalizedEventSchema = z
     price_status: z.enum(["RESOLVED", "UNKNOWN", "ESTIMATED"]),
     fiat_value: decimalString.nullable(),
     fiat_currency: z.string().min(1),
+    /**
+     * DeFi 수익(수령분) 종류. 값이 있으면 이 취득(RECEIVE·IN)은 매수가 아니라 **소득 수령**이며,
+     * derive가 ACQUIRE 대신 INCOME 세무 이벤트로 매핑한다(fmv = 원화 평가액).
+     * null이면 종래대로 취득으로 본다.
+     *
+     * `default(null)`은 **버전 스큐 방어**다. 이 칸을 모르는 옛 응답(구버전 BE·재시드 전 dev 스토어)이
+     * 와도 파싱이 깨지지 않는다(asset_symbol·value_override default 패턴과 동일).
+     */
+    income_kind: incomeKindSchema.nullable().default(null),
   })
   .superRefine((event, ctx) => {
     if (event.price_status === "UNKNOWN" && event.fiat_value !== null) {
@@ -105,6 +131,11 @@ export const normalizedEventSchema = z
     // 심볼 없이 "검증됨"이라 말할 수 없다 — 무엇을 대조했다는 것인지 가리킬 대상이 없다.
     if (event.asset_verified && event.asset_symbol === null) {
       ctx.addIssue({ code: "custom", path: ["asset_symbol"], message: "Verified assets require a symbol" });
+    }
+    // 수익 수령은 자산이 지갑으로 들어오는 흐름이다. 나가는(OUT) 이벤트에 income_kind가 붙으면
+    // derive가 취득으로 볼지 소득으로 볼지 모순되므로 원본 결함으로 잡는다.
+    if (event.income_kind !== null && event.direction !== "IN") {
+      ctx.addIssue({ code: "custom", path: ["income_kind"], message: "income_kind requires direction IN" });
     }
   });
 

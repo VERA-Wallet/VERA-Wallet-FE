@@ -30,6 +30,7 @@ function event(id: string): NormalizedEvent {
     price_status: "RESOLVED",
     fiat_value: "5000000.00",
     fiat_currency: "KRW",
+    income_kind: null,
   };
 }
 

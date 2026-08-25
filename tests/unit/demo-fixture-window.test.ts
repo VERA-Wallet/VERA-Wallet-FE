@@ -75,7 +75,8 @@ describe("같은 연도를 고르면 12개 룰셋이 같은 거래를 본다", (
       expect(event.block_timestamp < own.to, event.id).toBe(true);
     }
     // 기준 연도 배치는 그대로 남아 있어야 한다 — 다음 해 배치가 그것을 밀어내면 안 된다.
-    expect(events.filter((event) => event.block_timestamp.startsWith(String(taxYear)))).toHaveLength(25);
+    // 기준 연도에는 base 25건 + DeFi 수익 3건이 들어간다.
+    expect(events.filter((event) => event.block_timestamp.startsWith(String(taxYear)))).toHaveLength(28);
   });
 
   it("다음 해 배치는 아직 오지 않은 거래를 만들지 않는다", () => {
@@ -84,7 +85,8 @@ describe("같은 연도를 고르면 12개 룰셋이 같은 거래를 본다", (
     const beforeWindow = createNormalizedEventFixtures(taxYear, new Date(Date.UTC(taxYear + 1, 0, 1)));
     // 다음 해(taxYear+1) 배치는 통째로 비어야 한다.
     expect(beforeWindow.filter((event) => event.block_timestamp.startsWith(String(taxYear + 1)))).toHaveLength(0);
-    expect(beforeWindow.filter((event) => event.block_timestamp.startsWith(String(taxYear)))).toHaveLength(25);
+    // 기준 연도 = base 25건 + DeFi 수익 3건. DeFi 수익은 과거(기준 연도)라 미래 필터와 무관하게 남는다.
+    expect(beforeWindow.filter((event) => event.block_timestamp.startsWith(String(taxYear)))).toHaveLength(28);
 
     // 창이 다 지난 시점을 주면 다음 해 배치가 통째로 들어온다.
     const afterWindow = createNormalizedEventFixtures(taxYear, new Date(Date.UTC(taxYear + 2, 0, 1)));
@@ -141,7 +143,8 @@ describe("시행연도(2027) 처분 쇼케이스는 총평균법 실제 부담�
   // 시계와 무관하게 결정적이도록 락인된 연도(2025)를 쓴다. 쇼케이스 연도는 2027 = KR 시행연도다.
   // now를 충분히 미래로 줘 base·next가 모두 과거로 들어오게 한다.
   const events = createNormalizedEventFixtures(FIXTURE_TAX_YEAR, new Date(Date.UTC(FIXTURE_TAX_YEAR + 3, 0, 1)));
-  const showcase = events.slice(35);
+  // 쇼케이스는 35~44번(10건). 그 뒤 45~47번은 기준 연도 DeFi 수익 배치라 슬라이스에서 뺀다.
+  const showcase = events.slice(35, 45);
 
   it("처분(SEND·EXCHANGE)만 담고 2027 공통 창 안에 있다", () => {
     expect(showcase).toHaveLength(10);

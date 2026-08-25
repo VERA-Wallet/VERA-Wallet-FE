@@ -186,8 +186,10 @@ describe("분류 배지와 판정 도장이 어긋나지 않는가", () => {
     for (const tax of derived.events) {
       const source = byId.get(tax.id)!;
       const classification = source.user_override?.classification ?? source.classification;
-      // RECEIVE → ACQUIRE, SEND/EXCHANGE → DISPOSE. 그 외 분류는 파생되지 않는다.
-      expect(tax.kind, `${tax.id}(${classification})`).toBe(classification === "RECEIVE" ? "ACQUIRE" : "DISPOSE");
+      // RECEIVE → ACQUIRE(매수) 또는 INCOME(income_kind가 있는 DeFi 수익), SEND/EXCHANGE → DISPOSE.
+      // 그 외 분류는 파생되지 않는다.
+      const receiveKind = source.income_kind !== null ? "INCOME" : "ACQUIRE";
+      expect(tax.kind, `${tax.id}(${classification})`).toBe(classification === "RECEIVE" ? receiveKind : "DISPOSE");
       expect(["RECEIVE", "SEND", "EXCHANGE"]).toContain(classification);
     }
   });
@@ -222,7 +224,9 @@ describe("분류 배지와 판정 도장이 어긋나지 않는가", () => {
         expect(kinds.has(event.id), event.id).toBe(false);
         continue;
       }
-      expect(kinds.get(event.id), `${event.id}(${flow})`).toBe(flow === "in" ? "ACQUIRE" : "DISPOSE");
+      // 들어온 흐름은 매수(ACQUIRE)이거나 income_kind가 붙은 DeFi 수익(INCOME)이다.
+      const inKind = event.income_kind !== null ? "INCOME" : "ACQUIRE";
+      expect(kinds.get(event.id), `${event.id}(${flow})`).toBe(flow === "in" ? inKind : "DISPOSE");
     }
   });
 });
