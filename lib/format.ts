@@ -225,8 +225,59 @@ export function formatDate(timestamp: string): string {
   return new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeZone: "UTC" }).format(new Date(timestamp));
 }
 
-/** 날짜를 UTC로 찍는다는 고지. 문구가 두 벌이면 화면마다 다른 약속을 하게 된다. */
-export const UTC_NOTICE = "모든 날짜는 UTC 기준입니다.";
+/**
+ * 한 시각을 **UTC와 KST(한국시간)로 함께** 찍는다 — 한국 신고용.
+ *
+ * `formatDate`(날짜 단위 UTC 고정)는 그대로 둔다: 목록 머리글·귀속연도 판정은 엔진과 같은 UTC 날짜여야 한다.
+ * 정확한 "언제"가 중요한 자리(거래 시각·앵커 기록 시각)에서만 이 함수로 시각까지 병기한다.
+ *
+ * 두 시간대를 명시해 못 박으므로 브라우저 시간대와 무관하게 같은 문자열을 낸다 —
+ * `toLocaleString`은 실행 환경의 로컬 TZ를 써서 같은 거래가 브라우저마다 다른 시각으로 흔들렸다(export의 drift 원인).
+ */
+export function formatDateTime(timestamp: string): string {
+  const date = new Date(timestamp);
+  const render = (timeZone: string) =>
+    new Intl.DateTimeFormat("ko-KR", {
+      year: "numeric",
+      month: "numeric",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+      timeZone,
+    }).format(date);
+  return `${render("UTC")} UTC · ${render("Asia/Seoul")} KST`;
+}
+
+/**
+ * 거래 시각을 **KST(한국시간) 단독으로** 찍는다 — 한국 신고 근거자료의 거래일시 칸.
+ *
+ * 근거자료 표의 한 칸에는 두 시간대를 병기할 수 없다(엑셀 셀 하나에 UTC·KST를 함께 넣으면 정렬·필터가 깨진다).
+ * `formatDateTime`과 같은 방식으로 시간대를 명시해 못 박으므로 브라우저 로컬 TZ와 무관하게 같은 문자열을 낸다.
+ * `YYYY-MM-DD HH:mm KST` 형태라 셀에서 문자열 정렬이 곧 시간 정렬이 된다.
+ */
+export function formatKstDateTime(timestamp: string): string {
+  const date = new Date(timestamp);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Seoul",
+  }).formatToParts(date);
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+  // en-CA 로케일은 날짜를 YYYY-MM-DD로 낸다. 24시 표기의 `24:00`만 `00:00`으로 정규화한다.
+  const hour = get("hour") === "24" ? "00" : get("hour");
+  return `${get("year")}-${get("month")}-${get("day")} ${hour}:${get("minute")} KST`;
+}
+
+/**
+ * 날짜 시간대 고지. 목록 날짜는 UTC(엔진과 같은 귀속연도 판정)이고, 정확한 시각은 KST를 함께 표기한다.
+ * 문구가 두 벌이면 화면마다 다른 약속을 하게 되므로 한 곳에 못 박는다.
+ */
+export const UTC_NOTICE = "목록 날짜는 UTC 기준이며, 거래 시각은 KST(한국시간)를 함께 표기합니다.";
 
 /** 체인별 익스플로러 트랜잭션 URL. 없는 체인은 링크를 걸지 않는다(죽은 링크를 만들지 않는다). */
 const EXPLORER_TX_URL: Record<number, string> = {

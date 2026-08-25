@@ -31,6 +31,7 @@ export class TaxEngineService implements TaxEnginePort {
         taxYear: input.taxYear,
         profile: input.profile,
         assumeEffective: input.assumeEffective,
+        deemedFmv: input.deemedFmv,
         events,
       };
       const estimate = computeTaxEstimate(estimateInput);
@@ -58,6 +59,7 @@ export class TaxEngineService implements TaxEnginePort {
       taxYear: input.taxYear,
       profile: input.profile,
       assumeEffective: input.assumeEffective,
+      deemedFmv: input.deemedFmv,
       events: derived.events,
       excludedEventIds: derived.excludedEventIds.filter((id) => inPeriod.has(id)),
     };

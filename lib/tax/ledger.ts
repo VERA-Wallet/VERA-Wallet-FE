@@ -1,8 +1,8 @@
-import { ZERO, add, div, holdingDays, isPositive, mul, sub } from "@/lib/tax/decimal";
+import { ZERO, add, clampPositive, div, holdingDays, isPositive, max, mul, sub } from "@/lib/tax/decimal";
 import type { Decimal } from "@/lib/tax/decimal";
 import { Section104Ledger, StandardLotLedger } from "@/lib/tax/lots";
 import type { LotLedger } from "@/lib/tax/lots";
-import type { AcquisitionRow, GainRow, IncomeRow, LedgerPolicy, LedgerResult, TaxEvent } from "@/lib/tax/types";
+import type { AcquisitionRow, DeemedCostResolver, GainRow, IncomeRow, LedgerPolicy, LedgerResult, TaxEvent } from "@/lib/tax/types";
 import { ZERO_BASIS_SUFFIX, limitationOf } from "@/lib/tax/limitations";
 
 /**
@@ -39,7 +39,48 @@ function acquisitionSchedule(events: TaxEvent[], policy: LedgerPolicy) {
   return schedule;
 }
 
-function createLedger(events: TaxEvent[], policy: LedgerPolicy, lookahead: TaxEvent[]): LotLedger {
+type ScheduleItem = { key: string; asset: string; at: string; quantity: Decimal; cost: Decimal };
+
+/**
+ * KR 거주자별 총평균법의 자산별 seed 단가(2-세그먼트).
+ *
+ * 시행 경계(2027-01-01) 전에 취득해 **계속 보유한** 분은 의제취득가액 Max(2026-12-31 시가, 실제 취득단가)로,
+ * 경계 후 취득분은 실제 원가로 합쳐 단일 평균단가를 낸다.
+ * 이미 경계 전에 처분된 수량은 opening 원가에서 빠진다 — 의제취득가액은 **보유분에만** 붙는다.
+ */
+function deemedSegmentUnit(asset: string, fmv: Decimal, boundaryMs: number, schedule: ScheduleItem[], events: TaxEvent[]): Decimal {
+  let preAcqQty = ZERO;
+  let preAcqCost = ZERO;
+  let postQty = ZERO;
+  let postCost = ZERO;
+  for (const item of schedule) {
+    if (item.asset !== asset) continue;
+    if (Date.parse(item.at) < boundaryMs) {
+      preAcqQty = add(preAcqQty, item.quantity);
+      preAcqCost = add(preAcqCost, item.cost);
+    } else {
+      postQty = add(postQty, item.quantity);
+      postCost = add(postCost, item.cost);
+    }
+  }
+  let preDispQty = ZERO;
+  for (const event of events) {
+    if (event.kind === "DISPOSE" && event.asset === asset && Date.parse(event.at) < boundaryMs) {
+      preDispQty = add(preDispQty, event.quantity);
+    }
+  }
+  const preUnit = isPositive(preAcqQty) ? div(preAcqCost, preAcqQty) : ZERO;
+  const heldPre = clampPositive(sub(preAcqQty, preDispQty));
+  // 의제취득가액은 보유 순수량에만 적용한다(이미 처분된 분 제외).
+  const openingCost = mul(heldPre, max(fmv, preUnit));
+  const denom = add(heldPre, postQty);
+  return isPositive(denom) ? div(add(openingCost, postCost), denom) : ZERO;
+}
+
+// deemedCost는 seed 계층이 소비한다. 단, KR처럼 policy.deemedCostBoundary를 선언한 룰셋에서
+// **그 자산의 시가가 정의된 경우에만** 2-세그먼트 원가를 만든다. JP 등은 resolver가 있어도
+// 기존 총평균 seed를 그대로 써서 타국 회귀가 0이다.
+function createLedger(events: TaxEvent[], policy: LedgerPolicy, lookahead: TaxEvent[], deemedCost?: DeemedCostResolver): LotLedger {
   // 영국 재매수 매칭만 기간 밖 취득을 본다.
   // 총평균법(JP)·FIFO 등 다른 원가법의 평균·순서에는 절대 넣지 않는다.
   if (policy.method === "SECTION_104") {
@@ -48,13 +89,22 @@ function createLedger(events: TaxEvent[], policy: LedgerPolicy, lookahead: TaxEv
   const ledger = new StandardLotLedger(policy);
   if (policy.method === "PERIOD_AVERAGE") {
     // 총평균법: 기간 내 모든 취득을 합산한 단일 평균단가를 처분 전에 확정한다.
+    const schedule = acquisitionSchedule(events, policy);
     const totals = new Map<string, { quantity: Decimal; cost: Decimal }>();
-    for (const item of acquisitionSchedule(events, policy)) {
+    for (const item of schedule) {
       const current = totals.get(item.asset) ?? { quantity: ZERO, cost: ZERO };
       totals.set(item.asset, { quantity: add(current.quantity, item.quantity), cost: add(current.cost, item.cost) });
     }
+    const boundary = policy.deemedCostBoundary;
     for (const [asset, total] of totals) {
-      ledger.seedPeriodAverage(asset, isPositive(total.quantity) ? div(total.cost, total.quantity) : ZERO);
+      const fmv = boundary !== undefined ? deemedCost?.(asset) : undefined;
+      if (fmv === undefined || boundary === undefined) {
+        // generic 총평균 경로 — 타국(JP)과 시가 미입력 KR이 여기로 온다(byte-for-byte 동일).
+        ledger.seedPeriodAverage(asset, isPositive(total.quantity) ? div(total.cost, total.quantity) : ZERO);
+        continue;
+      }
+      // deemed=true: pool.cost가 seed 단가 기준으로 쌓여 전량 처분까지 uplift가 보존된다.
+      ledger.seedPeriodAverage(asset, deemedSegmentUnit(asset, fmv, Date.parse(boundary), schedule, events), true);
     }
   }
   return ledger;
@@ -70,9 +120,9 @@ function createLedger(events: TaxEvent[], policy: LedgerPolicy, lookahead: TaxEv
  *   영국 재매수(bed & breakfast) 매칭에만 쓰인다 — 다른 원가법의 평균·순서에는 넣지 않는다.
  *   넣으면 기간 밖 취득이 이번 기간 손익을 조용히 바꾼다.
  */
-export function runLedger(events: TaxEvent[], policy: LedgerPolicy, lookahead: TaxEvent[] = []): LedgerResult {
+export function runLedger(events: TaxEvent[], policy: LedgerPolicy, lookahead: TaxEvent[] = [], deemedCost?: DeemedCostResolver): LedgerResult {
   const ordered = chronological(events);
-  const ledger = createLedger(ordered, policy, chronological(lookahead));
+  const ledger = createLedger(ordered, policy, chronological(lookahead), deemedCost);
   const gains: GainRow[] = [];
   const income: IncomeRow[] = [];
   const acquisitions: AcquisitionRow[] = [];
@@ -131,9 +181,12 @@ export function runLedger(events: TaxEvent[], policy: LedgerPolicy, lookahead: T
 
     const consumption = ledger.dispose({ asset: event.asset, wallet: event.wallet, at: event.at, quantity: event.quantity });
     if (isPositive(consumption.shortfall)) {
-      const message = `${event.id}: 원장에 없는 수량 ${consumption.shortfall} ${event.symbol} —${ZERO_BASIS_SUFFIX}`;
-      warnings.push(message);
-      warned.push({ message, eventId: event.id });
+      // 사용자가 처분 원가(취득가액 직접 입력·50% 의제)를 정했으면 "취득가 0원"이 아니다 — 경고를 달지 않는다.
+      if (event.cost === undefined) {
+        const message = `${event.id}: 원장에 없는 수량 ${consumption.shortfall} ${event.symbol} —${ZERO_BASIS_SUFFIX}`;
+        warnings.push(message);
+        warned.push({ message, eventId: event.id });
+      }
       consumption.matches.push({ lotId: `${event.id}:missing`, quantity: consumption.shortfall, cost: ZERO, acquiredAt: null });
     }
 
@@ -166,15 +219,25 @@ export function runLedger(events: TaxEvent[], policy: LedgerPolicy, lookahead: T
     // (예: 1300을 1:2로 나누면 999.999999999999999999가 되어 면세한계 비교가 뒤집힌다)
     // 마지막 lot이 잔차를 흡수해 합계를 보존한다.
     const totalFee = policy.feeDeductible ? event.fee : ZERO;
+    // 사용자가 정한 처분 원가(취득가액 직접 입력·50% 의제). 지정 시 lot 매칭 원가 대신 이 값을 lot마다 안분한다.
+    const overrideCost = event.cost;
     let allocatedProceeds = ZERO;
     let allocatedFee = ZERO;
+    let allocatedCost = ZERO;
     consumption.matches.forEach((match, index) => {
       const isLast = index === consumption.matches.length - 1;
       const share = isPositive(event.quantity) ? div(match.quantity, event.quantity) : ZERO;
       const proceeds = isLast ? sub(event.proceeds, allocatedProceeds) : mul(event.proceeds, share);
       const fee = isLast ? sub(totalFee, allocatedFee) : mul(totalFee, share);
+      const cost =
+        overrideCost === undefined
+          ? match.cost
+          : isLast
+            ? sub(overrideCost, allocatedCost)
+            : mul(overrideCost, share);
       allocatedProceeds = add(allocatedProceeds, proceeds);
       allocatedFee = add(allocatedFee, fee);
+      allocatedCost = add(allocatedCost, cost);
       gains.push({
         eventId: event.id,
         at: event.at,
@@ -182,9 +245,9 @@ export function runLedger(events: TaxEvent[], policy: LedgerPolicy, lookahead: T
         symbol: event.symbol,
         quantity: match.quantity,
         proceeds,
-        cost: match.cost,
+        cost,
         fee,
-        gain: sub(sub(proceeds, match.cost), fee),
+        gain: sub(sub(proceeds, cost), fee),
         holdingDays: match.acquiredAt ? holdingDays(match.acquiredAt, event.at) : null,
         acquiredAt: match.acquiredAt,
         trigger: event.trigger,

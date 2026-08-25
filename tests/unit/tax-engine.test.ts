@@ -342,20 +342,22 @@ describe("한국 — 시행 후 기타소득 분리과세", () => {
   const groupOf = (eventId: string) => result.judgments.find((row) => row.eventId === eventId && row.amountKind !== "cost")?.group;
 
   it("양도·교환 손익을 연간 통산하고 대여 대가만 총수입금액에 더한다", () => {
+    // 거주자별 총평균법: ETH는 취득 10(30,050,000)과 수령분 0.3·0.2(FMV 1,000,000·500,000)를
+    // 합쳐 10.5개 평균단가 3,004,761.904…로 통산한다(수령 시점이 처분 뒤여도 총평균은 전 기간 합산).
     // BTC 60,000,000 − 40,100,000 − 120,000 = 19,780,000
-    // ETH 12,000,000 − 15,025,000 − 20,000 = −3,045,000
-    expect(result.lines.find((line) => line.key === "net_gains")?.amount).toBe("16735000");
+    // ETH 12,000,000 − (3,004,761.904…×5) − 20,000 = −3,043,809.523…
+    expect(result.lines.find((line) => line.key === "net_gains")?.amount).toBe("16736190.48");
     expect(result.totals.incomeTotal).toBe("1000000");
     // 스테이킹 수령분은 양도도 대여도 아니라 총수입금액에서 빠진다.
     expect(result.lines.find((line) => line.key === "pending_income")?.amount).toBe("500000");
   });
 
   it("기본공제 250만원을 빼고 20% + 지방소득세 10%를 적용한다", () => {
-    // (16,735,000 + 1,000,000) − 2,500,000 = 15,235,000
-    expect(result.totals.taxableBase).toBe("15235000");
-    expect(result.lines.find((line) => line.key === "income_tax")?.amount).toBe("3047000");
-    expect(result.lines.find((line) => line.key === "local_tax")?.amount).toBe("304700");
-    expect(result.totals.estimatedCharge).toBe("3351700");
+    // (16,736,190.476… + 1,000,000) − 2,500,000 = 15,236,190.476…
+    expect(result.totals.taxableBase).toBe("15236190.48");
+    expect(result.lines.find((line) => line.key === "income_tax")?.amount).toBe("3047238.1");
+    expect(result.lines.find((line) => line.key === "local_tax")?.amount).toBe("304723.81");
+    expect(result.totals.estimatedCharge).toBe("3351961.9");
   });
 
   it("손실은 통산만 하고 이월하지 않는다", () => {
@@ -388,6 +390,143 @@ describe("한국 — 시행 후 기타소득 분리과세", () => {
     expect(small.totals.estimatedCharge).toBe("0");
     expect(small.totals.exemptGains).toBe("2000000");
     expect(small.judgments.find((row) => row.eventId === "s-dsp")?.group).toBe("exempt");
+  });
+});
+
+describe("한국 — 거주자별 총평균법 + 의제취득가액(2027 시행)", () => {
+  const wallet = "0xkr-avg";
+  const btc = "1:btc";
+  // 처분 원가(취득단가×수량)를 판정 근거에서 직접 읽는다. 의제 seed 단가는 부분 처분뿐 아니라
+  // 전량 처분(풀을 완전히 비우는 경우)까지 authoritative하다 — lots.ts가 의제 자산의 pool.cost를
+  // seed 단가 기준으로 쌓아 잔차흡수가 실제 취득원가로 덮어쓰지 않기 때문이다(MUST FIX 1).
+  const costOf = (result: ReturnType<typeof computeTaxEstimate>, eventId: string) =>
+    result.judgments.find((row) => row.eventId === eventId && row.amountKind === "gain")?.breakdown?.cost;
+
+  it("의제 opening은 보유 순수량(heldPre)에만 붙고 경계 전 처분분엔 미적용된다", () => {
+    // 경계 전 취득 4개(단가 40,000,000), 경계 전 처분 1개(비과세) → 보유 순수량 3개.
+    // 경계 후 취득 1개(단가 20,000,000). fmv 45,000,000 > preUnit 40,000,000.
+    // seed 단가 = (3 × Max(45M,40M) + 1 × 20M) / (3 + 1) = 155,000,000 / 4 = 38,750,000.
+    // 경계 전 처분분(1개)을 opening에 포함했다면 (4×45M+20M)/5 = 40,000,000이 되어 값이 갈린다.
+    const events: TaxEvent[] = [
+      { kind: "ACQUIRE", id: "t1-acq-pre", at: "2026-03-01T00:00:00.000Z", wallet, asset: btc, symbol: "BTC", quantity: "4", cost: "160000000", fee: "0" },
+      { kind: "DISPOSE", id: "t1-dsp-pre", at: "2026-11-01T00:00:00.000Z", wallet, asset: btc, symbol: "BTC", quantity: "1", proceeds: "45000000", fee: "0", trigger: "FIAT" },
+      { kind: "ACQUIRE", id: "t1-acq-post", at: "2027-02-01T00:00:00.000Z", wallet, asset: btc, symbol: "BTC", quantity: "1", cost: "20000000", fee: "0" },
+      { kind: "DISPOSE", id: "t1-dsp-post", at: "2027-06-01T00:00:00.000Z", wallet, asset: btc, symbol: "BTC", quantity: "1", proceeds: "50000000", fee: "0", trigger: "FIAT" },
+    ];
+    const result = computeTaxEstimate({ country: "KR", taxYear: 2027, events, deemedFmv: { [btc]: "45000000" } });
+    // 경계 전 처분(2026)은 과세기간 밖이라 손익 행이 없다.
+    expect(result.judgments.some((row) => row.eventId === "t1-dsp-pre" && row.amountKind === "gain")).toBe(false);
+    expect(costOf(result, "t1-dsp-post")).toBe("38750000");
+    expect(result.lines.find((line) => line.key === "net_gains")?.amount).toBe("11250000");
+  });
+
+  it("하한: 경계 후 무매수면 경계 전 보유분의 유효 취득단가가 2026-12-31 시가 이상이다", () => {
+    // 경계 전 취득 3개(단가 10,000,000), 경계 후 취득 없음, 2027 부분 처분 1개(2개 보유 유지).
+    // fmv 25,000,000 ≫ preUnit 10,000,000 → seed 단가 = Max(25M,10M) = 25,000,000.
+    const events: TaxEvent[] = [
+      { kind: "ACQUIRE", id: "t2-acq", at: "2026-03-01T00:00:00.000Z", wallet, asset: btc, symbol: "BTC", quantity: "3", cost: "30000000", fee: "0" },
+      { kind: "DISPOSE", id: "t2-dsp", at: "2027-06-01T00:00:00.000Z", wallet, asset: btc, symbol: "BTC", quantity: "1", proceeds: "40000000", fee: "0", trigger: "FIAT" },
+    ];
+    const fmv = "25000000";
+    const cost = costOf(computeTaxEstimate({ country: "KR", taxYear: 2027, events, deemedFmv: { [btc]: fmv } }), "t2-dsp");
+    // 유효 취득단가 = 시가로 끌어올려진다(하한). 실제 취득단가 10,000,000이 아니다.
+    expect(cost).toBe(fmv);
+    expect(Number(cost)).toBeGreaterThanOrEqual(Number(fmv));
+  });
+
+  it("보유분 원가는 pre 가중평균으로 소비된다 — 선입선출이 아니다(총평균 경로 확인)", () => {
+    // 단가가 다른 두 경계 전 취득(1개 10,000,000 + 3개 90,000,000) → pre 가중평균 25,000,000.
+    // fmv 20,000,000 < preUnit 25,000,000 → Max = preUnit → seed 단가 = 25,000,000.
+    // 선입선출이면 첫 취득분 10,000,000으로 소비했을 것이다 — 그 갈림을 실제로 가른다.
+    const events: TaxEvent[] = [
+      { kind: "ACQUIRE", id: "t3-acq-a", at: "2026-03-01T00:00:00.000Z", wallet, asset: btc, symbol: "BTC", quantity: "1", cost: "10000000", fee: "0" },
+      { kind: "ACQUIRE", id: "t3-acq-b", at: "2026-06-01T00:00:00.000Z", wallet, asset: btc, symbol: "BTC", quantity: "3", cost: "90000000", fee: "0" },
+      { kind: "DISPOSE", id: "t3-dsp", at: "2027-06-01T00:00:00.000Z", wallet, asset: btc, symbol: "BTC", quantity: "1", proceeds: "30000000", fee: "0", trigger: "FIAT" },
+    ];
+    const cost = costOf(computeTaxEstimate({ country: "KR", taxYear: 2027, events, deemedFmv: { [btc]: "20000000" } }), "t3-dsp");
+    expect(cost).toBe("25000000");
+    expect(cost).not.toBe("10000000");
+    // 룰셋이 실제로 총평균 원장을 쓰는지 계약으로 고정한다(FIFO fixture로 의제를 검증하지 않는다).
+    expect(getRuleSet("KR")!.ledger.method).toBe("PERIOD_AVERAGE");
+    expect(getRuleSet("KR")!.ledger.scope).toBe("GLOBAL");
+  });
+
+  it("시가 미입력은 정직한 한계·미결 질문을 내고, 시가 입력은 처분 단가에 Max를 반영한다", () => {
+    // 경계 전 취득 2개(단가 30,000,000) + 2027 부분 처분 1개(1개 보유 유지).
+    const events: TaxEvent[] = [
+      { kind: "ACQUIRE", id: "t4-acq", at: "2026-03-01T00:00:00.000Z", wallet, asset: btc, symbol: "BTC", quantity: "2", cost: "60000000", fee: "0" },
+      { kind: "DISPOSE", id: "t4-dsp", at: "2027-06-01T00:00:00.000Z", wallet, asset: btc, symbol: "BTC", quantity: "1", proceeds: "50000000", fee: "0", trigger: "FIAT" },
+    ];
+    const noFmv = computeTaxEstimate({ country: "KR", taxYear: 2027, events });
+    const withFmv = computeTaxEstimate({ country: "KR", taxYear: 2027, events, deemedFmv: { [btc]: "45000000" } });
+
+    // 미입력: 실제 취득단가 30,000,000으로 계산하고, 그 사실을 한계·미결 질문으로 발화한다.
+    expect(costOf(noFmv, "t4-dsp")).toBe("30000000");
+    expect(noFmv.limitations.filter((row) => row.message.includes("의제취득가액"))).toHaveLength(1);
+    expect(noFmv.openQuestions.some((q) => q.reason.includes("2026-12-31 시가"))).toBe(true);
+    // 보유분이 실제로 있으므로 "대상이 없습니다"라는 거짓을 절대 말하지 않는다.
+    expect(noFmv.notes.some((n) => n.includes("적용할 대상이 없습니다"))).toBe(false);
+
+    // 입력: 취득단가가 Max(45M, 30M) = 45,000,000으로 올라 손익이 줄고, 한계·미결 질문은 사라진다.
+    expect(costOf(withFmv, "t4-dsp")).toBe("45000000");
+    expect(withFmv.limitations.filter((row) => row.message.includes("의제취득가액"))).toHaveLength(0);
+    expect(withFmv.openQuestions.some((q) => q.reason.includes("2026-12-31 시가"))).toBe(false);
+    expect(withFmv.notes.some((n) => n.includes("적용할 대상이 없습니다"))).toBe(false);
+    expect(withFmv.notes.some((n) => n.includes("반영했습니다"))).toBe(true);
+  });
+
+  it("경계 전 보유분이 전혀 없으면 의제취득가액 대상 없음이 정직하다", () => {
+    // 모든 취득·처분이 경계 후(2027)라 heldPre = 0 — 이때만 "대상 없음"이 참이다.
+    const events: TaxEvent[] = [
+      { kind: "ACQUIRE", id: "t5-acq", at: "2027-02-01T00:00:00.000Z", wallet, asset: btc, symbol: "BTC", quantity: "2", cost: "60000000", fee: "0" },
+      { kind: "DISPOSE", id: "t5-dsp", at: "2027-06-01T00:00:00.000Z", wallet, asset: btc, symbol: "BTC", quantity: "1", proceeds: "50000000", fee: "0", trigger: "FIAT" },
+    ];
+    const result = computeTaxEstimate({ country: "KR", taxYear: 2027, events, deemedFmv: { [btc]: "45000000" } });
+    expect(result.limitations.filter((row) => row.message.includes("의제취득가액"))).toHaveLength(0);
+    expect(result.notes.some((n) => n.includes("적용할 대상이 없습니다"))).toBe(true);
+  });
+
+  it("전량 처분이라도 의제 seed 단가가 유지된다 — 잔차흡수가 uplift를 무효화하지 않는다(MUST FIX 1)", () => {
+    // 경계 전 1 BTC를 40,000,000에 취득, fmv 60,000,000, 2027에 전량(1 BTC) 처분 → 풀이 완전히 빈다.
+    // 잔차흡수가 실제 취득원가(40,000,000)로 덮으면 하한(≥ 시가)이 깨진다. seed 단가 60,000,000이 지배해야 한다.
+    const events: TaxEvent[] = [
+      { kind: "ACQUIRE", id: "full-acq", at: "2026-03-01T00:00:00.000Z", wallet, asset: btc, symbol: "BTC", quantity: "1", cost: "40000000", fee: "0" },
+      { kind: "DISPOSE", id: "full-dsp", at: "2027-06-01T00:00:00.000Z", wallet, asset: btc, symbol: "BTC", quantity: "1", proceeds: "90000000", fee: "0", trigger: "FIAT" },
+    ];
+    const fmv = "60000000";
+    const result = computeTaxEstimate({ country: "KR", taxYear: 2027, events, deemedFmv: { [btc]: fmv } });
+    // 유효 취득단가 = Max(60M, 40M) = 60,000,000 ≥ 시가(하한 보존). 실제 취득원가 40,000,000이 아니다.
+    expect(costOf(result, "full-dsp")).toBe(fmv);
+    expect(costOf(result, "full-dsp")).not.toBe("40000000");
+    expect(Number(costOf(result, "full-dsp"))).toBeGreaterThanOrEqual(Number(fmv));
+    // gain은 uplift된 총액(90,000,000 − 60,000,000)을 쓴다.
+    expect(result.lines.find((line) => line.key === "net_gains")?.amount).toBe("30000000");
+    // 반영이 실제로 일어났으므로 "반영했습니다"가 참이고, 거짓 "대상 없음"은 나오지 않는다(MUST FIX 3).
+    expect(result.notes.some((n) => n.includes("반영했습니다"))).toBe(true);
+    expect(result.notes.some((n) => n.includes("적용할 대상이 없습니다"))).toBe(false);
+  });
+
+  it("시행 첫해 이후 연도는 다년 재풀링 미구현을 정직하게 알린다(MUST FIX 4 · follow-up 표식)", () => {
+    // 경계 전 보유분을 2028에 처분한다. 현재 동작(누적 재평균)을 고정하되, 재희석·재풀링 미구현을 명시한다.
+    const events: TaxEvent[] = [
+      { kind: "ACQUIRE", id: "my-acq", at: "2026-03-01T00:00:00.000Z", wallet, asset: btc, symbol: "BTC", quantity: "3", cost: "30000000", fee: "0" },
+      { kind: "DISPOSE", id: "my-dsp", at: "2028-06-01T00:00:00.000Z", wallet, asset: btc, symbol: "BTC", quantity: "1", proceeds: "40000000", fee: "0", trigger: "FIAT" },
+    ];
+    const result = computeTaxEstimate({ country: "KR", taxYear: 2028, events, deemedFmv: { [btc]: "25000000" } });
+    // 시행 첫해가 아님을 결과 안에서 명시한다(note + openQuestion 양쪽).
+    expect(result.notes.some((n) => n.includes("재희석") && n.includes("후속 과제"))).toBe(true);
+    expect(result.openQuestions.some((q) => q.reason.includes("재풀링은 아직 구현되지 않았습니다"))).toBe(true);
+    // 첫해(2027)에는 이 표식이 없다 — 재희석이 아직 일어나지 않기 때문이다.
+    const firstYear = computeTaxEstimate({
+      country: "KR",
+      taxYear: 2027,
+      events: [
+        { kind: "ACQUIRE", id: "fy-acq", at: "2026-03-01T00:00:00.000Z", wallet, asset: btc, symbol: "BTC", quantity: "3", cost: "30000000", fee: "0" },
+        { kind: "DISPOSE", id: "fy-dsp", at: "2027-06-01T00:00:00.000Z", wallet, asset: btc, symbol: "BTC", quantity: "1", proceeds: "40000000", fee: "0", trigger: "FIAT" },
+      ],
+      deemedFmv: { [btc]: "25000000" },
+    });
+    expect(firstYear.notes.some((n) => n.includes("재희석"))).toBe(false);
   });
 });
 

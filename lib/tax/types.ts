@@ -62,6 +62,13 @@ export type DisposeEvent = TaxEventBase & {
   trigger: DisposalTrigger;
   /** trigger === "CRYPTO"인 경우 교환으로 취득한 자산. */
   receives?: { asset: string; symbol: string; quantity: Decimal };
+  /**
+   * 사용자가 직접 정한 취득가액(원가). 미지정 시 원장 lot 매칭이 원가를 정한다.
+   *
+   * derive가 value_override(취득가액 직접 입력) 또는 50% 필요경비 의제에서 채운다.
+   * 지정되면 원장은 lot 매칭 대신 이 값을 처분 원가로 써서 "취득가 0원"(원장 미보유분) 경고를 없앤다.
+   */
+  cost?: Decimal;
 };
 
 export type IncomeEvent = TaxEventBase & {
@@ -190,7 +197,21 @@ export type LedgerPolicy = {
   feeDeductible: boolean;
   /** 취득가액 0으로 처리할 소득 유형(호주 initial allocation 에어드랍). */
   zeroBasisIncomeKinds: IncomeKind[];
+  /**
+   * 거주자별 총평균법(KR)의 의제취득가액 경계 시각(RFC 3339).
+   *
+   * 선언한 룰셋만 총평균 seed를 2-세그먼트로 만든다: 경계 전 취득해 계속 보유한 분은
+   * Max(2026-12-31 시가, 실제 취득단가)로, 경계 후 취득분은 실제 원가로 합쳐 단일 평균단가를 낸다.
+   * 미선언 룰셋(JP 등)은 resolver가 주어져도 기존 총평균 seed를 그대로 쓴다 — 타국 회귀 0.
+   */
+  deemedCostBoundary?: string;
 };
+
+/**
+ * 자산 키 → 2026-12-31 간주취득가액(시가) 해석기. 미확인 자산은 undefined.
+ * seed 계층까지 전달만 하는 통로이며, 소비 여부는 룰셋별 원장 로직이 결정한다.
+ */
+export type DeemedCostResolver = (asset: string) => Decimal | undefined;
 
 export type GainRow = {
   eventId: string;
@@ -330,6 +351,14 @@ export type RuleContext = {
   /** 과세기간 [from, to). 영국(4/6~)·호주(7/1~)처럼 역년과 다른 국가가 있어 명시한다. */
   period: { from: string; to: string };
   excludedEventIds: string[];
+  /**
+   * 자산별 2026-12-31 의제취득가액(시가) 해석기. 미확인 자산은 undefined.
+   *
+   * seed 계층은 이미 이 값을 소비한다(2-세그먼트 원가). compute까지 전달하는 이유는
+   * 룰셋이 "경계 전 보유분은 있는데 시가는 미입력"인 상태를 감지해 정직한 한계·미결 질문을
+   * 내기 위함이다 — 그 신호가 없으면 화면이 존재하는 보유분을 "대상 없음"으로 거짓 안내한다.
+   */
+  deemedCost?: DeemedCostResolver;
   /**
    * "시행됐다고 가정하고" 계산하는가.
    *

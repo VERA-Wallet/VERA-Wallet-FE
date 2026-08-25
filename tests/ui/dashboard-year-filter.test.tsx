@@ -16,8 +16,13 @@ import type { NormalizedEvent } from "@/lib/schema/normalized-event";
  * 시계를 그대로 쓰면 1~6월에 돌 때 두 해 시나리오가 조용히 한 해 시나리오가 되어,
  * 이 파일 전체가 아무것도 지키지 않는 상태로 통과한다.
  */
+// base(2025) + next(2026) + 시행연도 쇼케이스(2027) = 세 해가 섞인다. 시행연도 쇼케이스는
+// 미래 필터와 무관하게 항상 있어, now를 이르게 줘도 사라지지 않는다.
 const TWO_YEARS = createNormalizedEventFixtures(FIXTURE_TAX_YEAR, new Date(Date.UTC(FIXTURE_TAX_YEAR + 2, 0, 1)));
-const ONE_YEAR = createNormalizedEventFixtures(FIXTURE_TAX_YEAR, new Date(Date.UTC(FIXTURE_TAX_YEAR + 1, 0, 1)));
+// 한 해짜리 집합은 base(2025)만 남긴다 — 쇼케이스(2027)가 항상 붙어 생성기만으로는 한 해를 만들 수 없다.
+const ONE_YEAR = createNormalizedEventFixtures(FIXTURE_TAX_YEAR, new Date(Date.UTC(FIXTURE_TAX_YEAR + 1, 0, 1))).filter(
+  (event) => event.block_timestamp.startsWith(String(FIXTURE_TAX_YEAR)),
+);
 
 const ports = vi.hoisted(() => ({
   list: vi.fn(),
@@ -113,15 +118,17 @@ describe("목록은 최신이 위다", () => {
 });
 
 describe("연도 필터", () => {
-  it("두 해가 섞여 있으면 연도 칩으로 한 해만 남긴다", async () => {
+  it("여러 해가 섞여 있으면 연도 칩으로 한 해만 남긴다", async () => {
     const { container } = renderDashboard();
     await settled(container);
     const strip = screen.getByLabelText("연도 필터");
 
     // 칩은 최신 연도가 먼저다. 목록이 최신순인데 칩만 오래된 순이면 화면이 두 이야기를 한다.
+    // 시행연도 쇼케이스(2027)까지 세 해가 있으므로 칩도 2027·2026·2025 순으로 온다.
     const chipLabels = [...strip.querySelectorAll("button")].map((chip) => chip.textContent ?? "");
     expect(chipLabels[0]).toBe("전체 연도");
     expect(chipLabels.slice(1).map((label) => label.slice(0, 4))).toEqual([
+      String(FIXTURE_TAX_YEAR + 2),
       String(FIXTURE_TAX_YEAR + 1),
       String(FIXTURE_TAX_YEAR),
     ]);
@@ -184,7 +191,10 @@ describe("연도 필터", () => {
         yearOf(event) === FIXTURE_TAX_YEAR + 1 &&
         event.classification !== "UNKNOWN" &&
         event.price_status !== "UNKNOWN" &&
-        event.confidence >= 0.5,
+        event.confidence >= 0.5 &&
+        // 방향·분류 모순도 확인 필요 항목이다 — "확인 필요 없는 해"를 만들려면 함께 걸러야 한다.
+        !(event.classification === "RECEIVE" && event.direction === "OUT") &&
+        !(event.classification === "SEND" && event.direction === "IN"),
     );
     expect(cleanNextYear.length).toBeGreaterThan(0);
     const baseYear = TWO_YEARS.filter((event) => yearOf(event) === FIXTURE_TAX_YEAR);

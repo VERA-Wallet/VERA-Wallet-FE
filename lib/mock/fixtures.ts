@@ -21,6 +21,48 @@ const BASE_EVENT_COUNT = 25;
 const NEXT_YEAR_EVENT_COUNT = 10;
 const NEXT_YEAR_SPACING_DAYS = 5;
 
+/**
+ * 시행연도(`taxYear + 2`, 데모 기준 2027) **처분 쇼케이스** 배치.
+ *
+ * 한국 룰셋은 2027-01-01부터 시행된다(가상자산 양도·대여 기타소득). 시행연도 리포트를
+ * 데모에서 실제 숫자로 보이게 하려면 그 해에 **처분**이 있어야 한다 — 취득만 있으면 손익이
+ * 없어 부담이 0이다. 그래서 이 배치는 SEND·EXCHANGE만 담고, **이전 배치(2025·2026)에서
+ * 취득한 것과 같은 자산 키**를 처분해 거주자별 총평균법이 실제 취득단가 기준 손익을 내게 한다.
+ *
+ * 이 배치는 미래 날짜(2027)라 정상이라면 미래 필터에 걸린다. 하지만 이건 시행연도 리포트를
+ * 데모에서 보이게 하려는 **mock 쇼케이스 샘플**이므로 미래 필터에서 의도적으로 제외한다
+ * (아래 `createNormalizedEventFixtures`가 base·next와 달리 이 배치에는 필터를 걸지 않는다).
+ * 2025·2026 배치의 기존 미래 필터·동작은 그대로 둔다.
+ *
+ * `assetIndex`는 buildEvent가 자산 정체성(체인·타입·계약·토큰·수량)을 파생하는 순번이다.
+ * 계약 주소가 순번마다 유일해 처분 event 번호만으로는 이전 취득과 같은 자산에 걸 수 없어,
+ * 취득분(RECEIVE·방향 IN)의 순번을 가리켜 같은 자산 키를 처분한다. base·next에서 취득가액이
+ * 잡히는 자산 키는 셋뿐이다 — 1:native ETH(event-01·21), 1:BAYC #110(event-11),
+ * 137:LENS #134(event-35). (나머지 RECEIVE는 방향 OUT이라 `directionClassificationConflict`로
+ * 계산에서 빠져 취득가액이 없다.) 한 취득 lot을 여러 처분으로 쪼개려고 `rawAmount`로 부분 수량을 준다.
+ * classification은 SEND(처분·짝수 event 번호라 방향 OUT) / EXCHANGE(방향 무관)로 두어
+ * `directionClassificationConflict` 게이트(SEND+IN)에 걸리지 않게 한다.
+ */
+const SHOWCASE_YEAR_OFFSET = 2;
+const SHOWCASE_SPACING_DAYS = 5;
+/** n/100 ETH의 raw 수량(18 decimals). 0.01 ETH = 10^16. */
+const ethRaw = (hundredths: number): string => `${hundredths}${"0".repeat(16)}`;
+const SHOWCASE_DISPOSALS: { classification: Extract<Classification, "SEND" | "EXCHANGE">; assetIndex: number; rawAmount: string }[] = [
+  // 1:native ETH — event-01(0.01)+event-21(0.21) 취득분(합 0.22)을 6건으로 나눠 총평균 단가로 처분한다.
+  { classification: "SEND", assetIndex: 0, rawAmount: ethRaw(3) }, // event-36 · 0.03
+  { classification: "EXCHANGE", assetIndex: 0, rawAmount: ethRaw(3) }, // event-37 · 0.03
+  { classification: "SEND", assetIndex: 0, rawAmount: ethRaw(4) }, // event-38 · 0.04
+  { classification: "EXCHANGE", assetIndex: 0, rawAmount: ethRaw(4) }, // event-39 · 0.04
+  { classification: "SEND", assetIndex: 0, rawAmount: ethRaw(4) }, // event-40 · 0.04
+  { classification: "EXCHANGE", assetIndex: 0, rawAmount: ethRaw(4) }, // event-41 · 0.04
+  // 1:BAYC #110 — event-11 취득분(×2)을 1개씩 처분.
+  { classification: "SEND", assetIndex: 10, rawAmount: "1" }, // event-42 · ×1
+  { classification: "EXCHANGE", assetIndex: 10, rawAmount: "1" }, // event-43 · ×1
+  // 137:LENS #134 — event-35 취득분(×2)을 1개씩 처분.
+  { classification: "SEND", assetIndex: 34, rawAmount: "1" }, // event-44 · ×1
+  { classification: "EXCHANGE", assetIndex: 34, rawAmount: "1" }, // event-45 · ×1
+];
+
 /** 이벤트 번호 1건당 원화 금액. 25건이 ₩40만~₩1,000만 사이에 퍼진다. */
 const PER_EVENT_KRW = 400_000;
 
@@ -47,12 +89,27 @@ type FixtureSpec = {
   unknownPrice: boolean;
   lowConfidence: boolean;
   override: boolean;
+  /**
+   * 자산 정체성(체인·타입·계약·토큰·수량)을 파생할 순번. 생략하면 `eventNumber - 1`.
+   * 처분 쇼케이스가 이전 취득과 **같은 자산 키·lot 수량**을 가리키려고 쓴다 — 계약 주소가
+   * 순번마다 유일해 event 번호만으로는 같은 자산을 재사용할 수 없기 때문이다.
+   * id·해시·원화 금액·방향은 여전히 event 번호에서 나오므로 이 값을 넣어도 각 건은 유일하다.
+   */
+  assetIndex?: number;
+  /**
+   * 원시 수량(raw_amount) 오버라이드. 생략하면 assetIndex에서 파생한다.
+   * 처분 쇼케이스가 한 취득 lot을 여러 처분으로 쪼개 총평균 풀 안에서 소비하려고 쓴다
+   * (assetIndex만으로는 lot당 한 수량뿐이라 부분 처분을 만들 수 없다). decimals와 정합해야 한다.
+   */
+  rawAmount?: string;
 };
 
-function buildEvent({ eventNumber, at, classification, unknownPrice, lowConfidence, override }: FixtureSpec): NormalizedEvent {
+function buildEvent({ eventNumber, at, classification, unknownPrice, lowConfidence, override, assetIndex: assetIndexOverride, rawAmount }: FixtureSpec): NormalizedEvent {
   const index = eventNumber - 1;
-  const chainId = chains[index % chains.length];
-  const assetType = index % 4 === 0 ? "NATIVE" : index % 4 === 1 ? "ERC20" : index % 4 === 2 ? "ERC721" : "ERC1155";
+  // 자산 정체성·수량은 assetIndex에서, 그 밖(id·해시·방향·원화 금액)은 event 번호(index)에서 파생한다.
+  const assetIndex = assetIndexOverride ?? index;
+  const chainId = chains[assetIndex % chains.length];
+  const assetType = assetIndex % 4 === 0 ? "NATIVE" : assetIndex % 4 === 1 ? "ERC20" : assetIndex % 4 === 2 ? "ERC721" : "ERC1155";
 
   return {
     id: `event-${String(eventNumber).padStart(2, "0")}`,
@@ -63,17 +120,18 @@ function buildEvent({ eventNumber, at, classification, unknownPrice, lowConfiden
     wallet_address: "0x1111111111111111111111111111111111111111",
     direction: index % 2 === 0 ? "IN" : "OUT",
     asset_type: assetType,
-    asset_contract: index % 4 === 0 ? null : `0x${(1000 + index).toString(16).padStart(40, "0")}`,
+    asset_contract: assetIndex % 4 === 0 ? null : `0x${(1000 + assetIndex).toString(16).padStart(40, "0")}`,
     asset_symbol: ASSET_SYMBOL[assetType][chainId] ?? null,
     // 데모 픽스처의 자산은 전부 토큰 목록으로 대조된 것으로 본다.
     asset_verified: true,
     // 로고 원본을 대신 그리면 상표를 왜곡한다. 메타데이터 출처가 붙기 전까지는 비워 두고,
     // 화면은 대체 마크(심볼 이니셜 · NFT 박스)로 그린다.
     asset_icon_url: null,
-    token_id: index % 4 >= 2 ? String(index + 100) : null,
-    decimals: index % 4 >= 2 ? 0 : 18,
+    token_id: assetIndex % 4 >= 2 ? String(assetIndex + 100) : null,
+    decimals: assetIndex % 4 >= 2 ? 0 : 18,
     // decimals와 정합하는 원시 단위 — 18 decimals 자산은 0.01·n, NFT(0 decimals)는 수량 자체다.
-    raw_amount: index % 4 >= 2 ? String((index % 3) + 1) : `${eventNumber}${"0".repeat(16)}`,
+    // rawAmount가 있으면(처분 쇼케이스의 부분 처분) 그 값을 그대로 쓴다.
+    raw_amount: rawAmount ?? (assetIndex % 4 >= 2 ? String((assetIndex % 3) + 1) : `${assetIndex + 1}${"0".repeat(16)}`),
     counterparty: `0x${(2000 + index).toString(16).padStart(40, "0")}`,
     gas_fee_native: "0.001",
     classification,
@@ -86,6 +144,8 @@ function buildEvent({ eventNumber, at, classification, unknownPrice, lowConfiden
           overridden_at: new Date(at.getTime() + 3_600_000).toISOString(),
         }
       : null,
+    // 금액 override는 사용자가 상세 편집에서 채운다. 기본 픽스처는 비워 둔다.
+    value_override: null,
     price_status: unknownPrice ? "UNKNOWN" : index % 3 === 0 ? "ESTIMATED" : "RESOLVED",
     // 표시통화가 원화다. 건당 1,000원짜리 거래로 두면 어떤 한국 규칙도(기본공제 250만원)
     // 화면에서 작동하는 모습을 볼 수 없다 — 원화로 말이 되는 규모를 쓴다.
@@ -95,14 +155,16 @@ function buildEvent({ eventNumber, at, classification, unknownPrice, lowConfiden
 }
 
 /**
- * 지갑 이벤트 픽스처. 두 해치가 오래된 순으로 이어진다 —
- * `taxYear`의 25건 뒤에 `taxYear + 1`의 배치가 붙는다.
+ * 지갑 이벤트 픽스처. 세 해치가 오래된 순으로 이어진다 —
+ * `taxYear`의 25건, `taxYear + 1`의 배치, 그리고 시행연도(`taxYear + 2`) 처분 쇼케이스.
  *
- * 각 배치의 시각은 **그 배치가 속한 해**의 공통 창(7/1~12/31) 안에만 놓는다.
+ * base·next의 시각은 **그 배치가 속한 해**의 공통 창(7/1~12/31) 안에만 놓는다.
  * 역년 밖으로 새면 같은 연도를 골라도 영국·호주만 다른 건수를 세게 된다.
  *
- * `now`는 아직 오지 않은 거래를 만들지 않기 위한 기준 시각이다.
- * 테스트는 고정 시각을 넣어 배치 크기를 결정적으로 만들 수 있다.
+ * `now`는 아직 오지 않은 거래를 만들지 않기 위한 기준 시각이다 — base·next에만 적용한다.
+ * 시행연도 쇼케이스 배치는 시행연도(2027) 리포트를 데모에서 보이게 하는 mock 샘플이라
+ * **미래 필터에서 의도적으로 제외**한다(아래 showcase에는 필터를 걸지 않는다).
+ * 테스트는 고정 시각을 넣어 base·next 배치 크기를 결정적으로 만들 수 있다.
  */
 export function createNormalizedEventFixtures(
   taxYear: number = demoTaxYear(),
@@ -134,5 +196,20 @@ export function createNormalizedEventFixtures(
     // 이 배치가 통째로 비는 것이 정상이고, 그때 화면은 연도 칩을 숨긴다.
   ).filter((event) => Date.parse(event.block_timestamp) < now.getTime());
 
-  return [...base, ...next];
+  // 시행연도(2027) 처분 쇼케이스. base·next에서 취득한 자산을 그 해에 처분해
+  // 거주자별 총평균법이 실제 손익·부담을 내게 한다. mock 샘플이라 미래 필터를 걸지 않는다.
+  const showcase = SHOWCASE_DISPOSALS.map((spec, position) =>
+    buildEvent({
+      eventNumber: BASE_EVENT_COUNT + NEXT_YEAR_EVENT_COUNT + 1 + position,
+      at: new Date(Date.UTC(taxYear + SHOWCASE_YEAR_OFFSET, 6, 1 + position * SHOWCASE_SPACING_DAYS, 12, 0, 0)),
+      classification: spec.classification,
+      assetIndex: spec.assetIndex,
+      rawAmount: spec.rawAmount,
+      unknownPrice: false,
+      lowConfidence: false,
+      override: false,
+    }),
+  );
+
+  return [...base, ...next, ...showcase];
 }

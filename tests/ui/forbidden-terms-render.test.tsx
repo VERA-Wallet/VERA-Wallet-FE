@@ -7,6 +7,8 @@ import { DashboardView } from "@/components/dashboard/dashboard-view";
 import { ExportView } from "@/components/export/export-view";
 import { DisclaimerFooter } from "@/components/ui/disclaimer-footer";
 import { createNormalizedEventFixtures } from "@/tests/fixtures/generated/normalized-events";
+import { TaxEngineService } from "@/lib/tax/tax-engine-service.server";
+import { listRuleSetSummaries } from "@/lib/tax/rulesets";
 import type { AuthClient } from "@/lib/ports/auth-client";
 import type { WalletPort } from "@/lib/ports/wallet-port";
 
@@ -15,6 +17,8 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: 
 const forbidden = ["세액", "납부할 세금", "신고서"];
 const events = createNormalizedEventFixtures();
 const summary = { periodPnl: "-45000.00", computableEventCount: 14, taxableEventCount: 14, pendingReviewCount: 8, currency: "KRW", period: { from: "2025-01-01T00:00:00.000Z", to: "2025-01-25T00:00:00.000Z" } };
+// 손익·건수는 세금 화면과 같은 estimate에서 파생하므로 대시보드가 estimate를 실제로 받게 한다.
+const engine = new TaxEngineService(() => events);
 
 const ports = vi.hoisted(() => ({
   list: vi.fn(),
@@ -22,11 +26,14 @@ const ports = vi.hoisted(() => ({
   reclassify: vi.fn(),
   getById: vi.fn(),
   getProof: vi.fn(),
+  listRuleSets: vi.fn(),
+  estimate: vi.fn(),
 }));
 vi.mock("@/lib/composition-root.client", () => ({
   eventRepository: { list: ports.list, reclassify: ports.reclassify, getById: ports.getById },
   summaryProvider: { getSummary: ports.getSummary },
   anchorProofProvider: { getProof: ports.getProof },
+  taxEngine: { listRuleSets: ports.listRuleSets, estimate: ports.estimate },
   authClient: { requestNonce: vi.fn(), verify: vi.fn(), presentDid: vi.fn(), logout: vi.fn(), getSession: vi.fn() },
 }));
 
@@ -53,6 +60,8 @@ function renderAll() {
   ports.list.mockResolvedValue({ items: events.map((event) => ({ event, version: 1 })), nextCursor: null });
   ports.getSummary.mockResolvedValue(summary);
   ports.getById.mockResolvedValue({ event: events[0], version: 1, override_history: [] });
+  ports.listRuleSets.mockImplementation(async () => listRuleSetSummaries());
+  ports.estimate.mockImplementation(async (input: Parameters<TaxEngineService["estimate"]>[0]) => engine.estimate(input));
   ports.getProof.mockResolvedValue({ tx_hash: "0xabc", merkle_root: "0xdef", anchored_at: "2025-01-02T00:00:00.000Z", explorer_url: "https://example.test/tx/0xabc" });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -76,7 +85,8 @@ describe("forbidden terminology in rendered route surfaces", () => {
       );
     }
     await screen.findByText("거래 요약");
-    await screen.findByText(`${summary.taxableEventCount}건`);
+    // 건수는 이제 estimate에서 파생하므로 요약 mock 값과 일치하지 않을 수 있다 — 표면이 채워졌는지는 라벨로 확인한다.
+    await screen.findByText("계산 대상 이벤트");
     await waitFor(() => expect(document.body.textContent ?? "").toContain("탐색기에서 보기"));
     const text = document.body.textContent ?? "";
     for (const term of forbidden) expect(text).not.toContain(term);

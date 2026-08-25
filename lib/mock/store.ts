@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createNormalizedEventFixtures } from "@/lib/mock/fixtures";
-import type { EventDetailDTO, EventListDTO, OverrideTransition, ReclassifyRequestDTO, SummaryDTO } from "@/lib/http/dto";
+import type { EventDetailDTO, EventListDTO, OverrideTransition, ReclassifyRequestDTO, SetValueOverrideRequestDTO, SummaryDTO } from "@/lib/http/dto";
 import type { ReclassifyResult } from "@/lib/ports/event-repository";
 import type { NormalizedEvent } from "@/lib/schema/normalized-event";
 import { effectiveClassification, needsReview, taxExclusionReason } from "@/lib/review";
@@ -66,6 +66,30 @@ export class MockEventStore {
       reason: input.reason ?? null,
       overridden_at: event.user_override!.overridden_at,
     });
+    stored.event = event;
+    stored.version += 1;
+    return { status: "ok", event, version: stored.version };
+  }
+
+  setValueOverride(id: string, input: SetValueOverrideRequestDTO): ReclassifyResult {
+    const stored = this.events.get(id);
+    if (!stored) return { status: "not_found", event: null, version: null };
+    if (stored.version !== input.expectedVersion) return { status: "conflict", event: stored.event, version: stored.version };
+    // 미지정 칸은 비움(null)과 같게 저장한다. value_override 전체가 null이면 override를 제거한다.
+    const value_override =
+      input.value_override === null
+        ? null
+        : {
+            acquisition_cost: input.value_override.acquisition_cost ?? null,
+            disposal_value: input.value_override.disposal_value ?? null,
+            incidental_cost: input.value_override.incidental_cost ?? null,
+            gas_fee: input.value_override.gas_fee ?? null,
+            price_source: input.value_override.price_source ?? null,
+            evidence_url: input.value_override.evidence_url ?? null,
+            deemed_expense_50: input.value_override.deemed_expense_50 ?? false,
+            overridden_at: new Date().toISOString(),
+          };
+    const event: NormalizedEvent = { ...stored.event, value_override };
     stored.event = event;
     stored.version += 1;
     return { status: "ok", event, version: stored.version };

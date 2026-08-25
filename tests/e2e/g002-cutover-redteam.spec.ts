@@ -74,7 +74,7 @@ onModeOnly("G002 hybrid cutover adversarial browser QA", () => {
     // 프록시는 BE 원본을 그대로 통과시키므로 raw 응답에는 canonical `asset_symbol`이 아니라 BE의 `symbol`이 온다.
     // canonical 변환은 FE 어댑터 경계가 하며, 그 결과는 아래 화면 렌더로 확인한다.
     const symbols = items.filter((item) => Boolean(item.event.asset_symbol ?? item.event.symbol)).length;
-    add(results, "be-events-rendered", "GET /api/events?limit=100 and browser /dashboard", "25 events carrying a symbol", { status: events.status(), count: items.length, symbols }, events.status() === 200 && items.length === 25 && symbols === 25);
+    add(results, "be-events-rendered", "GET /api/events?limit=100 and browser /dashboard", "45 events carrying a symbol", { status: events.status(), count: items.length, symbols }, events.status() === 200 && items.length === 45 && symbols === 45);
     const cursor = items[0]?.event.id;
     const cursorPage = cursor ? await page.context().request.get(`/api/events?limit=100&cursor=${encodeURIComponent(cursor)}`) : undefined;
     const cursorBody = cursorPage ? await cursorPage.json() as { data?: { items?: Array<{ event: { id: string } }> } } : undefined;
@@ -108,7 +108,7 @@ onModeOnly("G002 hybrid cutover adversarial browser QA", () => {
     add(results, "patch-body-content-type-preserved", `PATCH /api/events/${event.event.id}`, "BE accepts JSON PATCH body and reports the manual override", { status: patch.status(), contentType: patch.headers()["content-type"], event: patched.data?.event }, patch.status() === 200 && (patch.headers()["content-type"] ?? "").includes("application/json") && patched.data?.event?.classification === nextClassification && patched.data.event.user_override?.classification === nextClassification && patched.data.event.user_override.reason === "G002 cutover adversarial patch");
 
     await page.goto("/export");
-    const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "CSV 다운로드" }).click()]);
+    const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "직접 신고용 내려받기" }).click()]);
     const csv = await download.createReadStream();
     let csvText = "";
     for await (const chunk of csv!) csvText += chunk.toString();

@@ -10,9 +10,12 @@ import { fresh } from "@/lib/queries/fresh";
 import { useRuleSets, useTaxEstimate } from "@/lib/queries/tax";
 import type { TaxEventSource } from "@/lib/ports/tax-engine";
 import type { RuleSetSummary } from "@/lib/tax/types";
-import { round, sum } from "@/lib/tax/decimal";
+import { add, round, sum } from "@/lib/tax/decimal";
+import type { Decimal } from "@/lib/tax/decimal";
 import { canonicalCountryCode } from "@/lib/tax/rulesets";
 import { noChargeHeadline, omitsCharge } from "@/lib/tax/status";
+import { useTaxYear } from "@/lib/tax/tax-year-context";
+import { taxYearWindow } from "@/lib/tax/year-window";
 import type {
   ConfirmationStatus,
   JudgmentGroup,
@@ -47,21 +50,6 @@ const TOPIC_LABEL: Record<RuleTopic, string> = {
   WRAPPING: "랩핑",
   LOSS_OFFSET: "손실 상계",
 };
-
-/**
- * 과세연도 선택 창. 고정 배열이면 해가 바뀌는 순간 "올해"를 못 고른다.
- * 마지막 거래가 이 창보다 오래됐다면 그 해도 함께 넣는다 —
- * 목록에 없으면 사용자는 자기 거래가 있는 해로 돌아갈 방법이 없다.
- *
- * 미래 연도는 **시계로는 절대 만들지 않는다**. 룰셋이 시행 예정 연도를 선언했을 때만
- * 그 해를 넣는다(한국 2027) — 그러지 않으면 시행 후 계산을 볼 방법이 없다.
- */
-function taxYearWindow(current: number, latestActivity?: number, effective?: number): number[] {
-  const years = new Set([current - 3, current - 2, current - 1, current]);
-  if (latestActivity !== undefined) years.add(latestActivity);
-  if (effective !== undefined) years.add(effective);
-  return [...years].sort((left, right) => left - right);
-}
 
 /**
  * L2 — "왜 이 금액인가".
@@ -224,7 +212,9 @@ export function TaxSimulator({
   // 자정을 넘긴 순간 선택된 버튼이 사라지고, SSR과 hydration도 갈린다.
   // "올해"로 고정하면 올해 거래가 없는 지갑은 진입하자마자 12개 룰셋이 전부 "계산할 거래 없음"을 말한다.
   // 그건 비교가 아니라 빈 화면이다. 마지막 거래가 있는 해를 알면 거기서 연다.
-  const [taxYear, setTaxYear] = useState(latestActivityYear ?? currentYear);
+  // 선택된 연도는 전역 단일 소스(TaxYearProvider)에 둔다 — 여기서 바꾸면 대시보드·거래 상세도 같은 기간을 본다.
+  // 프로바이더가 없는 격리 렌더에서는 로컬 상태로 물러나 예전 동작을 그대로 지킨다.
+  const [taxYear, setTaxYear] = useTaxYear(latestActivityYear ?? currentYear);
   // 기본은 내 지갑이다. 데모 시나리오는 명시적으로 고를 때만 쓴다.
   // 지갑 미연결이면 낼 지갑 이력이 없으므로 데모 시나리오로 연다.
   const [source, setSource] = useState<TaxEventSource>(walletConnected ? "wallet" : "scenario");
@@ -242,6 +232,17 @@ export function TaxSimulator({
 
   const [isBusiness, setIsBusiness] = useState(false);
   const [defiOwnershipTransferred, setDefiOwnershipTransferred] = useState(false);
+  // 자산별 2026-12-31 연말 시가(의제취득가액). 자산 키 → 원화 단가 문자열. 출처는 근거 보존용(계산에는 안 들어간다).
+  const [yearEndFmv, setYearEndFmv] = useState<Record<string, string>>({});
+  const [fmvSource, setFmvSource] = useState<Record<string, string>>({});
+  // 유효한 십진 입력만 deemedFmv로 흘려보낸다. 비거나 잘못된 값은 "미입력"과 같게 둔다.
+  const deemedFmvEntries = Object.entries(yearEndFmv).filter(
+    ([, value]) => /^\d+(?:\.\d+)?$/.test(value.trim()),
+  );
+  const deemedFmv: Record<string, Decimal> | undefined =
+    deemedFmvEntries.length > 0
+      ? Object.fromEntries(deemedFmvEntries.map(([asset, value]) => [asset, value.trim()]))
+      : undefined;
 
   const rulesets = useRuleSets();
   // 칩으로 다른 나라를 고르면 더 이상 거주국 결과가 아니다.
@@ -258,6 +259,9 @@ export function TaxSimulator({
     source,
     // 시행 전 룰셋을 "시행됐다고 가정하고" 보는 중이면 그 사실도 요청에 실린다.
     ...(assumeEffective ? { assumeEffective: true } : {}),
+    // 사용자가 입력한 연말 시가(의제취득가액). 없으면 보내지 않아 캐시 키가 흔들리지 않는다.
+    // KR 총평균 seed만 소비하며, deemedCostBoundary를 선언하지 않은 타국은 값이 있어도 무시한다(회귀 0).
+    ...(deemedFmv ? { deemedFmv } : {}),
     // 화면이 "이 국가에서 쓰지 않음"이라 했으면 실제로도 보내지 않는다.
     // 선언을 표시용 메타데이터로만 두면 보이지 않는 값이 답을 바꿔도 아무도 모른다.
     // `selected`가 없으면 아래 enabled가 false라 이 값은 요청되지 않는다.
@@ -306,6 +310,23 @@ export function TaxSimulator({
   const hasNothingToCompute =
     result !== undefined && !result.judgments.some((row) => row.inPeriod && row.group !== "acquire");
   const groups = result && !hasNothingToCompute ? groupJudgments(result) : [];
+  // 연말 시가를 입력할 대상 자산 — 처분(gain) 판정에 등장하는 자산을 키(asset)로 모은다.
+  // 의제취득가액은 처분 원가에 작용하므로 처분 자산이 곧 입력 대상이다. 키는 seed가 소비하는 키와 같다(같은 원장 행에서 왔다).
+  const yearEndAssets = [
+    ...(result?.judgments ?? [])
+      .filter((row) => row.amountKind === "gain")
+      .reduce((map, row) => {
+        const current = map.get(row.asset);
+        map.set(row.asset, {
+          symbol: row.symbol,
+          quantity: current ? add(current.quantity, row.quantity) : row.quantity,
+        });
+        return map;
+      }, new Map<string, { symbol: string; quantity: Decimal }>())
+      .entries(),
+  ].map(([asset, info]) => ({ asset, symbol: info.symbol, quantity: info.quantity }));
+  // 이 룰셋이 연말 시가(의제취득가액)를 입력으로 요구하는가. 룰셋이 requiredInputs로 선언한다 — 국가 코드로 하드코딩하지 않는다.
+  const requiresYearEndFmv = (result?.requiredInputs ?? []).some((input) => input.includes("의제취득가액"));
 
   // 올해가 아닌 해로 열렸다면 그 이유를 말한다.
   // 말하지 않으면 사용자는 화면이 왜 작년을 보여주는지 모른 채 옛 결과를 올해 답으로 읽는다.
@@ -433,7 +454,24 @@ export function TaxSimulator({
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-xl font-bold text-zinc-900">{result.countryLabel} · {result.taxYear}</h2>
               <StatusBadge status={result.status} />
-              <span className="text-sm text-zinc-500">{result.method}</span>
+              {/* 계산 전제(예: 한국의 "거주자별 총평균법")를 답 바로 위에 상시 둔다.
+                  엔진의 method가 진실원천이라 나라·연도가 바뀌면 이 배지도 따라 바뀐다 — 하드코딩하지 않는다. */}
+              <span
+                data-testid="method-premise"
+                className="inline-flex rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-semibold text-zinc-700"
+              >
+                {result.method}
+              </span>
+              {/* 부분확정(PARTIAL)은 단가·부담이 아직 잠정이라는 뜻이다(엔진 note: "예상 부담은 잠정치…").
+                  큰 금액 옆에 그 사실이 계속 있어야 근거처럼 읽히지 않는다. */}
+              {result.status === "PARTIAL" ? (
+                <span
+                  data-testid="provisional-charge"
+                  className="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800"
+                >
+                  단가·부담 잠정
+                </span>
+              ) : null}
             </div>
             {/* 과세기간은 화면이 다시 계산하면 안 된다. 영국 4/6~·호주 7/1~ 때문에 역년과 다르다. */}
             <p className="mt-1 text-sm text-zinc-500">과세기간 {halfOpenPeriodLabel(result.period)}</p>
@@ -717,6 +755,59 @@ export function TaxSimulator({
               {ruleNotes.map((note) => <li key={note}>{note}</li>)}
             </ul>
           </details>
+          ) : null}
+
+          {/* 연말 시가 입력(의제취득가액) — 룰셋이 요구할 때만(KR). 입력값이 deemedFmv로 estimate에 흘러가 재계산된다.
+              448px 셸이므로 표가 아니라 자산별 카드를 세로로 쌓는다. */}
+          {requiresYearEndFmv ? (
+            <section className="mt-6" aria-label="연말 시가 입력">
+              <h3 className="font-bold text-zinc-900">연말 시가 입력 (의제취득가액)</h3>
+              <p className="mt-1 text-sm text-zinc-500">
+                {result.taxYear >= 2027 || previewingEffectiveYear
+                  ? "2027-01-01 전 취득해 계속 보유한 자산은 2026-12-31 시가와 실제 취득가액 중 큰 값을 취득가액으로 씁니다. 자산별 시가를 입력하면 손익이 다시 계산됩니다."
+                  : "2026-12-31 시가를 입력해 두면, 시행(2027) 후 계산에서 의제취득가액으로 반영됩니다."}
+              </p>
+              {yearEndAssets.length === 0 ? (
+                <p className="mt-2 text-sm text-zinc-500">이 기간에 처분한 자산이 없어 입력할 대상이 없습니다.</p>
+              ) : (
+                <ul className="mt-3 grid gap-3">
+                  {yearEndAssets.map((asset) => (
+                    <li key={asset.asset} data-year-end-asset={asset.asset} className="rounded-card border border-zinc-200 bg-white p-3 shadow-card">
+                      <div className="flex items-baseline justify-between gap-3">
+                        <span className="font-semibold text-zinc-900">{asset.symbol}</span>
+                        <span className="text-xs text-zinc-500">처분 수량 {asset.quantity}</span>
+                      </div>
+                      <label className="mt-2 block text-sm font-medium text-zinc-700" htmlFor={`fmv-${asset.asset}`}>
+                        2026-12-31 시가 (원/단위)
+                      </label>
+                      <input
+                        id={`fmv-${asset.asset}`}
+                        inputMode="decimal"
+                        placeholder="예: 4000000"
+                        className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2.5"
+                        value={yearEndFmv[asset.asset] ?? ""}
+                        onChange={(event) => {
+                          // 빈 문자열도 허용해야 지울 수 있다. 유효 십진만 상태에 넣는다.
+                          if (/^\d*(?:\.\d*)?$/.test(event.target.value)) {
+                            setYearEndFmv((prev) => ({ ...prev, [asset.asset]: event.target.value }));
+                          }
+                        }}
+                      />
+                      <label className="mt-2 block text-sm font-medium text-zinc-700" htmlFor={`fmv-src-${asset.asset}`}>
+                        출처 (선택)
+                      </label>
+                      <input
+                        id={`fmv-src-${asset.asset}`}
+                        className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2.5"
+                        placeholder="예: 업비트 2026-12-31 종가"
+                        value={fmvSource[asset.asset] ?? ""}
+                        onChange={(event) => setFmvSource((prev) => ({ ...prev, [asset.asset]: event.target.value }))}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
           ) : null}
 
           {/* 설정은 답 다음이다. 위에 두면 사용자가 답까지 스크롤해야 한다. */}

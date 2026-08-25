@@ -3,7 +3,7 @@ import type { Decimal } from "@/lib/tax/decimal";
 import { buildJudgments } from "@/lib/tax/judgment";
 import { runLedger } from "@/lib/tax/ledger";
 import { getRuleSet } from "@/lib/tax/rulesets";
-import type { CountryCode, LedgerResult, TaxEstimate, TaxEvent, TaxpayerProfile } from "@/lib/tax/types";
+import type { CountryCode, DeemedCostResolver, LedgerResult, TaxEstimate, TaxEvent, TaxpayerProfile } from "@/lib/tax/types";
 
 /** 지갑 데이터만으로 알 수 없는 입력의 기본값. 화면에서 사용자가 조정한다. */
 export const DEFAULT_PROFILE: TaxpayerProfile = {
@@ -27,6 +27,12 @@ export type EstimateInput = {
    * 기본값 false — 가정은 요청한 쪽이 명시하고, 켠 쪽이 그 사실을 계속 말할 책임을 진다.
    */
   assumeEffective?: boolean;
+  /**
+   * 자산별 2026-12-31 간주취득가액(시가). KR 거주자별 총평균 seed가 소비해
+   * 경계 전 보유분의 취득가액을 Max(시가, 실제)로 올린다 — 지정하면 KR 처분 손익·zeroBasis가 줄어든다.
+   * deemedCostBoundary를 선언하지 않은 타국 룰셋은 resolver가 있어도 기존 seed를 그대로 써 회귀가 0이다.
+   */
+  deemedFmv?: Record<string, Decimal>;
 };
 
 export class UnknownRuleSetError extends Error {
@@ -101,7 +107,10 @@ export function computeTaxEstimate(input: EstimateInput): TaxEstimate {
     const at = Date.parse(event.at);
     return at >= toMs && at < toMs + lookaheadMs;
   });
-  const full = runLedger(inScope, ruleset.ledger, lookaheadEvents);
+  // 간주취득가액 해석기. seed 계층이 2-세그먼트 원가로 소비하고, 룰셋 compute는
+  // "경계 전 보유분은 있는데 시가 미입력" 상태를 감지하는 데 쓴다.
+  const deemedCost: DeemedCostResolver = (asset) => input.deemedFmv?.[asset];
+  const full = runLedger(inScope, ruleset.ledger, lookaheadEvents, deemedCost);
   // 계산 입력은 넓혔지만 **인식 대상**은 여전히 이 기간뿐이다.
   const within = <T extends { at: string }>(rows: T[]) =>
     rows.filter((row) => Date.parse(row.at) >= fromMs && Date.parse(row.at) < toMs);
@@ -124,6 +133,7 @@ export function computeTaxEstimate(input: EstimateInput): TaxEstimate {
     taxYear: input.taxYear,
     period,
     excludedEventIds: input.excludedEventIds ?? [],
+    deemedCost,
     assumeEffective: input.assumeEffective ?? false,
   };
 

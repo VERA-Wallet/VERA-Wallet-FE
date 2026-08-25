@@ -31,7 +31,7 @@ describe("빈 지갑 내보내기", () => {
     URL.createObjectURL = () => "blob:stub";
     URL.revokeObjectURL = () => {};
     try {
-      fireEvent.click(screen.getByRole("button", { name: /CSV/ }));
+      fireEvent.click(screen.getByRole("button", { name: /직접 신고용 내려받기/ }));
       await waitFor(() => expect(clicked.length).toBeGreaterThan(0));
       expect(clicked[0]).toContain("기간미정");
       expect(clicked[0]).not.toMatch(/-_\./);

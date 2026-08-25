@@ -11,7 +11,8 @@ export default async function ExportPage() {
     // 첫 동기화 경합과 비멱등 앵커 재제출을 줄인다. 게이트가 아니므로 실패해도 렌더는 계속한다.
     const warmUp = await warmUpBeEventSync(await getSessionCookieHeaderForEventReader());
     if (warmUp.status === "failed") console.warn("BE 이벤트 warm-up이 실패했다.", warmUp);
-    return <ExportView />;
+    // 거주국은 DID 클레임에서 확정됐다 — 리포트가 귀속연도·룰셋을 서버에서 받아 estimate를 채운다.
+    return <ExportView countryCode={completed.countryCode} />;
   }
 
   const didSession = await requireDidSession();

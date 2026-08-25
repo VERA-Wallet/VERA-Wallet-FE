@@ -36,6 +36,7 @@ export const eventRepository: EventRepository = {
   list: async (input) => store.list(input),
   getById: async (id) => store.getById(id),
   reclassify: async (id, input) => store.reclassify(id, input),
+  setValueOverride: async (id, input) => store.setValueOverride(id, input),
 };
 
 export const summaryProvider: SummaryProvider = {

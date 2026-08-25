@@ -27,3 +27,19 @@ it("filters review tab to unknown price, unknown classification, or low confiden
   expect(screen.getByText("0.3 · USDC")).toBeInTheDocument();
   expect(screen.getByText("-0.4 · USDC")).toBeInTheDocument();
 });
+
+it("방향·분류 모순 건이 사유와 함께 확인 필요 큐에 나온다", async () => {
+  const [resolved, source] = createNormalizedEventFixtures();
+  // 체인상 OUT인데 자동 분류가 RECEIVE(취득)다 — 나간 자산을 취득으로 기록할 뻔한 모순.
+  const conflict = { ...source, id: "dir-conflict", raw_amount: "200000000000000000", classification: "RECEIVE" as const, direction: "OUT" as const };
+  ports.list.mockResolvedValue({ items: [resolved, conflict].map((event, index) => ({ event, version: index + 1 })), nextCursor: null });
+  ports.getSummary.mockResolvedValue({ periodPnl: "1", computableEventCount: 1, taxableEventCount: 1, pendingReviewCount: 1, currency: "KRW", period: { from: "a", to: "b" } });
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><DashboardView /></QueryClientProvider>);
+
+  const resolvedLabel = formatSignedTokenAmount(resolved);
+  await screen.findByText(`${resolvedLabel} · ETH`);
+  fireEvent.click(screen.getByRole("tab", { name: "확인 필요" }));
+  // 정합 건은 큐에서 빠지고, 모순 건은 "방향·분류 불일치" 사유와 함께 남는다.
+  expect(screen.queryByText(`${resolvedLabel} · ETH`)).not.toBeInTheDocument();
+  expect(screen.getByText("방향·분류 불일치")).toBeInTheDocument();
+});

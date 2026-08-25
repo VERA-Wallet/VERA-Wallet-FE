@@ -128,4 +128,6 @@ export const taxEstimateRequestSchema: z.ZodType<TaxEstimateRequest> = z.object(
     .optional(),
   includeMarginal: z.boolean().optional(),
   assumeEffective: z.boolean().optional(),
+  /** 자산별 2026-12-31 시가(원화). 자산 키 → 의제취득가액. KR 총평균 seed가 소비한다. */
+  deemedFmv: z.record(z.string(), decimalString).optional(),
 });
