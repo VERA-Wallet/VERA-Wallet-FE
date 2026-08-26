@@ -1,7 +1,7 @@
 "use client";
 
 import { CalendarRange, ChevronDown } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FLOW_RANGES } from "@/lib/portfolio/flow-series";
 import { DEFAULT_PERIOD, customPeriodError, isDefaultPeriod } from "@/lib/portfolio/period-selection";
 import type { PeriodSelection } from "@/lib/portfolio/period-selection";
@@ -18,6 +18,9 @@ import type { PeriodSelection } from "@/lib/portfolio/period-selection";
  * 이 선택이 무엇을 바꾸고 무엇을 **바꾸지 않는지**는 패널 안에서 밝힌다. 목록·그래프는 좁아지지만
  * 손익·계산 대상 건수는 과세연도 기준이라 흔들리지 않는다. 그 사실을 숨기면 사용자는
  * 기간을 좁혔는데 손익이 그대로인 화면을 보고 계산이 틀렸다고 읽게 된다.
+ *
+ * 패널은 흐름에 끼지 않고 **위에 뜬다**. 기간을 고르는 동안 목록이 아래로 밀려나면 사용자는
+ * 자기가 좁히려는 그 목록을 눈에서 놓치고, 닫는 순간 화면이 다시 튀어 오른다.
  */
 export function PeriodPicker({
   label,
@@ -35,6 +38,24 @@ export function PeriodPicker({
   const [from, setFrom] = useState(selection.kind === "custom" ? selection.from : "");
   const [to, setTo] = useState(selection.kind === "custom" ? selection.to : "");
   const [error, setError] = useState<string | null>(null);
+  const root = useRef<HTMLDivElement>(null);
+
+  // 떠 있는 패널은 아래 내용을 가린다 — 밀어내던 때와 달리 **닫는 길**이 분명해야 한다.
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!root.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
 
   const presetId = selection.kind === "preset" ? selection.id : null;
 
@@ -54,7 +75,7 @@ export function PeriodPicker({
   };
 
   return (
-    <div className="mt-1">
+    <div ref={root} className="relative mt-1">
       <button
         type="button"
         aria-expanded={open}
@@ -70,7 +91,8 @@ export function PeriodPicker({
       {open ? (
         <div
           data-surface="dashboard-period-picker"
-          className="mt-2 w-full max-w-md rounded-card border border-zinc-200 bg-white p-3 shadow-card"
+          // 뜬 패널이라 폭을 버튼에서 물려받을 수 없다 — 내용이 감기지 않을 만큼 잡고 화면 밖으로는 안 나가게 막는다.
+          className="absolute left-0 top-full z-50 mt-2 w-[min(24rem,calc(100vw-2.5rem))] rounded-card border border-zinc-200 bg-white p-3 shadow-card"
         >
           <div className="flex flex-wrap gap-1.5" aria-label="기간 프리셋">
             {FLOW_RANGES.map((range) => (
