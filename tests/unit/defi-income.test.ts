@@ -34,6 +34,9 @@ function receive(id: string, incomeKind: IncomeKind | null, fiat: string): Norma
     fiat_value: fiat,
     fiat_currency: "KRW",
     income_kind: incomeKind,
+    swap_to_symbol: null,
+    swap_to_icon_url: null,
+    bridge_dest_chain_id: null,
   };
 }
 

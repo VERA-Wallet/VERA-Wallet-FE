@@ -61,6 +61,19 @@ export function assetLabel(
 }
 
 /**
+ * 목록 한 줄에 쓰는 **티커**. `assetLabel`과 달리 NFT 토큰 번호(`#110`)를 붙이지 않는다 —
+ * 새 목록은 왼쪽에 거래 타입·티커만 압축해 싣고, 개체를 특정하는 번호는 거래 상세에서만 말한다.
+ * 심볼을 모르면 지어내지 않고 자산 타입으로 대체한다(`assetLabel`과 같은 원칙).
+ */
+export function assetTicker(
+  event: Pick<NormalizedEvent, "asset_type" | "chain_id" | "asset_symbol">,
+): string {
+  const symbol = event.asset_symbol;
+  if (event.asset_type === "NATIVE") return symbol ?? NATIVE_SYMBOL[event.chain_id] ?? "NATIVE";
+  return symbol ?? event.asset_type;
+}
+
+/**
  * 방향까지 담은 수량 표기. 나간 자산은 `-`, 들어온 자산은 `+`.
  *
  * 색만으로 구분하면 색을 구분하지 못하는 사용자에게는 아무 정보가 아니다 — 부호를 함께 둔다.

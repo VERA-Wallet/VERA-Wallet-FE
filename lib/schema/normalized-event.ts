@@ -120,6 +120,23 @@ export const normalizedEventSchema = z
      * 와도 파싱이 깨지지 않는다(asset_symbol·value_override default 패턴과 동일).
      */
     income_kind: incomeKindSchema.nullable().default(null),
+    /**
+     * **스왑(EXCHANGE)에서 받은 상대 자산의 심볼** — 목록에서 "무엇을 무엇으로 바꿨나"를
+     * 두 로고로 보이기 위한 **표시 힌트**다(계산에는 쓰지 않는다 — EXCHANGE 손익은 여전히
+     * 피아트 처분으로 근사한다). 지갑 데이터에 상대 자산이 잡히기 전까지는 null이고,
+     * 그때 목록은 종래대로 단일 로고로 그린다. `default(null)`은 이 칸을 모르는 옛 응답에도
+     * 파싱이 깨지지 않게 하는 버전 스큐 방어다(asset_symbol 패턴과 동일).
+     */
+    swap_to_symbol: z.string().min(1).nullable().default(null),
+    /** 스왑 상대 자산의 로고. 없으면 null이고 화면은 대체 마크(심볼 이니셜)로 그린다. */
+    swap_to_icon_url: z.string().min(1).nullable().default(null),
+    /**
+     * **브릿지(크로스체인 이동)의 도착 체인 id** — 이동이 어느 체인으로 갔는지를 목록에서
+     * 두 체인 배지로 보이기 위한 **표시 힌트**다. 한 이벤트는 출발 체인(chain_id)만 담으므로
+     * 도착 체인은 별도로 싣는다. null이면 단일 체인 이동으로 보고 종래대로 그린다.
+     * 계산에는 영향이 없다(INTERNAL_TRANSFER는 처분이 아니다).
+     */
+    bridge_dest_chain_id: z.number().int().positive().nullable().default(null),
   })
   .superRefine((event, ctx) => {
     if (event.price_status === "UNKNOWN" && event.fiat_value !== null) {

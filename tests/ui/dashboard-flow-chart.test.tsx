@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { FlowChart } from "@/components/dashboard/flow-chart";
 import type { NormalizedEvent } from "@/lib/schema/normalized-event";
@@ -30,6 +30,9 @@ function event(overrides: Partial<NormalizedEvent> & { id: string }): Normalized
     fiat_value: "1000000",
     fiat_currency: "KRW",
     income_kind: null,
+    swap_to_symbol: null,
+    swap_to_icon_url: null,
+    bridge_dest_chain_id: null,
     ...overrides,
   };
   // 방향을 지정하지 않은 케이스는 분류에 맞춰 준다(SEND는 OUT, 그 외는 IN).
@@ -133,5 +136,71 @@ describe("내역 화면의 지갑 이력 그래프", () => {
     expect(ranges.getByRole("button", { name: "전체" })).toHaveAttribute("aria-pressed", "true");
     // "최근"이 무엇을 가리키는지 숨기지 않는다 — 기준은 벽시계가 아니라 마지막 거래다.
     expect(chart().textContent).toContain("마지막 거래 기준");
+  });
+
+  it("선 위의 한 지점을 짚으면 그때가 언제 얼마였는지 말한다", () => {
+    render(<FlowChart events={wallet} state="ready" />);
+    // 짚기 전에는 아무 값도 떠 있지 않다 — 없는 지점을 가리키는 말풍선은 거짓이다.
+    expect(screen.queryByTestId("flow-point")).not.toBeInTheDocument();
+
+    const layer = screen.getByRole("group", { name: /선 위 지점 살펴보기/ });
+    // 방향키로도 짚을 수 있어야 한다. 포인터로만 읽히는 값은 없는 값과 같다.
+    fireEvent.keyDown(layer, { key: "ArrowRight" });
+    const point = screen.getByTestId("flow-point");
+    expect(point.textContent).toContain("₩1,000,000");
+    expect(point.textContent).toContain("2025. 1. 10.");
+
+    fireEvent.keyDown(layer, { key: "ArrowRight" });
+    expect(screen.getByTestId("flow-point").textContent).toContain("₩600,000");
+
+    fireEvent.keyDown(layer, { key: "Escape" });
+    expect(screen.queryByTestId("flow-point")).not.toBeInTheDocument();
+  });
+
+  it("짚은 값도 금액 가리기를 따른다", () => {
+    render(<FlowChart events={wallet} state="ready" hideBalances />);
+    fireEvent.keyDown(screen.getByRole("group", { name: /선 위 지점 살펴보기/ }), { key: "ArrowRight" });
+    const point = screen.getByTestId("flow-point");
+    expect(point.textContent).not.toContain("₩");
+    // 금액만 가린다 — 언제인지는 가릴 이유가 없다.
+    expect(point.textContent).toContain("2025. 1. 10.");
+  });
+
+  it("기간을 바꾸면 짚고 있던 자리를 놓는다", () => {
+    render(<FlowChart events={wallet} state="ready" />);
+    fireEvent.keyDown(screen.getByRole("group", { name: /선 위 지점 살펴보기/ }), { key: "ArrowRight" });
+    expect(screen.getByTestId("flow-point")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "1개월" }));
+    // 창이 달라지면 같은 인덱스는 더 이상 같은 거래가 아니다. 남겨 두면 엉뚱한 값을 짚는다.
+    expect(screen.queryByTestId("flow-point")).not.toBeInTheDocument();
+  });
+
+  it("기간을 밖에서 정해 주면 그 창을 그대로 자른다", () => {
+    const onSelect = vi.fn();
+    render(
+      <FlowChart
+        events={wallet}
+        state="ready"
+        selection={{ kind: "custom", from: "2025-01-01", to: "2025-02-28" }}
+        period={{
+          fromMs: Date.parse("2025-01-01T00:00:00.000Z"),
+          toMs: Date.parse("2025-02-28T23:59:59.999Z"),
+          from: "2025-01-01",
+          to: "2025-02-28",
+        }}
+        onSelect={onSelect}
+      />,
+    );
+    // 1/10 +100만 → 2/10 −40만 = +60만. 3/10 건은 창 밖이라 들어오지 않는다.
+    expect(screen.getByTestId("flow-change").textContent).toContain("+₩600,000");
+    expect(chart().textContent).toContain("선택 기간 변화");
+    // 프리셋 어느 것도 아니라는 사실을 숨기지 않는다.
+    expect(screen.getByText("직접 지정")).toBeInTheDocument();
+
+    // 제어 상태에서는 스스로 창을 바꾸지 않고 바꿔 달라고 말할 뿐이다.
+    fireEvent.click(screen.getByRole("button", { name: "1개월" }));
+    expect(onSelect).toHaveBeenCalledWith({ kind: "preset", id: "1M" });
+    expect(screen.getByTestId("flow-change").textContent).toContain("+₩600,000");
   });
 });
