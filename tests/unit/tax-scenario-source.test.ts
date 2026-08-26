@@ -88,10 +88,13 @@ describe("데모 시나리오 출처", () => {
     expect(assumed.lines.find((line) => line.key === "net_gains")?.amount).toBe(
       fact.lines.find((line) => line.key === "ledger_gains")?.amount,
     );
-    // 방향·분류 모순 4건(2025년 event-06·07·16·17)이 엔진 진입 전 게이트에서 빠져 과세표준이 줄었다.
-    // 30,700,000 × 22%(KR) = 6,754,000.
-    expect(assumed.totals.taxableBase).toBe("30700000");
-    expect(assumed.totals.estimatedCharge).toBe("6754000");
+    // 방향·분류 모순 4건(2025년 event-06·07·16·17)이 엔진 진입 전 게이트에서 빠져 양도 손익이 줄었다.
+    // 여기에 대여 이자(event-48 LENDING · 19,200,000)가 과세 income으로 더해진다
+    // (스테이킹·디파이 보상은 판정 보류라 총수입금액에서 빠진다).
+    // 양도분 30,700,000 + 대여 이자 19,200,000 = 과세표준 49,900,000 × 22%(KR) = 10,978,000.
+    expect(assumed.totals.taxableBase).toBe("49900000");
+    expect(assumed.totals.estimatedCharge).toBe("10978000");
+    expect(assumed.totals.incomeTotal).toBe("19200000");
     expect(assumed.notes[0]).toContain("실제 부담은 0원입니다");
   });
 });

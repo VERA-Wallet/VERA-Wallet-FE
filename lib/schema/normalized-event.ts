@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import type { IncomeKind } from "@/lib/tax/types";
+
 const decimalString = z.string().regex(/^-?\d+(?:\.\d+)?$/);
 
 export const classificationSchema = z.enum([
@@ -9,6 +11,21 @@ export const classificationSchema = z.enum([
   "INTERNAL_TRANSFER",
   "UNKNOWN",
 ]);
+
+/**
+ * 수령분(INCOME)의 소득 종류. `lib/tax/types.ts`의 `IncomeKind`가 단일 진실 원천이며,
+ * `satisfies`로 그 유니온을 벗어난 값이 섞이면 컴파일 타임에 잡는다.
+ */
+const INCOME_KINDS = [
+  "STAKING",
+  "LENDING",
+  "AIRDROP",
+  "AIRDROP_INITIAL",
+  "MINING",
+  "DEFI_REWARD",
+] as const satisfies readonly IncomeKind[];
+
+export const incomeKindSchema = z.enum(INCOME_KINDS);
 
 export const normalizedEventSchema = z
   .object({
@@ -94,6 +111,32 @@ export const normalizedEventSchema = z
     price_status: z.enum(["RESOLVED", "UNKNOWN", "ESTIMATED"]),
     fiat_value: decimalString.nullable(),
     fiat_currency: z.string().min(1),
+    /**
+     * DeFi 수익(수령분) 종류. 값이 있으면 이 취득(RECEIVE·IN)은 매수가 아니라 **소득 수령**이며,
+     * derive가 ACQUIRE 대신 INCOME 세무 이벤트로 매핑한다(fmv = 원화 평가액).
+     * null이면 종래대로 취득으로 본다.
+     *
+     * `default(null)`은 **버전 스큐 방어**다. 이 칸을 모르는 옛 응답(구버전 BE·재시드 전 dev 스토어)이
+     * 와도 파싱이 깨지지 않는다(asset_symbol·value_override default 패턴과 동일).
+     */
+    income_kind: incomeKindSchema.nullable().default(null),
+    /**
+     * **스왑(EXCHANGE)에서 받은 상대 자산의 심볼** — 목록에서 "무엇을 무엇으로 바꿨나"를
+     * 두 로고로 보이기 위한 **표시 힌트**다(계산에는 쓰지 않는다 — EXCHANGE 손익은 여전히
+     * 피아트 처분으로 근사한다). 지갑 데이터에 상대 자산이 잡히기 전까지는 null이고,
+     * 그때 목록은 종래대로 단일 로고로 그린다. `default(null)`은 이 칸을 모르는 옛 응답에도
+     * 파싱이 깨지지 않게 하는 버전 스큐 방어다(asset_symbol 패턴과 동일).
+     */
+    swap_to_symbol: z.string().min(1).nullable().default(null),
+    /** 스왑 상대 자산의 로고. 없으면 null이고 화면은 대체 마크(심볼 이니셜)로 그린다. */
+    swap_to_icon_url: z.string().min(1).nullable().default(null),
+    /**
+     * **브릿지(크로스체인 이동)의 도착 체인 id** — 이동이 어느 체인으로 갔는지를 목록에서
+     * 두 체인 배지로 보이기 위한 **표시 힌트**다. 한 이벤트는 출발 체인(chain_id)만 담으므로
+     * 도착 체인은 별도로 싣는다. null이면 단일 체인 이동으로 보고 종래대로 그린다.
+     * 계산에는 영향이 없다(INTERNAL_TRANSFER는 처분이 아니다).
+     */
+    bridge_dest_chain_id: z.number().int().positive().nullable().default(null),
   })
   .superRefine((event, ctx) => {
     if (event.price_status === "UNKNOWN" && event.fiat_value !== null) {
@@ -105,6 +148,11 @@ export const normalizedEventSchema = z
     // 심볼 없이 "검증됨"이라 말할 수 없다 — 무엇을 대조했다는 것인지 가리킬 대상이 없다.
     if (event.asset_verified && event.asset_symbol === null) {
       ctx.addIssue({ code: "custom", path: ["asset_symbol"], message: "Verified assets require a symbol" });
+    }
+    // 수익 수령은 자산이 지갑으로 들어오는 흐름이다. 나가는(OUT) 이벤트에 income_kind가 붙으면
+    // derive가 취득으로 볼지 소득으로 볼지 모순되므로 원본 결함으로 잡는다.
+    if (event.income_kind !== null && event.direction !== "IN") {
+      ctx.addIssue({ code: "custom", path: ["income_kind"], message: "income_kind requires direction IN" });
     }
   });
 

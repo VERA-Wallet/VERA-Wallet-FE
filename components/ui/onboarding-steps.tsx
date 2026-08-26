@@ -1,3 +1,5 @@
+import { Check } from "lucide-react";
+
 const STEPS = ["거주국 인증", "지갑 연결"] as const;
 
 export function OnboardingSteps({ current }: { current: 1 | 2 }) {
@@ -15,7 +17,7 @@ export function OnboardingSteps({ current }: { current: 1 | 2 }) {
                 active ? "bg-primary-500 text-white" : done ? "bg-primary-100 text-primary-700" : "bg-zinc-100 text-zinc-400"
               }`}
             >
-              {done ? <span aria-hidden="true">✓</span> : null}
+              {done ? <Check aria-hidden="true" className="size-3.5 shrink-0" strokeWidth={3} /> : null}
               {/* 번호는 순서 의무를 암시하는데 지갑 연결은 선택 단계다 */}
               {label === "지갑 연결" && !active && !done ? `${label} — 나중에 가능` : label}
             </span>

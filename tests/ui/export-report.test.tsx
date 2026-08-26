@@ -11,6 +11,14 @@ vi.mock("@/lib/composition-root.client", () => ({
   taxEngine: { estimate: ports.estimate },
 }));
 
+// 리포트 금액 노출은 이제 구독을 전제로 한다 — 활성 플랜을 심어야 금액이 마스킹 없이 보인다.
+// 한도표·잠금 판정은 실제 모듈을 그대로 태운다(usePlan만 더블로 바꾼다).
+vi.mock("@/lib/plan/use-plan", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/plan/use-plan")>();
+  const plusPlan = { tier: "plus" as const, taxYear: 2027, activatedAt: "2027-01-01T00:00:00.000Z" };
+  return { ...actual, usePlan: () => ({ plan: plusPlan, activate: vi.fn(), deactivate: vi.fn() }) };
+});
+
 import { ExportView } from "@/components/export/export-view";
 
 const estimate: TaxEstimate = {

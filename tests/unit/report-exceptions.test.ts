@@ -29,6 +29,10 @@ function event(id: string, fiat: string | null): NormalizedEvent {
     price_status: fiat === null ? "UNKNOWN" : "RESOLVED",
     fiat_value: fiat,
     fiat_currency: "KRW",
+    income_kind: null,
+    swap_to_symbol: null,
+    swap_to_icon_url: null,
+    bridge_dest_chain_id: null,
   };
 }
 

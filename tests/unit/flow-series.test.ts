@@ -29,6 +29,10 @@ function event(overrides: Partial<NormalizedEvent> & { id: string }): Normalized
     price_status: "RESOLVED",
     fiat_value: "1000",
     fiat_currency: "KRW",
+    income_kind: null,
+    swap_to_symbol: null,
+    swap_to_icon_url: null,
+    bridge_dest_chain_id: null,
     ...overrides,
   };
   // 방향을 지정하지 않은 케이스는 분류에 맞춰 준다(SEND는 OUT, 그 외는 IN).

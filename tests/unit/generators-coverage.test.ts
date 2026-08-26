@@ -16,8 +16,8 @@ describe("fixture coverage", () => {
   it("covers every required state deterministically", () => {
     const events = fixtures();
     expect(events).toEqual(fixtures());
-    // 25(기준) + 10(다음 해) + 10(시행연도 2027 처분 쇼케이스) = 45.
-    expect(events).toHaveLength(45);
+    // 25(기준) + 10(다음 해) + 10(시행연도 2027 처분 쇼케이스) + 3(DeFi 수익) = 48.
+    expect(events).toHaveLength(48);
     expect(new Set(events.map((event) => event.classification))).toEqual(ALL_CLASSIFICATIONS);
     expect(new Set(events.map((event) => event.chain_id))).toEqual(ALL_CHAINS);
     expect(new Set(events.map((event) => event.fiat_currency))).toEqual(new Set(["KRW"]));
@@ -54,11 +54,23 @@ describe("fixture coverage", () => {
   it("시행연도(2027) 처분 쇼케이스 배치는 처분만 담는다", () => {
     // 시행연도 리포트를 데모에서 보이게 하려면 그 해에 처분이 있어야 한다(취득만 있으면 부담 0).
     // 이 배치는 미래(2027) 날짜라 정상이면 미래 필터에 걸리지만, mock 쇼케이스라 의도적으로 살린다.
-    const showcase = fixtures().slice(35);
+    // 쇼케이스는 35~44번(10건)이고, 그 뒤 45~47번은 DeFi 수익 배치다.
+    const showcase = fixtures().slice(35, 45);
     expect(showcase).toHaveLength(10);
     expect(showcase.every((event) => event.block_timestamp.startsWith(String(FIXTURE_TAX_YEAR + 2)))).toBe(true);
     // SEND·EXCHANGE(처분)만 — RECEIVE(취득)·INTERNAL_TRANSFER·UNKNOWN은 없다.
     expect(new Set(showcase.map((event) => event.classification))).toEqual(new Set(["SEND", "EXCHANGE"]));
     expect(new Set(showcase.map((event) => event.id)).size).toBe(10);
+  });
+
+  it("DeFi 수익 배치는 종류별 수령분을 담는다", () => {
+    // 지갑 파이프라인이 income을 표현하는지 데모에서 보이게 하는 배치다. 스테이킹·디파이 보상·대여 이자를 담는다.
+    const income = fixtures().slice(45);
+    expect(income).toHaveLength(3);
+    // 전부 기준 연도(2025) RECEIVE·방향 IN·income_kind 설정·원화 평가액 있음.
+    expect(income.every((event) => event.block_timestamp.startsWith(String(FIXTURE_TAX_YEAR)))).toBe(true);
+    expect(income.every((event) => event.classification === "RECEIVE" && event.direction === "IN")).toBe(true);
+    expect(income.every((event) => event.fiat_value !== null && event.price_status === "RESOLVED")).toBe(true);
+    expect(new Set(income.map((event) => event.income_kind))).toEqual(new Set(["STAKING", "DEFI_REWARD", "LENDING"]));
   });
 });

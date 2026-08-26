@@ -18,14 +18,14 @@ it("filters review tab to unknown price, unknown classification, or low confiden
   render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><DashboardView /></QueryClientProvider>);
   // 얻은 것은 `+`, 쓴 것은 `-`. 부호까지가 카드 제목이다.
   const resolvedLabel = formatSignedTokenAmount(resolved);
-  await screen.findByText(`${resolvedLabel} · ETH`);
+  await screen.findByText(`${resolvedLabel} ETH`);
   fireEvent.click(screen.getByRole("tab", { name: "확인 필요" }));
-  expect(screen.queryByText(`${resolvedLabel} · ETH`)).not.toBeInTheDocument();
+  expect(screen.queryByText(`${resolvedLabel} ETH`)).not.toBeInTheDocument();
   // 심볼이 채워지면 목록은 "ERC20"이 아니라 토큰 이름을 부른다.
   // 분류가 UNKNOWN인 건은 쓴 것도 얻은 것도 아니라 부호를 붙이지 않는다 — 붙이면 처분이라 단정하는 셈이다.
-  expect(screen.getByText("-0.2 · USDC")).toBeInTheDocument();
-  expect(screen.getByText("0.3 · USDC")).toBeInTheDocument();
-  expect(screen.getByText("-0.4 · USDC")).toBeInTheDocument();
+  expect(screen.getByText("-0.2 USDC")).toBeInTheDocument();
+  expect(screen.getByText("0.3 USDC")).toBeInTheDocument();
+  expect(screen.getByText("-0.4 USDC")).toBeInTheDocument();
 });
 
 it("방향·분류 모순 건이 사유와 함께 확인 필요 큐에 나온다", async () => {
@@ -37,9 +37,12 @@ it("방향·분류 모순 건이 사유와 함께 확인 필요 큐에 나온다
   render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><DashboardView /></QueryClientProvider>);
 
   const resolvedLabel = formatSignedTokenAmount(resolved);
-  await screen.findByText(`${resolvedLabel} · ETH`);
+  await screen.findByText(`${resolvedLabel} ETH`);
   fireEvent.click(screen.getByRole("tab", { name: "확인 필요" }));
-  // 정합 건은 큐에서 빠지고, 모순 건은 "방향·분류 불일치" 사유와 함께 남는다.
-  expect(screen.queryByText(`${resolvedLabel} · ETH`)).not.toBeInTheDocument();
-  expect(screen.getByText("방향·분류 불일치")).toBeInTheDocument();
+  // 정합 건은 큐에서 빠지고, 모순 건(방향 OUT·분류 RECEIVE)은 확인 필요 큐에 남는다.
+  // (목록 재설계로 사유 배지는 목록에서 빠졌다 — 사유 문구 자체는 아래 상세로 이관 대상이나
+  //  일반 모순 사유는 아직 EventDetails에 표면이 없어, 여기서는 큐 편입만 검증한다.)
+  expect(screen.queryByText(`${resolvedLabel} ETH`)).not.toBeInTheDocument();
+  // RECEIVE 분류라 흐름은 IN(+), 방향 OUT은 모순이지만 라벨 부호는 유효 분류를 따른다.
+  expect(screen.getByText(`${formatSignedTokenAmount(conflict)} USDC`)).toBeInTheDocument();
 });

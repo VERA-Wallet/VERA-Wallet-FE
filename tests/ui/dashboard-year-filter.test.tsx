@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DashboardView } from "@/components/dashboard/dashboard-view";
-import { assetLabel, formatSignedTokenAmount } from "@/lib/format";
+import { assetTicker, chainLabel, formatSignedTokenAmount } from "@/lib/format";
 import { FIXTURE_TAX_YEAR } from "@/tests/fixtures/tax-year";
 import { createNormalizedEventFixtures } from "@/tests/fixtures/generated/normalized-events";
 import { TaxEngineService } from "@/lib/tax/tax-engine-service.server";
@@ -87,7 +87,14 @@ function renderDashboard() {
 
 const cardsOf = (container: HTMLElement) => [...container.querySelectorAll("section .mt-3.grid.gap-3 > button")];
 const yearOf = (event: NormalizedEvent) => Number(event.block_timestamp.slice(0, 4));
-const rowLabel = (event: NormalizedEvent) => `${formatSignedTokenAmount(event)} · ${assetLabel(event)}`;
+function rowLabel(event: NormalizedEvent) {
+  // 목록 티커 줄과 같은 규칙: 스왑은 "보낸 → 받은", 브릿지는 "출발 → 도착 · 자산",
+  // NFT는 번호 없이 티커만, 그 밖은 부호 붙은 수량과 티커.
+  if (event.swap_to_symbol !== null) return `${assetTicker(event)} → ${event.swap_to_symbol}`;
+  if (event.bridge_dest_chain_id !== null) return `${formatSignedTokenAmount(event)} ${assetTicker(event)} · ${chainLabel(event.chain_id)} → ${chainLabel(event.bridge_dest_chain_id)}`;
+  if (event.token_id !== null) return assetTicker(event);
+  return `${formatSignedTokenAmount(event)} ${assetTicker(event)}`;
+}
 const yearChip = (year: number) => new RegExp(`^${year}년`);
 
 /** 판정이 정착했는가 — 모든 카드가 "판정 확인 중"에서 벗어나면 도착한 것이다. */
@@ -96,7 +103,8 @@ async function settled(container: HTMLElement) {
     () => {
       const cards = cardsOf(container);
       expect(cards.length).toBeGreaterThan(0);
-      expect(cards.some((card) => /판정 확인 중|판정 미계산/.test(card.textContent ?? ""))).toBe(false);
+      // 배지가 목록에서 빠진 뒤로 정착 신호는 손익 블록의 존재다(보류면 렌더되지 않는다).
+      expect(cards.every((card) => card.querySelector('[data-surface="event-gain"]'))).toBe(true);
     },
     { timeout: 5000 },
   );
@@ -157,18 +165,21 @@ describe("연도 필터", () => {
     expect(cardsOf(container)).toHaveLength(all);
   });
 
-  it("연도를 걸어도 판정 도장과 요약 금액은 흔들리지 않는다", async () => {
+  it("연도를 걸어도 행 내용과 요약 금액은 흔들리지 않는다", async () => {
     // 연도는 표시 필터다. 판정·요약까지 좁히면 사용자가 고른 해의 세금을 본 것으로 오해한다.
+    // 행을 id로 특정한다 — 티커는 NFT 번호가 빠져 중복될 수 있어 라벨로는 한 행을 못 집는다.
     const { container } = renderDashboard();
     await settled(container);
     const summaryBefore = screen.getByText("예상 손익").parentElement?.textContent;
     const target = TWO_YEARS.filter((event) => yearOf(event) === FIXTURE_TAX_YEAR + 1).at(-1)!;
-    const stampBefore = screen.getByText(rowLabel(target)).closest("button")!.textContent;
+    const rowOf = (id: string) => container.querySelector(`[data-event-id="${id}"]`)!;
+    const rowBefore = rowOf(target.id).textContent;
 
     fireEvent.click(screen.getByRole("button", { name: yearChip(FIXTURE_TAX_YEAR + 1) }));
 
     expect(screen.getByText("예상 손익").parentElement?.textContent).toBe(summaryBefore);
-    expect(screen.getByText(rowLabel(target)).closest("button")!.textContent).toBe(stampBefore);
+    // 필터 후에도 그 해의 행은 남고, 손익·수량 등 렌더 내용이 그대로여야 한다(연도는 표시만 좁힌다).
+    expect(rowOf(target.id).textContent).toBe(rowBefore);
   });
 
   it("연도가 하나뿐이면 스트립 자체를 숨긴다", async () => {

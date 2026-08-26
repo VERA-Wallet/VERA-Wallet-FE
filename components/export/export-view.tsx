@@ -1,5 +1,6 @@
 "use client";
 
+import { ArrowRight, ChevronDown, Lock } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -167,8 +168,12 @@ export function ExportView({ countryCode }: { countryCode?: string } = {}) {
   const billableCount = summary?.computableEventCount ?? 0;
   const allowance = exportEventAllowance(plan);
   const planName = plan === null ? "무료" : planDefinition(plan.tier).name;
+  // 유료 플랜(plan !== null)이 있어야 구독으로 본다. 구독 전에는 리포트 금액을 잠그고 배너로 안내한다.
+  const subscribed = plan !== null;
   // 요약을 아직 못 읽었으면 잠그지 않는다 — 건수를 모르는 상태의 자물쇠는 근거 없는 자물쇠다.
   const locked = summary !== null && billableCount > allowance;
+  // 다운로드 잠금은 두 조건의 OR다: 미구독이면 무조건 잠기고, 구독 중이어도 allowance를 넘으면 잠긴다.
+  const downloadLocked = !subscribed || locked;
 
   return (
     <main className="mx-auto min-h-dvh w-full max-w-md px-5 py-8">
@@ -187,7 +192,7 @@ export function ExportView({ countryCode }: { countryCode?: string } = {}) {
             className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary-50 px-3 py-1 text-sm font-semibold text-primary-600"
           >
             <span>{selectedYear}년 귀속</span>
-            <span aria-hidden>▾</span>
+            <ChevronDown aria-hidden className="size-4 shrink-0" strokeWidth={2.5} />
           </button>
         )}
       </div>
@@ -203,7 +208,7 @@ export function ExportView({ countryCode }: { countryCode?: string } = {}) {
           <span>
             <span className="font-semibold">확인 필요 {nudgeCount}건</span> · 정리하면 더 정확해져요
           </span>
-          <span aria-hidden className="shrink-0 font-semibold">→</span>
+          <ArrowRight aria-hidden className="size-4 shrink-0" strokeWidth={2.5} />
         </Link>
       )}
 
@@ -243,6 +248,29 @@ export function ExportView({ countryCode }: { countryCode?: string } = {}) {
         )
       )}
 
+      {/* 2-c. 플랜 CTA 배너 — 미구독(plan === null)일 때 리포트 위에 띄운다. 금액·다운로드가
+          구독 후 열린다는 사실을 자물쇠와 함께 말하고 /plan으로 보낸다. mock 결제라는 사실은
+          리포트/다운로드 카드의 기존 mock 배지·문구가 그대로 유지한다. */}
+      {estimate && !subscribed && (
+        <Link
+          href="/plan"
+          data-surface="plan-cta"
+          className="mt-5 flex items-center justify-between gap-3 rounded-card border border-primary-200 bg-primary-50 p-4"
+        >
+          <span className="flex items-center gap-3">
+            <Lock aria-hidden className="size-5 shrink-0 text-primary-600" strokeWidth={2} />
+            <span className="text-sm leading-6 text-zinc-700">
+              <span className="block font-semibold text-primary-600">플랜을 구독하면 리포트가 열립니다</span>
+              <span className="block text-zinc-600">금액과 다운로드는 구독 후 공개됩니다.</span>
+            </span>
+          </span>
+          <span className="flex shrink-0 items-center gap-1 font-semibold text-primary-600">
+            플랜 보기
+            <ArrowRight aria-hidden className="size-4 shrink-0" strokeWidth={2.5} />
+          </span>
+        </Link>
+      )}
+
       {/* 3. 리포트 카드 (그룹형 · estimate 파생) */}
       {estimate && (
         <Card className="mt-5">
@@ -275,18 +303,48 @@ export function ExportView({ countryCode }: { countryCode?: string } = {}) {
                           : "text-sm text-zinc-700"
                     }`}
                   >
-                    {line.role === "subtract" ? "− " : ""}
-                    {formatFiat(filingAmount(line.source), estimate.currency)}
+                    {subscribed ? (
+                      <>
+                        {line.role === "subtract" ? "− " : ""}
+                        {formatFiat(filingAmount(line.source), estimate.currency)}
+                      </>
+                    ) : (
+                      // 미구독: 라벨은 그대로 두고 금액만 잠금 플레이스홀더(자물쇠 + 블러 회색 바)로 가린다.
+                      <span
+                        data-locked="amount"
+                        aria-label="구독 후 공개"
+                        className="inline-flex select-none items-center gap-1 align-middle"
+                      >
+                        <Lock aria-hidden className="size-3 shrink-0 text-zinc-400" strokeWidth={2.5} />
+                        <span
+                          aria-hidden
+                          className={`inline-block rounded bg-zinc-200 blur-[2px] ${
+                            line.role === "total" ? "h-4 w-20" : "h-3 w-14"
+                          }`}
+                        />
+                      </span>
+                    )}
                   </dd>
                 </div>
               );
             })}
           </dl>
-          {confidenceParts.length > 0 && (
-            <p className="mt-4 inline-flex rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-600 tabular-nums">
-              {confidenceParts.join(" · ")}
-            </p>
-          )}
+          {confidenceParts.length > 0 &&
+            (subscribed ? (
+              <p className="mt-4 inline-flex rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-600 tabular-nums">
+                {confidenceParts.join(" · ")}
+              </p>
+            ) : (
+              // 미구독: 신뢰도 칩도 수치를 가린다 — 신호가 있다는 사실만 남기고 값은 잠근다.
+              <p
+                data-locked="confidence"
+                aria-label="구독 후 공개"
+                className="mt-4 inline-flex select-none items-center gap-1 rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-600"
+              >
+                <Lock aria-hidden className="size-3 shrink-0 text-zinc-400" strokeWidth={2.5} />
+                <span aria-hidden className="inline-block h-3 w-16 rounded bg-zinc-200 blur-[2px]" />
+              </p>
+            ))}
         </Card>
       )}
 
@@ -333,12 +391,14 @@ export function ExportView({ countryCode }: { countryCode?: string } = {}) {
             </div>
             <p className="mt-1 text-sm leading-6 text-zinc-500">홈택스 본인 신고용 · CSV 원장(거래 부속명세)</p>
             <button
-              className="mt-3 w-full rounded-xl bg-primary-500 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={!ready || locked}
+              className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl bg-primary-500 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+              data-locked={downloadLocked ? "download" : undefined}
+              disabled={!ready || downloadLocked}
               type="button"
               onClick={() => download(createReportLedgerCsv(events, estimate), "text/csv;charset=utf-8", `verawallet-신고근거-${filenamePeriod}.csv`)}
             >
-              {locked ? "🔒 " : ""}직접 신고용 내려받기
+              {downloadLocked && <Lock aria-hidden className="size-4 shrink-0" strokeWidth={2.5} />}
+              직접 신고용 내려받기
             </button>
           </div>
 
@@ -349,12 +409,14 @@ export function ExportView({ countryCode }: { countryCode?: string } = {}) {
               XLSX 4시트 · 요약(신고 기입란) · 자산별(취득가액 명세) · 원장(거래 부속명세) · 예외(판단보류·미반영)
             </p>
             <button
-              className="mt-3 w-full rounded-xl border border-primary-500 py-3 font-semibold text-primary-600 disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={!ready || !summary || locked}
+              className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl border border-primary-500 py-3 font-semibold text-primary-600 disabled:cursor-not-allowed disabled:opacity-50"
+              data-locked={downloadLocked ? "download" : undefined}
+              disabled={!ready || !summary || downloadLocked}
               type="button"
               onClick={() => download(createReportXlsx(events, estimate), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", `verawallet-신고근거-${filenamePeriod}.xlsx`)}
             >
-              {locked ? "🔒 " : ""}세무사 전달용 내려받기
+              {downloadLocked && <Lock aria-hidden className="size-4 shrink-0" strokeWidth={2.5} />}
+              세무사 전달용 내려받기
             </button>
           </div>
         </div>
@@ -365,14 +427,14 @@ export function ExportView({ countryCode }: { countryCode?: string } = {}) {
           <Link
             href="/plan"
             className={`mt-3 flex items-center justify-between gap-3 rounded-card border p-3 text-sm ${
-              locked ? "border-amber-200 bg-amber-50 text-amber-900" : "border-zinc-200 bg-zinc-50 text-zinc-600"
+              downloadLocked ? "border-amber-200 bg-amber-50 text-amber-900" : "border-zinc-200 bg-zinc-50 text-zinc-600"
             }`}
           >
             <span>
               {`${planName} 플랜 ${allowance.toLocaleString("ko-KR")}건까지 · 현재 ${billableCount.toLocaleString("ko-KR")}건`}
-              {locked && (plan === null ? " — 플랜이 필요합니다" : " — 상위 플랜이 필요합니다")}
+              {downloadLocked && (plan === null ? " — 플랜이 필요합니다" : " — 상위 플랜이 필요합니다")}
             </span>
-            <span className={`shrink-0 font-semibold underline ${locked ? "" : "text-primary-600"}`}>플랜 보기</span>
+            <span className={`shrink-0 font-semibold underline ${downloadLocked ? "" : "text-primary-600"}`}>플랜 보기</span>
           </Link>
         )}
       </Card>

@@ -1,5 +1,6 @@
 import { demoTaxYear } from "@/lib/tax/demo-calendar";
 import type { Classification, NormalizedEvent } from "@/lib/schema/normalized-event";
+import type { IncomeKind } from "@/lib/tax/types";
 
 const chains = [1, 8453, 42161, 10, 137] as const;
 const classifications: Classification[] = ["RECEIVE", "SEND", "EXCHANGE", "INTERNAL_TRANSFER", "UNKNOWN"];
@@ -65,6 +66,30 @@ const SHOWCASE_DISPOSALS: { classification: Extract<Classification, "SEND" | "EX
 
 /** 이벤트 번호 1건당 원화 금액. 25건이 ₩40만~₩1,000만 사이에 퍼진다. */
 const PER_EVENT_KRW = 400_000;
+
+/**
+ * DeFi 수익(수령분) 데모 배치.
+ *
+ * 지갑 파이프라인이 income을 표현하는지 데모에서 보이려면 실제 수령 이벤트가 있어야 한다.
+ * 스테이킹 보상·디파이 보상·대여 이자를 각각 담는다 — 전부 기준 연도(taxYear) 공통 창(7/1~) 안,
+ * RECEIVE·방향 IN, income_kind 설정, 원화 평가액(fiat_value) 있음. 과거(기준 연도)라 미래 필터와 무관하다.
+ *
+ * KR에서 대여 이자(LENDING)만 과세 income(대여 대가)이고, 스테이킹·디파이 보상은 명문 규정이 없어
+ * 판정 보류로 예외·미결 질문에 뜬다(시행 후 또는 시행 가정에서).
+ */
+const INCOME_EVENTS: {
+  incomeKind: IncomeKind;
+  symbol: string;
+  counterparty: string;
+  /** ERC20 18 decimals 원시 수량. */
+  rawAmount: string;
+}[] = [
+  { incomeKind: "STAKING", symbol: "stETH", counterparty: "Lido: stETH staking rewards", rawAmount: `4${"0".repeat(16)}` }, // 0.04 stETH
+  { incomeKind: "DEFI_REWARD", symbol: "CRV", counterparty: "Curve: gauge rewards", rawAmount: `12${"0".repeat(18)}` }, // 12 CRV
+  { incomeKind: "LENDING", symbol: "aUSDC", counterparty: "Aave: supply interest", rawAmount: `250${"0".repeat(18)}` }, // 250 aUSDC
+];
+/** 수익 이벤트 간격(일). 9월부터 놓아 세 건이 창(7/1~12/31) 안에 여유 있게 들어간다. */
+const INCOME_SPACING_DAYS = 21;
 
 /**
  * 체인·자산 타입별 심볼. 데모 픽스처는 **토큰 목록으로 검증된 자산만** 담는다는 가정이다.
@@ -151,12 +176,18 @@ function buildEvent({ eventNumber, at, classification, unknownPrice, lowConfiden
     // 화면에서 작동하는 모습을 볼 수 없다 — 원화로 말이 되는 규모를 쓴다.
     fiat_value: unknownPrice ? null : `${eventNumber * PER_EVENT_KRW}.00`,
     fiat_currency: "KRW",
+    // 기본 픽스처는 매수 취득이라 수익 종류가 없다. DeFi 수익 배치만 이 칸을 채운다.
+    income_kind: null,
+    swap_to_symbol: null,
+    swap_to_icon_url: null,
+    bridge_dest_chain_id: null,
   };
 }
 
 /**
- * 지갑 이벤트 픽스처. 세 해치가 오래된 순으로 이어진다 —
- * `taxYear`의 25건, `taxYear + 1`의 배치, 그리고 시행연도(`taxYear + 2`) 처분 쇼케이스.
+ * 지갑 이벤트 픽스처. 네 배치가 이어진다 —
+ * `taxYear`의 25건, `taxYear + 1`의 배치, 시행연도(`taxYear + 2`) 처분 쇼케이스,
+ * 그리고 기준 연도(`taxYear`)의 DeFi 수익(수령분) 배치.
  *
  * base·next의 시각은 **그 배치가 속한 해**의 공통 창(7/1~12/31) 안에만 놓는다.
  * 역년 밖으로 새면 같은 연도를 골라도 영국·호주만 다른 건수를 세게 된다.
@@ -211,5 +242,34 @@ export function createNormalizedEventFixtures(
     }),
   );
 
-  return [...base, ...next, ...showcase];
+  // DeFi 수익(수령분) 배치. 기준 연도(taxYear) 창 안의 과거 수령이라 미래 필터와 무관하다.
+  // buildEvent로 id·해시·지갑·원화 평가액을 만들고, 수익 특유의 방향(IN)·자산·상대방·수익 종류만 덮는다.
+  const income = INCOME_EVENTS.map((spec, position) => {
+    const built = buildEvent({
+      eventNumber: BASE_EVENT_COUNT + NEXT_YEAR_EVENT_COUNT + SHOWCASE_DISPOSALS.length + 1 + position,
+      at: new Date(Date.UTC(taxYear, 8, 1 + position * INCOME_SPACING_DAYS, 12, 0, 0)),
+      classification: "RECEIVE",
+      unknownPrice: false,
+      lowConfidence: false,
+      override: false,
+    });
+    return {
+      ...built,
+      // 수익 수령은 자산이 지갑으로 들어오는 흐름이다 — 방향을 IN으로 고정한다(buildEvent는 순번으로 방향을 정해 OUT일 수 있다).
+      direction: "IN" as const,
+      // 그럴듯한 DeFi 자산·상대방으로 덮는다(Lido stETH·Curve·Aave). 전부 ERC20으로 본다.
+      asset_type: "ERC20" as const,
+      asset_contract: `0x${(3000 + position).toString(16).padStart(40, "0")}`,
+      asset_symbol: spec.symbol,
+      token_id: null,
+      decimals: 18,
+      raw_amount: spec.rawAmount,
+      counterparty: spec.counterparty,
+      // 수령 시점 원화 평가액이 확정돼 있어야 소득 fmv로 쓸 수 있다.
+      price_status: "RESOLVED" as const,
+      income_kind: spec.incomeKind,
+    };
+  });
+
+  return [...base, ...next, ...showcase, ...income];
 }
