@@ -2,9 +2,8 @@
 
 import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
-import { AssetMark } from "@/components/ui/asset-mark";
+import { AssetLogo } from "@/components/ui/asset-logo";
 import { ChainIcon } from "@/components/ui/chain-icon";
-import { TokenIcon, hasTokenMark } from "@/components/ui/token-icon";
 import { WalletMark } from "@/components/wallet/wallet-mark";
 import { chainLabel, formatFiat, shortHash } from "@/lib/format";
 import {
@@ -68,14 +67,10 @@ function BadgedAvatar({ chainId, ariaLabel, children }: { chainId: number; ariaL
 function TokenAvatar({ holding }: { holding: Holding }) {
   return (
     <BadgedAvatar chainId={holding.chainId} ariaLabel={`${holding.name} · ${holding.chainName}`}>
-      {hasTokenMark(holding.symbol) ? (
-        <TokenIcon symbol={holding.symbol} size={40} />
-      ) : (
-        <AssetMark
-          event={{ asset_symbol: holding.symbol, asset_icon_url: null, token_id: null, asset_type: "ERC20" }}
-          size={40}
-        />
-      )}
+      <AssetLogo
+        event={{ asset_symbol: holding.symbol, asset_icon_url: null, token_id: null, asset_type: "ERC20" }}
+        size={40}
+      />
     </BadgedAvatar>
   );
 }
