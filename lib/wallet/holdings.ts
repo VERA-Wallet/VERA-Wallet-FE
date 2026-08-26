@@ -246,3 +246,36 @@ export function portfolioTotalUsd(tokens: Holding[], nfts: NftHolding[], defi: D
   const all: Array<{ valueUsd: string }> = [...tokens, ...nfts, ...defi];
   return all.reduce((total, item) => addDecimal(total, item.valueUsd), "0");
 }
+
+// ── 보유 체인 ────────────────────────────────────────────────────────────────
+
+/** 자산이 실제로 놓여 있는 체인 하나. 불러오기 화면이 "무엇을 스캔하는가"를 이 목록으로 말한다. */
+export interface WalletChain {
+  chainId: number;
+  chainName: string;
+  /** 그 체인 위의 자산 건수(토큰·NFT·디파이 합). 왜 이 체인을 보는지가 숫자로 드러난다. */
+  assetCount: number;
+}
+
+/**
+ * 보유 자산에서 체인을 뽑는다. **잔액이 있는 체인만** 남으므로 쓰지도 않는 체인을 훑지 않는다.
+ *
+ * 불러오기 시점에 알 수 있는 것은 거래가 아니라 잔액이다(거래는 아직 가져오는 중이다).
+ * 그래서 스캔 대상은 이벤트가 아니라 보유 자산에서 나온다 — 실제 인덱서의 순서와도 같다.
+ *
+ * 자산이 많은 체인부터. 동수면 chainId 오름차순으로 순서를 못 박는다.
+ */
+export function walletChains(tokens: Holding[], nfts: NftHolding[], defi: DefiPosition[]): WalletChain[] {
+  const counts = new Map<number, number>();
+  for (const item of [...tokens, ...nfts, ...defi]) {
+    counts.set(item.chainId, (counts.get(item.chainId) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([chainId, assetCount]) => ({ chainId, chainName: chainLabel(chainId), assetCount }))
+    .sort((left, right) => right.assetCount - left.assetCount || left.chainId - right.chainId);
+}
+
+/** 데모 지갑이 자산을 들고 있는 체인. 지갑 홈이 그리는 것과 같은 소스에서 파생한다. */
+export function demoWalletChains(): WalletChain[] {
+  return walletChains(demoWalletHoldings(), demoNftHoldings(), demoDefiPositions());
+}

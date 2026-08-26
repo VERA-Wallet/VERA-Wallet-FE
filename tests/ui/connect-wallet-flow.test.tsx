@@ -37,7 +37,9 @@ describe("wallet connection SIWE flow", () => {
     expect(message).toContain("Nonce: noncefromserver123");
     expect(message).toContain("Issued At: 2026-07-30T00:00:00.000Z");
     expect(auth.verify).toHaveBeenCalledWith({ message, signature: "0xsigned" });
-    expect(push).toHaveBeenCalledWith("/dashboard");
+    // 서명 성공은 대시보드 진입이 아니라 **불러오기 진입**이다. 쿼리가 빠지면 모달이 뜨지 않고
+    // 사용자는 동기화가 끝나기 전 대시보드를 빈 화면으로 본다.
+    expect(push).toHaveBeenCalledWith("/dashboard?importing=1");
   });
 
   it("shows the mismatch message for a 400 verification response", async () => {

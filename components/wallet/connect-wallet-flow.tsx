@@ -69,7 +69,9 @@ export function ConnectWalletFlow({ walletPort = wagmiWalletPort, authClient = c
       }).prepareMessage();
       const signature = await walletPort.signMessage(message);
       await authClient.verify({ message, signature });
-      router.push("/dashboard");
+      // 서명이 끝나도 인덱서 동기화는 남아 있다. 대시보드로 그냥 보내면 사용자는 빈 화면을 먼저 보고
+      // "연결이 안 됐나"로 읽는다. `importing`을 달고 들어가 대시보드 위에 불러오기 모달을 띄운다.
+      router.push("/dashboard?importing=1");
     } catch (cause) {
       setError(errorMessage(cause));
     } finally {
