@@ -5,22 +5,34 @@ import { Fragment, useState } from "react";
 import { BottomSheet } from "@/components/ui/bottom-sheet";
 import { ExchangeLinkSummary } from "@/components/dashboard/exchange-link-summary";
 import { FlowChart } from "@/components/dashboard/flow-chart";
+import { PeriodPicker } from "@/components/dashboard/period-picker";
+import {
+  DEFAULT_PERIOD,
+  dataBounds,
+  inPeriodWindow,
+  isDefaultPeriod,
+  periodWindowLabel,
+  resolvePeriod,
+} from "@/lib/portfolio/period-selection";
+import type { PeriodSelection } from "@/lib/portfolio/period-selection";
 import { ChainIcon } from "@/components/ui/chain-icon";
-import { AssetMark } from "@/components/ui/asset-mark";
+import { AssetLogo, SplitAssetLogo } from "@/components/ui/asset-logo";
 import { CLASSIFICATION_LABEL, ClassificationBadge } from "@/components/ui/classification-badge";
-import { INCOME_KIND_LABEL, IncomeKindBadge } from "@/components/ui/income-kind-badge";
+import { INCOME_KIND_LABEL } from "@/components/ui/income-kind-badge";
 import { isGroundedPeriod, isoDay, periodLabel } from "@/lib/period";
 import { fresh, freshNotice, type FreshState } from "@/lib/queries/fresh";
 import { AMOUNT_KIND_LABEL, GROUP_SHORT_LABEL, JudgmentBadge } from "@/components/ui/judgment-badge";
 import { MockProvenanceChip } from "@/components/ui/mock-provenance-chip";
 import { SummaryCard } from "@/components/ui/summary-card";
 import { useHideBalances } from "@/lib/privacy/use-hide-balances";
-import { assetLabel, chainLabel, explorerTxUrl, formatDate, formatDateTime, formatFiat, formatFiatExact, formatSignedTokenAmount, formatTokenAmount, nativeSymbol, shortHash, UTC_NOTICE } from "@/lib/format";
+import { assetLabel, assetTicker, chainLabel, explorerTxUrl, formatDate, formatDateTime, formatFiat, formatFiatExact, formatSignedTokenAmount, formatTokenAmount, nativeSymbol, shortHash, UTC_NOTICE } from "@/lib/format";
 import { eventSummaryQueryKey, useEventDetail, useEventList, useEventSummary, useReclassify, useSetValueOverride } from "@/lib/queries/events";
 import { useTaxEstimate } from "@/lib/queries/tax";
 import { useJudgments } from "@/lib/queries/judgments";
 import { assetFlow, effectiveClassification, needsReview, reviewReason } from "@/lib/review";
 import type { AssetFlow } from "@/lib/review";
+import { counterpartyLabel, knownContractName } from "@/lib/contracts";
+import { pairSwapLegs } from "@/lib/swap-pair";
 import { div, isNegative, isPositive, isZero, mul, round, sum } from "@/lib/tax/decimal";
 import { taxYearFor } from "@/lib/tax/engine";
 import { estimateConfidence, estimateHeadline, hasConfidenceSignal } from "@/lib/tax/estimate-summary";
@@ -71,31 +83,6 @@ function gainReturnPercent(rows: JudgmentRow[]): string | null {
   const costSum = sum(gainRows.map((row) => row.breakdown!.cost));
   if (isZero(costSum)) return null;
   return round(div(mul(gainSum, "100"), costSum), 2);
-}
-
-/**
- * 실현 손익 금액 도장 — summ의 Gain 컬럼처럼 카드에 노출한다(₩ 손익만 허용하는 완화된 규칙).
- *
- * 상승은 브랜드 receive(녹색), 하락은 dispose(적색) 토큰을 쓰고, 색만으로 구분하지 못하는 사용자를 위해
- * 부호(`+`/`-`)를 늘 함께 둔다. `formatFiat`은 음수에 이미 `-`를 붙이므로 양수일 때만 `+`를 더한다.
- * 금액이 주(主)이고 수익률(%)은 크기를 괄호로 보조한다 — 상세의 손익 근거표와 같은 판정 행에서 나온다.
- */
-function GainStamp({ amount, currency, percent }: { amount: string; currency: string; percent: string | null }): React.JSX.Element {
-  const tone = isPositive(amount) ? "text-receive" : isNegative(amount) ? "text-dispose" : "text-zinc-500";
-  return (
-    <span className={`tabular-nums ${tone}`}>
-      <span className="font-semibold">
-        {isPositive(amount) ? "+" : ""}
-        {formatFiat(amount, currency)}
-      </span>
-      {percent !== null ? (
-        <span className="ml-1 font-normal text-zinc-400">
-          ({isPositive(percent) ? "+" : ""}
-          {percent}%)
-        </span>
-      ) : null}
-    </span>
-  );
 }
 
 const COMPARISON_COUNTRIES = ["DE", "IN", "PT"] as const;
@@ -176,11 +163,14 @@ function EventDetails({
   taxYearGrounded,
   inPeriod,
   period,
+  swapInLeg,
 }: {
   record: EventRecord;
   onClose: () => void;
   judgmentRows?: JudgmentRow[];
   isExcluded?: boolean;
+  /** 스왑의 받은(IN) 다리. 같은 tx_hash 페어가 있으면 상세가 두 다리(처분+취득)를 함께 말한다. */
+  swapInLeg?: NormalizedEvent | null;
   /** 과세연도가 신뢰할 수 있는 기간에서 나왔는가. 아니면 파생 계산을 돌리지 않는다. */
   taxYearGrounded?: boolean;
   estimate?: TaxEstimate;
@@ -270,12 +260,24 @@ function EventDetails({
       {saved && !conflictMessage ? <p role="status" className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">분류를 저장했습니다.</p> : null}
 
       <div className="mt-4 flex items-baseline justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <AssetMark event={event} size={36} />
-          <p className={`min-w-0 truncate text-2xl font-bold tracking-tight ${FLOW_TEXT_CLASS[assetFlow(event)]}`}>
-            {formatSignedTokenAmount(event)} <span className="text-base font-semibold text-zinc-500">{assetLabel(event)}</span>
-          </p>
-        </div>
+        {swapInLeg ? (
+          // 스왑은 두 다리를 함께 부른다 — 내보낸 자산과 받은 자산이 한 거래다.
+          <div className="flex min-w-0 items-center gap-2">
+            <SplitAssetLogo left={event} right={swapInLeg} size={36} />
+            <p className="min-w-0 truncate text-xl font-bold tracking-tight">
+              <span className="text-rose-700">{formatSignedTokenAmount(event)} {assetTicker(event)}</span>
+              <span className="text-zinc-400"> → </span>
+              <span className="text-emerald-700">{formatSignedTokenAmount(swapInLeg)} {assetTicker(swapInLeg)}</span>
+            </p>
+          </div>
+        ) : (
+          <div className="flex min-w-0 items-center gap-2">
+            <AssetLogo event={event} size={36} />
+            <p className={`min-w-0 truncate text-2xl font-bold tracking-tight ${FLOW_TEXT_CLASS[assetFlow(event)]}`}>
+              {formatSignedTokenAmount(event)} <span className="text-base font-semibold text-zinc-500">{assetLabel(event)}</span>
+            </p>
+          </div>
+        )}
         <ClassificationBadge classification={effectiveClassification(event)} />
       </div>
       {/* 거래 상세는 정확한 "언제"가 중요한 자리라 시각을 UTC·KST로 병기한다(한국 신고용). 목록 머리글은 UTC 날짜 그대로다. */}
@@ -283,6 +285,37 @@ function EventDetails({
         {formatDateTime(event.block_timestamp)} · {event.price_status === "UNKNOWN" ? "가격 미확인" : formatFiat(event.fiat_value, event.fiat_currency)}
         {event.price_status === "ESTIMATED" ? " (추정)" : ""}
       </p>
+
+      {/* 확인 필요 사유. 목록에서 배지를 뺀 대신, 무엇을 확인해야 하는지는 여기서 그대로 밝힌다
+          (review.ts 하나가 판정 — 가격 확인·방향/분류 불일치·신뢰도 등). 중복·계산 제외·이체 섹션은
+          아래 전용 안내가 사유까지 말하므로 그 경우는 빼고, 그 밖의 확인 필요만 여기서 띄운다 —
+          이체는 판정이 도착한(inPeriod≠null) 뒤 아래 섹션이 사유를 말하므로, 보류 중일 때만 여기서 띄운다. */}
+      {needsReview(event) && !isDuplicate && !isExcluded
+        && !(effectiveClassification(event) === "INTERNAL_TRANSFER" && inPeriod !== null) ? (
+        <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">
+          확인 필요 · {reviewReason(event)}
+        </p>
+      ) : null}
+
+      {/* 스왑 구성 — 한 거래의 두 다리. 내보낸 자산의 손익은 아래 "손익은 이렇게 나왔습니다" 근거표가
+          말하고, 받은 자산은 여기서 취득가액(원가)을 밝힌다 — 지금 세금이 아니라 **이연**임을 함께 말해야
+          사용자가 받은 다리를 "무관"이 아니라 "나중 처분의 원가"로 읽는다. */}
+      {swapInLeg ? (
+        <section className="mt-4 rounded-lg bg-zinc-50 p-3">
+          <h3 className="text-sm font-semibold text-zinc-700">스왑 구성 — 한 거래, 두 다리</h3>
+          <div className="mt-2 space-y-2 text-sm">
+            <p className="text-zinc-700">
+              <span className="font-semibold text-rose-700">내보낸 자산</span> {formatSignedTokenAmount(event)} {assetTicker(event)}
+              <span className="text-zinc-500"> — 손익은 아래 근거표가 말합니다.</span>
+            </p>
+            <div className="rounded-lg bg-white p-3">
+              <p className="font-semibold text-emerald-700">받은 자산 {formatSignedTokenAmount(swapInLeg)} {assetTicker(swapInLeg)}</p>
+              <p className="mt-1 text-zinc-700">취득가액 · {formatFiat(swapInLeg.fiat_value, swapInLeg.fiat_currency)}</p>
+              <p className="mt-1 text-zinc-500">지금 내는 세금이 아닙니다 — 이 자산을 나중에 팔 때의 원가가 됩니다(손익 이연).</p>
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
         {/* 해시를 글자로만 두면 사용자가 원본 거래를 확인할 방법이 없다.
@@ -297,9 +330,28 @@ function EventDetails({
         </div>
         <div>
           <dt className="text-zinc-500">체인</dt>
-          <dd className="mt-1 flex items-center gap-1.5 font-medium text-zinc-900">
+          <dd className="mt-1 flex flex-wrap items-center gap-1.5 font-medium text-zinc-900">
             <ChainIcon chainId={event.chain_id} />
             {chainLabel(event.chain_id)}
+            {/* 브릿지는 도착 체인까지 병기한다 — 어디로 이동했는지가 이 거래의 핵심 사실이다. */}
+            {event.bridge_dest_chain_id !== null ? (
+              <>
+                <span className="text-zinc-400">→</span>
+                <ChainIcon chainId={event.bridge_dest_chain_id} />
+                {chainLabel(event.bridge_dest_chain_id)}
+              </>
+            ) : null}
+          </dd>
+        </div>
+        {/* 상대 주소. 알려진 컨트랙트(Aave·Lido 등)면 이름으로 부르고 축약 주소를 병기한다 —
+            이름은 mock 레지스트리(lib/contracts.ts)가 결정하며, 모르는 주소는 지어내지 않고 축약만 보인다. */}
+        <div>
+          <dt className="text-zinc-500">상대</dt>
+          <dd className="mt-1 font-medium text-zinc-900">
+            {counterpartyLabel(event.counterparty)}
+            {knownContractName(event.counterparty)
+              ? <span className="ml-1 font-mono text-xs font-normal text-zinc-400">({shortHash(event.counterparty)})</span>
+              : null}
           </dd>
         </div>
         <div><dt className="text-zinc-500">방향</dt><dd className="mt-1 font-medium text-zinc-900">{DIRECTION_LABEL[event.direction]}</dd></div>
@@ -381,10 +433,12 @@ function EventDetails({
       {isDuplicate ? (
         <section className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
           같은 이벤트 id가 두 번 이상 들어와, 첫 건의 판정을 이 거래에 붙이지 않았습니다. 확인이 필요합니다.
+          {needsReview(event) ? ` · ${reviewReason(event)}` : ""}
         </section>
       ) : isExcluded ? (
         <section className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
           가격·분류·수량을 확정하지 못해 계산에 들어가지 않았습니다.
+          {needsReview(event) ? ` · ${reviewReason(event)}` : ""}
         </section>
       ) : inPeriod !== null && effectiveClassification(event) === "INTERNAL_TRANSFER" ? (
         <section className="mt-4 rounded-lg bg-zinc-50 p-3 text-sm text-zinc-600">
@@ -589,6 +643,122 @@ function ValueOverrideEditor({
   );
 }
 
+/**
+ * 목록 한 줄의 **거래 타입** 라벨(왼쪽 굵은 줄).
+ *
+ * 분류(classification)를 그대로 쓰되, 스왑·브릿지는 별도로 부른다:
+ * - income_kind가 있으면 그 수익 종류(스테이킹 보상 등)
+ * - EXCHANGE → "스왑"
+ * - INTERNAL_TRANSFER → 도착 체인이 있으면(크로스체인) "브릿지", 아니면 "이동"
+ * - 그 밖(RECEIVE·SEND·UNKNOWN) → 분류 라벨(수신·송금·미분류)
+ *
+ * 판정 도장(취득·양도 등)은 이제 목록이 아니라 거래 상세에서만 말한다.
+ */
+function transactionTypeLabel(event: NormalizedEvent): string {
+  if (event.income_kind) return INCOME_KIND_LABEL[event.income_kind];
+  const classification = effectiveClassification(event);
+  if (classification === "EXCHANGE") return "스왑";
+  if (classification === "INTERNAL_TRANSFER") return event.bridge_dest_chain_id !== null ? "브릿지" : "이동";
+  return CLASSIFICATION_LABEL[classification];
+}
+
+/**
+ * 거래 타입 배지의 색. 분류별 색은 상세 상단의 ClassificationBadge와 같은 팔레트를 쓰되,
+ * income_kind(수익 수령)는 IncomeKindBadge처럼 violet로 구분한다. 스왑(EXCHANGE)·브릿지·이동
+ * (INTERNAL_TRANSFER)은 분류 색을 그대로 따른다(라벨만 transactionTypeLabel이 바꾼다).
+ */
+const TYPE_BADGE_CLASS: Record<Classification, string> = {
+  RECEIVE: "bg-green-100 text-green-700",
+  SEND: "bg-red-100 text-red-700",
+  EXCHANGE: "bg-orange-100 text-orange-700",
+  INTERNAL_TRANSFER: "bg-blue-100 text-blue-700",
+  UNKNOWN: "bg-zinc-100 text-zinc-600",
+};
+
+/** 목록 왼쪽의 **거래 타입 배지**. 라벨은 transactionTypeLabel, 색은 분류(또는 수익 수령이면 violet). */
+function TransactionTypeBadge({ event }: { event: NormalizedEvent }) {
+  const className = event.income_kind
+    ? "bg-violet-100 text-violet-700"
+    : TYPE_BADGE_CLASS[effectiveClassification(event)];
+  return (
+    <span className={`inline-flex shrink-0 items-center self-start rounded-full px-2 py-0.5 text-xs font-semibold ${className}`}>
+      {transactionTypeLabel(event)}
+    </span>
+  );
+}
+
+/** 토큰 로고 코너에 얹는 작은 체인 배지 — 배경 흰 링으로 로고와 분리한다. */
+function ChainBadgeGlyph({ chainId, size = 18 }: { chainId: number; size?: number }) {
+  return (
+    <span className="inline-flex rounded-full shadow-[0_0_0_2px_#fff]">
+      <ChainIcon chainId={chainId} size={size} />
+    </span>
+  );
+}
+
+/**
+ * 목록 왼쪽의 **로고 클러스터**. 체인 이름은 텍스트로 쓰지 않고 로고만 코너 배지로 얹는다.
+ * - 스왑: 보낸 자산·받은 자산 두 로고를 겹쳐 보인다(상대 자산은 표시 힌트 `swap_to_*`).
+ * - 브릿지: 자산 로고 하나에 출발·도착 두 체인 배지를 나란히 얹는다.
+ * - 그 밖: 자산 로고 하나에 체인 배지 하나.
+ * 아이콘은 전부 `aria-hidden`이고, 무슨 거래인지는 옆의 타입·티커 텍스트가 말한다.
+ */
+function TransactionLogo({ event, swapInLeg }: { event: NormalizedEvent; swapInLeg?: NormalizedEvent | null }) {
+  // 스왑 페어(같은 tx의 IN 다리)가 있으면 실제 받은 자산의 마크를 겹쳐 그린다 — 표시 힌트보다 원장이 우선.
+  if (swapInLeg) {
+    return (
+      <span className="relative block h-10 w-10 shrink-0" aria-hidden="true">
+        <SplitAssetLogo left={event} right={swapInLeg} size={40} />
+        <span className="absolute -bottom-1 -right-1">
+          <ChainBadgeGlyph chainId={event.chain_id} size={18} />
+        </span>
+      </span>
+    );
+  }
+
+  if (event.swap_to_symbol !== null) {
+    // 받은 자산은 원장이 알려준 표시 힌트다 — 아는 티커면 그 자산의 공식 로고로 그린다.
+    const toMark = {
+      asset_symbol: event.swap_to_symbol,
+      asset_icon_url: event.swap_to_icon_url,
+      token_id: null,
+      asset_type: "ERC20" as const,
+      asset_verified: true,
+    };
+    return (
+      <span className="relative block h-10 w-10 shrink-0" aria-hidden="true">
+        <SplitAssetLogo left={event} right={toMark} size={40} />
+        <span className="absolute -bottom-1 -right-1">
+          <ChainBadgeGlyph chainId={event.chain_id} size={18} />
+        </span>
+      </span>
+    );
+  }
+
+  if (event.bridge_dest_chain_id !== null) {
+    return (
+      <span className="relative block h-10 w-10 shrink-0" aria-hidden="true">
+        <AssetLogo event={event} size={40} />
+        <span className="absolute -bottom-1 -right-2 flex items-center">
+          <ChainBadgeGlyph chainId={event.chain_id} size={16} />
+          <span className="-ml-1.5">
+            <ChainBadgeGlyph chainId={event.bridge_dest_chain_id} size={16} />
+          </span>
+        </span>
+      </span>
+    );
+  }
+
+  return (
+    <span className="relative block h-10 w-10 shrink-0" aria-hidden="true">
+      <AssetLogo event={event} size={40} />
+      <span className="absolute -bottom-1 -right-1">
+        <ChainBadgeGlyph chainId={event.chain_id} size={18} />
+      </span>
+    </span>
+  );
+}
+
 function EventRow({
   record,
   onSelect,
@@ -596,10 +766,9 @@ function EventRow({
   currency,
   isExcluded,
   inPeriod,
-  judgmentError,
-  judgmentDisabled,
   isDuplicate,
   hideBalances,
+  swapInLeg,
 }: {
   record: EventRecord;
   onSelect: () => void;
@@ -608,17 +777,13 @@ function EventRow({
   currency: string;
   isExcluded: boolean;
   inPeriod: boolean | null;
-  judgmentError?: boolean;
-  /** 기준 기간이 없어 판정을 아예 계산하지 않은 상태. "확인 중"과 구분해야 한다. */
-  judgmentDisabled?: boolean;
   isDuplicate: boolean;
   /** 잔액 가리기 모드. 수량은 가리되 자산 심볼·배지·건수는 정보로 남긴다. */
   hideBalances?: boolean;
+  /** 스왑의 받은(IN) 다리 — 같은 tx_hash 페어. 있으면 이 행이 두 다리를 한 줄로 말한다. */
+  swapInLeg?: NormalizedEvent | null;
 }) {
   const { event } = record;
-  // `이동 · 처분 아님`은 분류가 아니라 **판정** 주장이다. 판정이 보류면 이것도 단정하지 않는다.
-  const isInternalTransfer =
-    inPeriod !== null && effectiveClassification(event) === "INTERNAL_TRANSFER" && rows.length === 0;
   // 손익·수익률은 상세와 같은 판정 손익 행에서만 나온다 — 보류·중복·제외 때는 rows가 비어 자연히 null이 된다.
   const gain = gainAmount(rows);
   const returnPercent = gainReturnPercent(rows);
@@ -626,87 +791,74 @@ function EventRow({
   return (
     // 카드는 이벤트 id로 식별한다. 금액 라벨은 유효 분류에 따라 부호가 뒤집히므로(재분류 후 +0.01 → -0.01)
     // 그걸 식별자로 쓰면 "방금 고친 카드"를 다시 찾지 못한다.
-    <button data-event-id={event.id} type="button" className="rounded-card border border-zinc-200 bg-white p-4 text-left shadow-card active:bg-zinc-50" onClick={onSelect}>
-      <div className="flex items-start justify-between gap-3">
-        <p className="flex min-w-0 items-center gap-1.5 truncate text-sm text-zinc-500">
-          <ChainIcon chainId={event.chain_id} />
-          {chainLabel(event.chain_id)}
-        </p>
-        {/* income_kind가 있으면 이 수신은 매수가 아니라 DeFi 수익 수령이다.
-            "수신"보다 "스테이킹 보상" 같은 종류가 목록에서 한눈에 더 의미 있으므로 주 배지로 쓴다.
-            분류(수신) 자체는 상세 상단 배지에 그대로 유지한다. */}
-        {event.income_kind
-          ? <IncomeKindBadge kind={event.income_kind} />
-          : <ClassificationBadge classification={effectiveClassification(event)} />}
+    // 한 줄 레이아웃 — 왼쪽: 로고(체인은 코너 배지)·거래 타입·티커 / 오른쪽: 손익·수익률.
+    <button data-event-id={event.id} type="button" className="flex items-center gap-3 rounded-card border border-zinc-200 bg-white px-4 py-3 text-left shadow-card active:bg-zinc-50" onClick={onSelect}>
+      {/* 왼쪽 로고 클러스터. 체인 이름은 텍스트로 쓰지 않고 로고만 코너 배지로 얹는다.
+          스왑은 두 자산 로고, 브릿지는 두 체인 배지로 그린다. */}
+      <TransactionLogo event={event} swapInLeg={swapInLeg} />
+      <div className="flex min-w-0 flex-grow flex-col gap-1">
+        <TransactionTypeBadge event={event} />
+        {/* 티커 줄. e2e·테스트가 이 속성으로 행을 집으므로 레이아웃이 바뀌어도 유지한다.
+            스왑 페어는 "−보낸 수량 → +받은 수량"(얼마를 얼마만큼), 브릿지는 "수량 · 출발 → 도착",
+            NFT는 개체 번호 없이 티커만, 그 밖은 부호 붙은 수량과 티커를 함께 보인다. */}
+        <span data-event-label className="mt-0.5 block truncate text-[0.8125rem] text-zinc-500">
+          {swapInLeg ? (
+            <>
+              <span className="text-rose-700">{hideBalances ? "•••••" : `${formatSignedTokenAmount(event)} ${assetTicker(event)}`}</span>
+              <span className="text-zinc-400"> → </span>
+              <span className="text-emerald-700">{hideBalances ? "•••••" : `${formatSignedTokenAmount(swapInLeg)} ${assetTicker(swapInLeg)}`}</span>
+            </>
+          ) : event.swap_to_symbol !== null
+            ? `${assetTicker(event)} → ${event.swap_to_symbol}`
+            : event.bridge_dest_chain_id !== null
+              ? `${hideBalances ? "•••••" : formatSignedTokenAmount(event)} ${assetTicker(event)} · ${chainLabel(event.chain_id)} → ${chainLabel(event.bridge_dest_chain_id)}`
+              : event.token_id !== null
+                ? assetTicker(event)
+                : `${hideBalances ? "•••••" : formatSignedTokenAmount(event)} ${assetTicker(event)}`}
+        </span>
+        {/* 체인은 시각적으로 코너 로고 배지로만 보이므로(체인 이름 텍스트 제거), 스크린리더에는
+            체인명을 sr-only로 남겨 어느 체인의 자산인지 잃지 않게 한다. 브릿지는 티커 줄이 두 체인을
+            이미 텍스트로 읽어주므로 중복을 피해 생략한다. */}
+        {event.bridge_dest_chain_id === null ? <span className="sr-only">{chainLabel(event.chain_id)}</span> : null}
       </div>
-      {/* 목록은 온체인 사실만 말한다. 법정통화 금액·손익·보유기간은 상세에서
-          계산 근거(양도가액 − 취득가액 − 수수료)와 함께 보여야 검증이 된다.
-          카드에 숫자만 흘리면 취득가액 0 때문에 부풀려진 값을 근거 없이 단정하게 된다. */}
-      {/* 카드를 식별하는 줄. e2e가 `p:first-child` 같은 순서에 기대면 레이아웃을 바꿀 때마다 깨진다. */}
-      {/* 나간 자산과 들어온 자산을 부호와 색으로 가른다. 기준은 direction이 아니라 유효 분류다
-          (`assetFlow`) — 세무 파생과 갈리면 목록은 "얻음", 원장은 "처분"이라고 말하게 된다. */}
-      <div className="mt-2 flex items-center gap-2">
-        {/* 마크는 라벨 밖에 둔다. 안에 넣으면 카드 제목 텍스트가 마크 글자까지 삼킨다. */}
-        <AssetMark event={event} size={28} />
-        <p data-event-label className={`min-w-0 truncate text-lg font-bold ${FLOW_TEXT_CLASS[assetFlow(event)]}`}>
-          {hideBalances ? "•••••" : formatSignedTokenAmount(event)} · {assetLabel(event)}
-        </p>
-      </div>
-      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-        {/* 확인 필요 사유는 `lib/review.ts` 하나만 말한다. 가격·분류를 각자 판정하면
-            카드가 "가격 확인 필요"라 하고 세금 화면은 "분류 확인 필요"라고 갈린다.
-            단, 중복·제외 배지도 앰버라 사유 배지를 따로 그리면 앰버가 2~3개 겹친다 —
-            그럴 땐 이 배지를 접고 사유를 아래 중복/제외 배지 라벨에 접합한다. */}
-        {needsReview(event) && !isDuplicate && !isExcluded
-          ? <span className="rounded-full bg-amber-100 px-2.5 py-1 font-semibold text-amber-800">{reviewReason(event)}</span>
-          : null}
-        {/* 자산 딱지. 심볼은 사칭할 수 있으므로 대조 결과를 이름 옆에서 말한다.
-            추정가·수동 분류는 이 거래를 **어떻게 처리했는가**의 문제라 상세에서만 말한다 —
-            목록에 다 깔면 정작 읽어야 할 판정 도장이 배지 더미에 묻힌다.
-            문제만 배지로 만든다 — 검증됨은 기본값의 확인일 뿐이라 배지로 그리면 판정 도장만 묻는다. */}
-        {event.asset_verified
-          ? null
-          : <span className="rounded-full bg-amber-100 px-2.5 py-1 font-semibold text-amber-800">미검증 토큰</span>}
-        {isDuplicate
-          ? <JudgmentBadge group="excluded" label={needsReview(event) ? `중복 id · ${reviewReason(event)}` : "중복 id · 확인 필요"} />
-          : isExcluded
-            ? <JudgmentBadge group="excluded" label={needsReview(event) ? `계산 제외 · ${reviewReason(event)}` : "계산 제외 · 확인 필요"} />
-            : isInternalTransfer
-              ? <JudgmentBadge group="deferred" label="이동 · 처분 아님" />
-              : rows.length > 0
-                ? rows.map((row, index) => <JudgmentBadge key={`${row.eventId}-${row.leg}-${index}`} group={row.group} label={row.label} />)
-                : inPeriod === false
-                  ? <JudgmentBadge group="deferred" label="기간 밖 · 이번 계산에 없음" />
-                  : inPeriod === null
-                    // estimate가 아직 없다. "결과 없음"이라 단정하면 로딩·오류 중에 거짓이 된다.
-                    ? <JudgmentBadge
-                        group="pending"
-                        label={
-                          judgmentDisabled
-                            ? "판정 미계산 · 기준 기간 확인 필요"
-                            : judgmentError
-                              ? "판정 불러오기 실패"
-                              : "판정 확인 중"
-                        }
-                      />
-                    : <JudgmentBadge group="excluded" label="계산 결과 없음 · 확인 필요" />}
-      </div>
-      {/* 실현 손익(₩). summ의 Gain 컬럼처럼 카드에 노출한다 — 상세의 "손익은 이렇게 나왔습니다" 근거표와
-          같은 판정 행(amountKind==="gain")을 합산하므로 목록과 상세가 갈리지 않는다. 금액이 주(主)이고
-          수익률(%)은 크기를 보조로만 덧댄다. 손익이 없는 건(NFT·수령분·자기 지갑 간 이체 등)은 "—",
-          판정이 아직 오지 않았으면(보류) 아예 두지 않는다 — 이미 배지가 그 상태를 말한다.
-          손익 외 다른 통화 금액(거래 평가액 등)은 여기 싣지 않는다(상세에서 근거와 함께만 보인다). */}
+      {/* 오른쪽: 실현 손익(₩)과 수익률(%). 상세의 손익 근거표와 같은 판정 행(amountKind==="gain")을
+          합산하므로 목록과 상세가 갈리지 않는다. 상승은 receive(녹)·하락은 dispose(적) 토큰을 쓰고,
+          색만으로 못 가르는 사용자를 위해 부호를 함께 둔다.
+          실현 손익이 없는 건(매수·수령·이동·브릿지·NFT 등)은 손익 대신 **거래 당시 평가액(₩)**을 보인다
+          — 가격을 잃지 않되, 손익이 아니므로 부호·색 없이 중립으로 둔다. 가격조차 미확인이면 "—".
+          판정이 아직 오지 않았으면(보류) 오른쪽을 비운다 — 손익 블록의 유무가 곧 정착 신호다.
+          배지(판정 도장·미검증·확인 필요 등)는 이제 목록이 아니라 거래 상세에서만 말한다. */}
       {isExcluded || isDuplicate || inPeriod !== null ? (
-        <p data-surface="event-gain" className="mt-2 flex flex-wrap items-baseline gap-x-1.5 text-xs font-medium text-zinc-500">
-          손익{" "}
-          {gain === null ? (
-            <span className="tabular-nums text-zinc-400">—</span>
-          ) : hideBalances ? (
-            <span className="tabular-nums text-zinc-500">•••••</span>
+        <div data-surface="event-gain" className="flex shrink-0 flex-col items-end text-right">
+          {gain !== null ? (
+            // 실현 손익(처분). 색·부호로 손익임을 말하므로 스크린리더에 "손익" 라벨을 sr-only로 붙인다.
+            hideBalances ? (
+              <><span className="sr-only">손익 </span><span className="text-[0.9375rem] font-bold tabular-nums text-zinc-500">•••••</span></>
+            ) : (
+              <>
+                <span className="sr-only">손익 </span>
+                <span className={`text-[0.9375rem] font-bold tabular-nums ${isPositive(gain) ? "text-receive" : isNegative(gain) ? "text-dispose" : "text-zinc-500"}`}>
+                  {isPositive(gain) ? "+" : ""}{formatFiat(gain, currency)}
+                </span>
+                {returnPercent !== null ? (
+                  <span className="mt-0.5 text-[0.8125rem] tabular-nums text-zinc-400">
+                    <span className="sr-only">수익률 </span>{isPositive(returnPercent) ? "+" : ""}{returnPercent}%
+                  </span>
+                ) : null}
+              </>
+            )
+          ) : event.fiat_value !== null ? (
+            // 실현 손익이 없으면 거래 당시 평가액을 보인다(₩은 이벤트 통화 그대로). 손익이 아니므로 중립색.
+            <>
+              <span className="sr-only">거래 평가액 </span>
+              <span className="text-[0.9375rem] font-bold tabular-nums text-zinc-900">
+                {hideBalances ? "•••••" : formatFiat(event.fiat_value, event.fiat_currency)}
+              </span>
+            </>
           ) : (
-            <GainStamp amount={gain} currency={currency} percent={returnPercent} />
+            <><span className="sr-only">손익 </span><span className="text-[0.9375rem] font-bold tabular-nums text-zinc-400">—</span></>
           )}
-        </p>
+        </div>
       ) : null}
     </button>
   );
@@ -723,6 +875,9 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
   // 연도 필터. null = 전체. 체인 필터와 같은 성격의 **표시 필터**라 판정·요약은 건드리지 않는다
   // (연도가 계산 경계인 곳은 세금 탭이고, 여기서 고른 해는 목록만 좁힌다).
   const [year, setYear] = useState<number | null>(null);
+  // 화면이 보고 있는 기간. 헤더 문구·그래프 창·목록 필터가 **이 하나**에서 나온다 —
+  // 그래프만 따로 자르던 때는 "1개월"을 그려도 헤더는 전체 기간을 말했다.
+  const [periodSelection, setPeriodSelection] = useState<PeriodSelection>(DEFAULT_PERIOD);
   // 선택은 **식별자만** 들고 있는다. 클릭 시점 스냅샷을 들고 있으면
   // 목록을 다시 불러온 뒤 시트가 사라진 거래나 옛 버전을 계속 보여준다.
   const [selectedKey, setSelectedKey] = useState<{ eventId: string; occurrence: number } | null>(null);
@@ -747,6 +902,11 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
   const [taxYear] = useTaxYear(derivedTaxYear);
   const judgments = useJudgments(countryCode ?? "KR", taxYear, referencePeriod !== null);
   const items = events.data?.items ?? [];
+  // 프리셋("최근 1개월")은 벽시계가 아니라 **받아온 거래의 끝**을 기준으로 센다 —
+  // 벽시계로 세면 오래된 지갑·데모에서 모든 버튼이 빈 기간을 가리킨다.
+  const periodWindow = resolvePeriod(periodSelection, dataBounds(items.map((item) => item.event.block_timestamp)));
+  // 고르지 않았거나 기준이 없으면 좁힐 근거가 없다. 그때 화면은 예전처럼 전부를 보인다.
+  const periodNarrowed = !isDefaultPeriod(periodSelection) && periodWindow !== null;
   // 레퍼런스 관례대로 최신이 위. 원본 배열은 건드리지 않는다 — 누적 그래프는 시간순으로 받아야 한다.
   // 페이지를 끝까지 이어 받은 뒤 정렬하므로 "최신"이 페이지 경계에 좌우되지는 않지만,
   // 목록이 잘렸을 때 이 순서가 전부는 아니라는 사실은 아래 잘림 고지가 말한다.
@@ -801,8 +961,24 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
     referencePeriod === null ||
     versionSignature !== judgedSignature;
 
-  const reviewItems = annotated.filter((item) => needsReview(item.record.event) || item.isDuplicate);
-  const tabItems = tab === "review" ? reviewItems : annotated;
+  // 스왑 두 다리(같은 tx_hash의 처분 OUT + 취득 IN)는 **한 행**으로 묶는다 — OUT 행이 대표가 되고
+  // IN 다리는 받은 자산·수량을 공급하며 별도 행으로 렌더하지 않는다. 중복 레코드는 페어링에서 뺀다
+  // (중복은 그 자체가 확인 필요 신호라 숨기면 안 된다). 계산은 그대로 두 건이다(엔진 무변경).
+  const swapPairing = pairSwapLegs(annotated.filter((item) => !item.isDuplicate).map((item) => item.record.event));
+  // 고른 기간 밖의 거래는 목록에서도 빠진다 — 그래프만 좁아지고 목록이 그대로면
+  // 한 화면이 두 기간을 동시에 말한다. 시각을 모르는 건은 어느 기간에도 놓을 수 없어
+  // 연도 칩과 같은 규칙으로 빠진다(그 사실은 아래 기간 고지가 말한다).
+  const pairedItems = annotated.filter((item) => item.isDuplicate || !swapPairing.pairedInIds.has(item.record.event.id));
+  const listItems = pairedItems.filter(
+    (item) => !periodNarrowed || inPeriodWindow(item.record.event.block_timestamp, periodWindow!),
+  );
+  // 기간을 좁히면 날짜를 모르는 건이 조용히 사라진다. 실제로 그런 건이 있을 때만 말한다 —
+  // 없는 문제를 경고하면 화면이 늘 무언가 잘못된 것처럼 읽힌다.
+  const undatedDropped = periodNarrowed
+    ? pairedItems.filter((item) => isoDay(item.record.event.block_timestamp) === "").length
+    : 0;
+  const reviewItems = listItems.filter((item) => needsReview(item.record.event) || item.isDuplicate);
+  const tabItems = tab === "review" ? reviewItems : listItems;
   // 판정을 못 불러오면 그룹 필터를 유지할 근거가 없다. 조용히 빈 목록을 보이면 사용자가 원인을 모른다.
   // 탭을 바꿨는데 그 그룹이 이 탭에 없으면 필터를 유지할 근거가 없다.
   // 유지하면 "확인이 필요한 거래가 없습니다"만 보이고 왜 비었는지 알 수 없다.
@@ -886,8 +1062,21 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
         <div>
           <p className="text-sm font-semibold text-primary-500">VeraWallet</p>
           <h1 className="mt-2 text-3xl font-bold tracking-tight text-zinc-900">거래 요약</h1>
-          {/* 빈 기간을 ` ~ `로 보이면 기간이 있는 것처럼 말하는 셈이다. */}
-          {period ? <p className="mt-1 text-sm text-zinc-500">{periodLabel(period)}</p> : null}
+          {/* 빈 기간을 ` ~ `로 보이면 기간이 있는 것처럼 말하는 셈이다.
+              고르기 전에는 요약이 말하는 기간을 그대로 보이고, 고른 뒤에는 **고른 기간**을 말한다. */}
+          {period ? (
+            <PeriodPicker
+              label={periodNarrowed ? periodWindowLabel(periodWindow!) : periodLabel(period)}
+              selection={periodSelection}
+              onSelect={setPeriodSelection}
+            />
+          ) : null}
+          {periodNarrowed ? (
+            <p className="mt-1 text-xs text-zinc-400">
+              고른 기간의 거래 {listItems.length}건
+              {undatedDropped > 0 ? ` · 날짜를 모르는 ${undatedDropped}건은 빠집니다` : null}
+            </p>
+          ) : null}
         </div>
         <div className="flex shrink-0 flex-col items-end gap-2">
           <MockProvenanceChip />
@@ -904,11 +1093,15 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
       </header>
       {/* 이 화면은 지갑 이력이 그린 선까지만 말한다. 세금 금액·판정 기준·계산의 한계는
           세금 탭 한 곳에서만 답한다 — 두 화면이 각자 금액을 말하면 어느 쪽이 최신인지 알 수 없다. */}
+      {/* 그래프의 기간 버튼은 자기 창만 바꾸지 않는다 — 헤더·목록이 함께 따라온다. */}
       <FlowChart
         events={items.map((item) => item.event)}
         state={eventsFresh.state}
         truncated={events.data?.truncated === true}
         hideBalances={hideBalances}
+        selection={periodSelection}
+        period={periodWindow}
+        onSelect={setPeriodSelection}
       />
 
       <ExchangeLinkSummary />
@@ -975,7 +1168,8 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
         <div className="flex gap-1 border-b border-zinc-200" role="tablist" aria-label="거래 필터">
           <button role="tab" aria-selected={tab === "all"} type="button" className={tabClass(tab === "all")} onClick={() => setTab("all")}>
             전체 거래
-            <span aria-hidden="true" className="rounded-full bg-zinc-100 px-1.5 py-0.5 text-xs font-semibold text-zinc-500">{items.length}</span>
+            {/* 기간을 좁혔으면 배지도 그 기간의 수여야 한다 — "전체 거래 42"라 적고 5건을 보이면 둘 중 하나는 거짓이다. */}
+            <span aria-hidden="true" className="rounded-full bg-zinc-100 px-1.5 py-0.5 text-xs font-semibold text-zinc-500">{periodNarrowed ? listItems.length : items.length}</span>
           </button>
           <button role="tab" aria-selected={tab === "review"} type="button" className={tabClass(tab === "review")} onClick={() => setTab("review")}>
             확인 필요
@@ -1128,10 +1322,9 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
                   currency={estimate?.currency ?? "KRW"}
                   isExcluded={!judgmentsPending && judgments.excluded.has(record.event.id)}
                   inPeriod={judgmentsPending ? null : judgments.inPeriod(record.event.block_timestamp)}
-                  judgmentError={judgments.isError}
-                  judgmentDisabled={referencePeriod === null}
                   isDuplicate={isDuplicate}
                   hideBalances={hideBalances}
+                  swapInLeg={isDuplicate ? null : swapPairing.inLegByOutId.get(record.event.id) ?? null}
                 />
               </Fragment>
             );
@@ -1173,6 +1366,7 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
           countryCode={countryCode ?? "KR"}
           taxYear={taxYear}
           taxYearGrounded={referencePeriod !== null && !eventsStale}
+          swapInLeg={selected.isDuplicate ? null : swapPairing.inLegByOutId.get(selected.record.event.id) ?? null}
         />
       ) : null}
     </main>

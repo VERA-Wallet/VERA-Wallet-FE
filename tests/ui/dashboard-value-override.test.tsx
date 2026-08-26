@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
-import { assetLabel, formatSignedTokenAmount } from "@/lib/format";
+import { assetTicker, chainLabel, formatSignedTokenAmount } from "@/lib/format";
 import { createNormalizedEventFixtures } from "@/tests/fixtures/generated/normalized-events";
 import type { NormalizedEvent } from "@/lib/schema/normalized-event";
 
@@ -19,7 +19,12 @@ vi.mock("@/lib/composition-root.client", () => ({
 }));
 
 function rowLabel(event: NormalizedEvent) {
-  return `${formatSignedTokenAmount(event)} · ${assetLabel(event)}`;
+  // 목록 티커 줄과 같은 규칙: 스왑은 "보낸 → 받은", 브릿지는 "출발 → 도착 · 자산",
+  // NFT는 번호 없이 티커만, 그 밖은 부호 붙은 수량과 티커.
+  if (event.swap_to_symbol !== null) return `${assetTicker(event)} → ${event.swap_to_symbol}`;
+  if (event.bridge_dest_chain_id !== null) return `${formatSignedTokenAmount(event)} ${assetTicker(event)} · ${chainLabel(event.chain_id)} → ${chainLabel(event.bridge_dest_chain_id)}`;
+  if (event.token_id !== null) return assetTicker(event);
+  return `${formatSignedTokenAmount(event)} ${assetTicker(event)}`;
 }
 
 function setup(event: NormalizedEvent, saveResult: unknown) {
