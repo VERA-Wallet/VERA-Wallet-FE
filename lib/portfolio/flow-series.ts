@@ -126,11 +126,22 @@ export function windowOf(points: FlowPoint[], range: FlowRange): FlowWindow | nu
   if (points.length === 0) return null;
   const last = points[points.length - 1];
   const fromMs = range.days === null ? points[0].atMs : last.atMs - range.days * DAY_MS;
-  const inside = points.filter((point) => point.atMs >= fromMs);
+  return windowBetween(points, fromMs, last.atMs);
+}
+
+/**
+ * 명시한 두 시각 사이로 잘라낸다(양끝 포함).
+ *
+ * 기간을 화면 한 곳에서 정하면(`period-selection`) 그래프가 자기 기준으로 또 자를 수 없다 —
+ * 각자 자르는 순간 헤더가 말하는 기간과 선이 덮는 기간이 갈린다.
+ */
+export function windowBetween(points: FlowPoint[], fromMs: number, toMs: number): FlowWindow | null {
+  if (points.length === 0) return null;
+  const inside = points.filter((point) => point.atMs >= fromMs && point.atMs <= toMs);
   const before = points.filter((point) => point.atMs < fromMs);
   const baseline = before.length > 0 ? before[before.length - 1].value : ZERO;
   if (inside.length === 0) {
-    return { points: [], plot: [], baseline, change: ZERO, changePercent: null, fromMs, toMs: last.atMs };
+    return { points: [], plot: [], baseline, change: ZERO, changePercent: null, fromMs, toMs };
   }
   const change = sub(inside[inside.length - 1].value, baseline);
   // 기준이 0이거나 음수면 "몇 % 변했다"가 뜻을 잃는다 — −2만에서 −7만은 240% 감소인가, 증가인가.
@@ -140,8 +151,11 @@ export function windowOf(points: FlowPoint[], range: FlowRange): FlowWindow | nu
     ...(before.length > 0 ? [{ atMs: fromMs, value: baseline }] : []),
     ...inside.map((point) => ({ atMs: point.atMs, value: point.value })),
   ];
-  return { points: inside, plot, baseline, change, changePercent, fromMs, toMs: last.atMs };
+  return { points: inside, plot, baseline, change, changePercent, fromMs, toMs };
 }
+
+/** 선 위의 한 점. 호버·키보드로 짚었을 때 화면이 "언제 얼마"를 말할 수 있게 값까지 함께 든다. */
+export type FlowMark = { x: number; y: number; atMs: number; value: Decimal };
 
 export type FlowGeometry = {
   line: string;
@@ -149,6 +163,8 @@ export type FlowGeometry = {
   /** 0선의 y좌표. 창의 값 범위가 0을 지나지 않으면 null(없는 기준선을 그리지 않는다). */
   zeroY: number | null;
   end: { x: number; y: number };
+  /** 선을 이루는 점들의 좌표+값. 그림과 읽는 값이 같은 계산에서 나와야 둘이 어긋나지 않는다. */
+  marks: FlowMark[];
 };
 
 /** 좌표 계산은 픽셀이라 부동소수로 해도 된다 — 금액 자체는 여기서 만들지 않는다. */
@@ -175,5 +191,6 @@ export function flowGeometry(plot: FlowPlotPoint[], width: number, height: numbe
   const end = coordinates[coordinates.length - 1];
   const area = `${line} L${end.x} ${height} L${coordinates[0].x} ${height} Z`;
   const zeroY = span > 0 && minValue <= 0 && maxValue >= 0 ? px(y(0)) : null;
-  return { line, area, zeroY, end };
+  const marks = coordinates.map((point, index) => ({ ...point, atMs: plot[index].atMs, value: plot[index].value }));
+  return { line, area, zeroY, end, marks };
 }
