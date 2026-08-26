@@ -1,5 +1,6 @@
 "use client";
 
+import { ArrowRight, ChevronDown, Lock } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -191,7 +192,7 @@ export function ExportView({ countryCode }: { countryCode?: string } = {}) {
             className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary-50 px-3 py-1 text-sm font-semibold text-primary-600"
           >
             <span>{selectedYear}년 귀속</span>
-            <span aria-hidden>▾</span>
+            <ChevronDown aria-hidden className="size-4 shrink-0" strokeWidth={2.5} />
           </button>
         )}
       </div>
@@ -207,7 +208,7 @@ export function ExportView({ countryCode }: { countryCode?: string } = {}) {
           <span>
             <span className="font-semibold">확인 필요 {nudgeCount}건</span> · 정리하면 더 정확해져요
           </span>
-          <span aria-hidden className="shrink-0 font-semibold">→</span>
+          <ArrowRight aria-hidden className="size-4 shrink-0" strokeWidth={2.5} />
         </Link>
       )}
 
@@ -257,13 +258,16 @@ export function ExportView({ countryCode }: { countryCode?: string } = {}) {
           className="mt-5 flex items-center justify-between gap-3 rounded-card border border-primary-200 bg-primary-50 p-4"
         >
           <span className="flex items-center gap-3">
-            <span aria-hidden className="text-lg">🔒</span>
+            <Lock aria-hidden className="size-5 shrink-0 text-primary-600" strokeWidth={2} />
             <span className="text-sm leading-6 text-zinc-700">
               <span className="block font-semibold text-primary-600">플랜을 구독하면 리포트가 열립니다</span>
               <span className="block text-zinc-600">금액과 다운로드는 구독 후 공개됩니다.</span>
             </span>
           </span>
-          <span aria-hidden className="shrink-0 font-semibold text-primary-600">플랜 보기 →</span>
+          <span className="flex shrink-0 items-center gap-1 font-semibold text-primary-600">
+            플랜 보기
+            <ArrowRight aria-hidden className="size-4 shrink-0" strokeWidth={2.5} />
+          </span>
         </Link>
       )}
 
@@ -311,7 +315,7 @@ export function ExportView({ countryCode }: { countryCode?: string } = {}) {
                         aria-label="구독 후 공개"
                         className="inline-flex select-none items-center gap-1 align-middle"
                       >
-                        <span aria-hidden className="text-xs text-zinc-400">🔒</span>
+                        <Lock aria-hidden className="size-3 shrink-0 text-zinc-400" strokeWidth={2.5} />
                         <span
                           aria-hidden
                           className={`inline-block rounded bg-zinc-200 blur-[2px] ${
@@ -337,7 +341,7 @@ export function ExportView({ countryCode }: { countryCode?: string } = {}) {
                 aria-label="구독 후 공개"
                 className="mt-4 inline-flex select-none items-center gap-1 rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-600"
               >
-                <span aria-hidden className="text-zinc-400">🔒</span>
+                <Lock aria-hidden className="size-3 shrink-0 text-zinc-400" strokeWidth={2.5} />
                 <span aria-hidden className="inline-block h-3 w-16 rounded bg-zinc-200 blur-[2px]" />
               </p>
             ))}
@@ -387,12 +391,14 @@ export function ExportView({ countryCode }: { countryCode?: string } = {}) {
             </div>
             <p className="mt-1 text-sm leading-6 text-zinc-500">홈택스 본인 신고용 · CSV 원장(거래 부속명세)</p>
             <button
-              className="mt-3 w-full rounded-xl bg-primary-500 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+              className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl bg-primary-500 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+              data-locked={downloadLocked ? "download" : undefined}
               disabled={!ready || downloadLocked}
               type="button"
               onClick={() => download(createReportLedgerCsv(events, estimate), "text/csv;charset=utf-8", `verawallet-신고근거-${filenamePeriod}.csv`)}
             >
-              {downloadLocked ? "🔒 " : ""}직접 신고용 내려받기
+              {downloadLocked && <Lock aria-hidden className="size-4 shrink-0" strokeWidth={2.5} />}
+              직접 신고용 내려받기
             </button>
           </div>
 
@@ -403,12 +409,14 @@ export function ExportView({ countryCode }: { countryCode?: string } = {}) {
               XLSX 4시트 · 요약(신고 기입란) · 자산별(취득가액 명세) · 원장(거래 부속명세) · 예외(판단보류·미반영)
             </p>
             <button
-              className="mt-3 w-full rounded-xl border border-primary-500 py-3 font-semibold text-primary-600 disabled:cursor-not-allowed disabled:opacity-50"
+              className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl border border-primary-500 py-3 font-semibold text-primary-600 disabled:cursor-not-allowed disabled:opacity-50"
+              data-locked={downloadLocked ? "download" : undefined}
               disabled={!ready || !summary || downloadLocked}
               type="button"
               onClick={() => download(createReportXlsx(events, estimate), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", `verawallet-신고근거-${filenamePeriod}.xlsx`)}
             >
-              {downloadLocked ? "🔒 " : ""}세무사 전달용 내려받기
+              {downloadLocked && <Lock aria-hidden className="size-4 shrink-0" strokeWidth={2.5} />}
+              세무사 전달용 내려받기
             </button>
           </div>
         </div>

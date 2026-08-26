@@ -110,10 +110,10 @@ describe("내보내기 플랜 잠금", () => {
     // 플랜 CTA 배너가 리포트 위에 뜨고 /plan으로 보낸다.
     const cta = screen.getByText("플랜을 구독하면 리포트가 열립니다").closest("a");
     expect(cta).toHaveAttribute("href", "/plan");
-    // 다운로드 두 버튼은 잠긴다(🔒).
+    // 다운로드 두 버튼은 잠긴다(자물쇠 아이콘 + data-locked).
     const csv = screen.getByRole("button", { name: /직접 신고용 내려받기/ });
     await waitFor(() => expect(csv).toBeDisabled());
-    expect(csv.textContent).toContain("🔒");
+    expect(csv).toHaveAttribute("data-locked", "download");
     expect(screen.getByRole("button", { name: /세무사 전달용 내려받기/ })).toBeDisabled();
     // 하단 안내는 플랜이 필요하다고 말하고, 플랜은 탭에 없으니 이 링크가 앱 안의 진입로다.
     expect(screen.getByText("무료 플랜 100건까지 · 현재 100건 — 플랜이 필요합니다")).toBeInTheDocument();
@@ -139,8 +139,8 @@ describe("내보내기 플랜 잠금", () => {
     const banner = await screen.findByText("무료 플랜 100건까지 · 현재 250건 — 플랜이 필요합니다");
     expect(banner).toBeInTheDocument();
     expect(banner.closest("a")).toHaveAttribute("href", "/plan");
-    expect(screen.getByRole("button", { name: "🔒 직접 신고용 내려받기" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "🔒 세무사 전달용 내려받기" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "직접 신고용 내려받기" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "세무사 전달용 내려받기" })).toBeDisabled();
     // 미리보기는 잠기지 않는다 — 기간·건수 표기는 그대로 보인다.
     expect(screen.getByText(/건수는 계산 대상 이벤트 기준입니다/)).toBeInTheDocument();
   });
@@ -155,7 +155,7 @@ describe("내보내기 플랜 잠금", () => {
     expect(screen.queryByText("플랜을 구독하면 리포트가 열립니다")).toBeNull();
     const csv = screen.getByRole("button", { name: /직접 신고용 내려받기/ });
     await waitFor(() => expect(csv).not.toBeDisabled());
-    expect(csv.textContent).not.toContain("🔒");
+    expect(csv).not.toHaveAttribute("data-locked");
     // 결제한 사용자에게도 남은 한도는 알려 준다 — 다만 재촉 문구는 붙지 않는다.
     expect(screen.getByText("플러스 플랜 1,000건까지 · 현재 250건")).toBeInTheDocument();
   });
@@ -165,7 +165,7 @@ describe("내보내기 플랜 잠금", () => {
     renderWith(planDefinition("plus").exportLimit + 1, plusPlan);
 
     expect(await screen.findByText(/플러스 플랜 1,000건까지 · 현재 1,001건 — 상위 플랜이 필요합니다/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "🔒 직접 신고용 내려받기" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "직접 신고용 내려받기" })).toBeDisabled();
     // 한도 초과여도 구독자는 금액을 본다 — 잠기는 것은 다운로드다.
     expect(await screen.findByText("₩5,000,000")).toBeInTheDocument();
   });
