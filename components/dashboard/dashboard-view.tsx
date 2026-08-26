@@ -509,8 +509,13 @@ function EventDetails({
           </ul>
         </details>
       ) : null}
-      <section className="mt-6 border-t border-zinc-200 pt-5">
-        <h3 className="font-bold text-zinc-900">재분류</h3>
+      {/* 재분류·금액 입력은 **고칠 때만** 필요한 자리다. 늘 펼쳐 두면 사실을 읽으러 온 사용자가
+          매번 입력 폼을 스크롤해서 지나쳐야 한다. 접되, 접힌 줄에서 지금 값이 무엇인지는 말한다. */}
+      <details className="mt-6 border-t border-zinc-200 pt-5">
+        <summary className="cursor-pointer font-bold text-zinc-900 marker:text-zinc-400">
+          재분류
+          <span className="ml-2 text-sm font-medium text-zinc-500">현재 {CLASSIFICATION_LABEL[classification]}</span>
+        </summary>
         <label className="mt-3 block text-sm font-medium text-zinc-700" htmlFor="classification">분류</label>
         <select id="classification" className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2.5" value={classification} onChange={(event) => setClassification(event.target.value as Classification)}>
           {classifications.map((item) => <option key={item} value={item}>{CLASSIFICATION_LABEL[item]}</option>)}
@@ -518,7 +523,7 @@ function EventDetails({
         <label className="mt-3 block text-sm font-medium text-zinc-700" htmlFor="reason">사유 (선택)</label>
         <input id="reason" className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2.5" placeholder="예: 본인 지갑 간 이동" value={reason} onChange={(event) => setReason(event.target.value)} />
         <button type="button" className="mt-4 w-full rounded-lg bg-primary-500 px-4 py-3 font-semibold text-white disabled:opacity-50" disabled={reclassify.isPending} onClick={apply}>적용</button>
-      </section>
+      </details>
       <ValueOverrideEditor
         event={event}
         version={current.version}
@@ -561,6 +566,17 @@ function ValueOverrideEditor({
 
   const flow = assetFlow(event);
   const isDisposal = flow === "out";
+  // 저장된 override가 하나라도 있으면 접힌 줄에서 그렇다고 말한다(입력 중인 state가 아니라 **저장된 사실**).
+  const hasOverride =
+    vo !== undefined &&
+    vo !== null &&
+    (vo.acquisition_cost !== null ||
+      vo.disposal_value !== null ||
+      vo.incidental_cost !== null ||
+      vo.gas_fee !== null ||
+      vo.price_source !== null ||
+      vo.evidence_url !== null ||
+      vo.deemed_expense_50 === true);
   // 빈 입력은 "비움"(null)으로 저장한다. 공백만 남긴 것도 같게 본다.
   const clean = (value: string): string | null => {
     const trimmed = value.trim();
@@ -601,9 +617,13 @@ function ValueOverrideEditor({
   const labelClass = "mt-3 block text-sm font-medium text-zinc-700";
 
   return (
-    <section className="mt-6 border-t border-zinc-200 pt-5" data-surface="value-override">
-      <h3 className="font-bold text-zinc-900">취득가·부대비용 입력</h3>
-      <p className="mt-1 text-sm text-zinc-500">지갑 데이터로 확정되지 않은 금액을 직접 채우면 &ldquo;취득가 0원&rdquo; 경고가 사라지고 계산에 반영됩니다.</p>
+    <details className="mt-6 border-t border-zinc-200 pt-5" data-surface="value-override">
+      <summary className="cursor-pointer font-bold text-zinc-900 marker:text-zinc-400">
+        취득가·부대비용 입력
+        {/* 접힌 채로는 "내가 직접 채운 금액이 이미 있는지"를 알 길이 없다 — 그 사실만은 겉에 남긴다. */}
+        <span className="ml-2 text-sm font-medium text-zinc-500">{hasOverride ? "직접 입력한 금액 있음" : "비어 있음"}</span>
+      </summary>
+      <p className="mt-2 text-sm text-zinc-500">지갑 데이터로 확정되지 않은 금액을 직접 채우면 &ldquo;취득가 0원&rdquo; 경고가 사라지고 계산에 반영됩니다.</p>
       {conflict ? <p role="alert" className="mt-3 rounded-lg bg-orange-50 px-3 py-2 text-sm text-orange-700">다른 곳에서 변경됨, 다시 확인</p> : null}
       {saved && !conflict ? <p role="status" className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">금액을 저장했습니다.</p> : null}
 
@@ -639,7 +659,7 @@ function ValueOverrideEditor({
       ) : null}
 
       <button type="button" className="mt-4 w-full rounded-lg bg-primary-500 px-4 py-3 font-semibold text-white disabled:opacity-50" disabled={setOverride.isPending} onClick={save}>금액 저장</button>
-    </section>
+    </details>
   );
 }
 
