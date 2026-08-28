@@ -45,6 +45,12 @@ export function isEvmChain(chainId: number): boolean {
   return EVM_CHAIN_IDS.includes(chainId);
 }
 
+/**
+ * 불러오기 모달이 그리는 스캔 대상 체인 한 줄. BE는 지원 체인 전체를 스캔하므로 목록은 시작부터 안다.
+ * `txCount`는 resync 응답이 온 뒤에만 안다 — 모르는 값을 0으로 꾸미지 않는다.
+ */
+export type ScanChain = { chainId: number; chainName: string; txCount?: number };
+
 export type ImportPhase = "running" | "done" | "failed";
 
 /**

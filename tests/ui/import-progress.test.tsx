@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ImportProgressGate } from "@/components/dashboard/import-progress-gate";
 import { ImportProgressModal } from "@/components/wallet/import-progress-modal";
-import { demoDefiPositions, demoNftHoldings, demoWalletChains, demoWalletHoldings, walletChains, type WalletChain } from "@/lib/wallet/holdings";
+import { demoDefiPositions, demoNftHoldings, demoWalletChains, demoWalletHoldings, walletChains } from "@/lib/wallet/holdings";
+import { chainLabel } from "@/lib/format";
 import {
   EVM_CHAIN_IDS,
   IMPORT_STEPS,
@@ -16,6 +17,7 @@ import {
   mockProgressAt,
   stepState,
   type ImportProgress,
+  type ScanChain,
 } from "@/lib/wallet/import-progress";
 
 /**
@@ -31,18 +33,18 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ replace }) }));
 
 const ADDRESS = "0x71C7656EC7ab88b098defB751B7401B5f6d8976F";
 
-/** 세 체인짜리 합성 목록. 자산 건수 내림차순이라 실제 `walletChains` 출력과 같은 모양이다. */
-const CHAINS: WalletChain[] = [
-  { chainId: 1, chainName: "Ethereum", assetCount: 5 },
-  { chainId: 137, chainName: "Polygon", assetCount: 2 },
-  { chainId: 8453, chainName: "Base", assetCount: 1 },
+/** 세 체인짜리 합성 목록. `txCount`는 resync 응답이 준 수집 건수다. */
+const CHAINS: ScanChain[] = [
+  { chainId: 1, chainName: "Ethereum", txCount: 5 },
+  { chainId: 137, chainName: "Polygon", txCount: 2 },
+  { chainId: 8453, chainName: "Base", txCount: 1 },
 ];
 
 function running(stepIndex: number, elapsedMs = 0, scannedChainCount = 0): ImportProgress {
   return { phase: "running", stepIndex, elapsedMs, scannedChainCount };
 }
 
-function renderModal(progress: ImportProgress, overrides: Partial<{ onBackground: () => void; onRetry: () => void; chains: WalletChain[] }> = {}) {
+function renderModal(progress: ImportProgress, overrides: Partial<{ onBackground: () => void; onRetry: () => void; chains: ScanChain[] }> = {}) {
   return render(
     <ImportProgressModal
       open
@@ -194,7 +196,7 @@ describe("불러오기 모달", () => {
     expect(screen.getByText(/0x71C765/)).toBeTruthy();
   });
 
-  it("자산이 있는 체인을 전부 로고와 이름으로 나열한다", () => {
+  it("스캔 대상 체인을 전부 로고와 이름으로 나열한다", () => {
     renderModal(running(SCAN_STEP_INDEX, 2_000, 1));
     const list = screen.getByRole("list", { name: "조회할 체인" });
     expect(within(list).getAllByRole("listitem")).toHaveLength(CHAINS.length);
@@ -203,13 +205,17 @@ describe("불러오기 모달", () => {
       expect(within(list).getByText(chain.chainName)).toBeTruthy();
       expect(list.querySelector(`[data-chain-icon="${chain.chainId}"]`)).toBeTruthy();
     }
-    expect(screen.getByText(`자산이 있는 EVM 체인 ${CHAINS.length}곳`)).toBeTruthy();
+    expect(screen.getByText(`지원하는 EVM 체인 ${CHAINS.length}곳`)).toBeTruthy();
   });
 
-  it("왜 이 체인을 보는지 자산 건수로 말한다", () => {
+  it("수집 건수는 아는 체인에만 붙이고 모르는 값은 0으로 꾸미지 않는다", () => {
     renderModal(running(SCAN_STEP_INDEX, 2_000, 1));
-    expect(within(chainItem("Ethereum")).getByText("자산 5건")).toBeTruthy();
-    expect(within(chainItem("Base")).getByText("자산 1건")).toBeTruthy();
+    expect(within(chainItem("Ethereum")).getByText("거래 5건")).toBeTruthy();
+    expect(within(chainItem("Base")).getByText("거래 1건")).toBeTruthy();
+
+    // 응답 전에는 건수를 모른다 — 0을 그리면 "이 체인엔 아무것도 없다"로 읽힌다.
+    renderModal(running(SCAN_STEP_INDEX, 2_000, 1), { chains: [{ chainId: 1, chainName: "Ethereum" }] });
+    expect(screen.queryByText(/거래 0건/)).toBeNull();
   });
 
   it("체인별 조회 상태를 글자로 구분한다", () => {
@@ -301,28 +307,75 @@ describe("불러오기 모달", () => {
 });
 
 describe("불러오기 게이트", () => {
+  // BE `POST /api/events/resync` 계약 미러: 지원 체인 전체를 항상 포함하는 체인별 수집 건수.
+  const syncEnvelope = {
+    data: {
+      bindings: 1,
+      fetched: 6,
+      normalized: 6,
+      chains: [
+        { chainId: 1, fetched: 3 },
+        { chainId: 8453, fetched: 2 },
+        { chainId: 42161, fetched: 1 },
+        { chainId: 10, fetched: 0 },
+        { chainId: 137, fetched: 0 },
+      ],
+      skipped: [],
+    },
+  };
+
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(syncEnvelope), { status: 201 })));
   });
 
   afterEach(() => {
+    vi.unstubAllGlobals();
     vi.useRealTimers();
   });
 
-  it("데모 보유 자산의 체인을 그대로 훑는다", () => {
+  it("지원하는 EVM 체인 전체를 스캔 대상으로 나열한다", () => {
     render(<ImportProgressGate walletAddress={ADDRESS} />);
     const list = screen.getByRole("list", { name: "조회할 체인" });
-    // 게이트가 자체 목록을 들고 있으면 지갑 홈과 불러오기 화면이 서로 다른 체인을 말하게 된다.
-    for (const chain of demoWalletChains()) {
-      expect(within(list).getByText(chain.chainName)).toBeTruthy();
+    // BE 인덱서는 지원 체인 전체를 스캔한다 — "자산이 있는 체인만"은 응답 전에는 알 수 없는 사실이다.
+    for (const chainId of EVM_CHAIN_IDS) {
+      expect(within(list).getByText(chainLabel(chainId))).toBeTruthy();
     }
   });
 
-  it("불러오기가 끝나면 스스로 닫고 URL에서 importing을 지운다", () => {
+  it("응답이 오면 체인별 수집 건수가 사실로 붙는다", async () => {
+    render(<ImportProgressGate walletAddress={ADDRESS} />);
+    // resync 응답(fetch→json→setState) 마이크로태스크 체인을 정산한다.
+    await act(async () => {});
+    expect(within(chainItem("Ethereum")).getByText("거래 3건")).toBeTruthy();
+    expect(within(chainItem("Base")).getByText("거래 2건")).toBeTruthy();
+  });
+
+  it("응답이 오기 전에는 타이머가 끝나도 완료를 말하지 않는다", () => {
+    // 완료는 실제 응답에서만 나온다 — 연출 타이머는 완료를 만들 수 없다.
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<never>(() => undefined)));
+    render(<ImportProgressGate walletAddress={ADDRESS} />);
+    const total = IMPORT_STEP_DURATIONS_MS.reduce((sum, duration) => sum + duration, 0);
+    act(() => {
+      vi.advanceTimersByTime(total + 100);
+    });
+    expect(screen.getByRole("dialog", { name: "거래를 불러오는 중" })).toBeTruthy();
+  });
+
+  it("resync가 실패하면 실패를 말하고 재시도를 준다", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 503 })));
+    render(<ImportProgressGate walletAddress={ADDRESS} />);
+    await act(async () => {});
+    expect(screen.getByRole("dialog", { name: "거래를 다 불러오지 못했습니다" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "다시 시도" })).toBeTruthy();
+  });
+
+  it("불러오기가 끝나면 스스로 닫고 URL에서 importing을 지운다", async () => {
     render(<ImportProgressGate walletAddress={ADDRESS} />);
     expect(screen.getByRole("dialog")).toBeTruthy();
 
-    // 전체 단계를 지나 완료에 닿게 한다.
+    // 완료는 실제 응답 AND 연출 타이머 종료다 — 응답을 먼저 정산한 뒤 전체 단계를 지나게 한다.
+    await act(async () => {});
     const total = IMPORT_STEP_DURATIONS_MS.reduce((sum, duration) => sum + duration, 0);
     act(() => {
       vi.advanceTimersByTime(total + 100);

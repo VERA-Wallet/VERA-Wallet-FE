@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ChainIcon } from "@/components/ui/chain-icon";
 import { shortHash } from "@/lib/format";
-import type { WalletChain } from "@/lib/wallet/holdings";
 import {
   IMPORT_STEPS,
   IMPORT_TICK_MS,
@@ -15,6 +14,7 @@ import {
   stepState,
   type ChainScanState,
   type ImportProgress,
+  type ScanChain,
 } from "@/lib/wallet/import-progress";
 
 /**
@@ -58,8 +58,8 @@ type ImportProgressModalProps = {
   open: boolean;
   progress: ImportProgress;
   walletAddress: string;
-  /** 자산이 있어 실제로 훑을 체인. 순서가 곧 조회 순서라 `progress.scannedChainCount`와 짝이 맞아야 한다. */
-  chains: WalletChain[];
+  /** 스캔 대상 체인. 순서가 곧 조회 순서라 `progress.scannedChainCount`와 짝이 맞아야 한다. */
+  chains: ScanChain[];
   /** 기다리지 않고 대시보드를 쓰게 한다. 동기화를 멈추는 것이 아니다. */
   onBackground: () => void;
   /** 실패 상태에서만 노출된다. */
@@ -145,7 +145,7 @@ export function ImportProgressModal({
           <p className="mt-1.5 font-mono text-xs text-zinc-500">{shortHash(walletAddress)}</p>
           <p className="mt-1 text-xs text-zinc-400">
             {/* 왜 이 체인들인지 한 줄로 말한다 — 스캔 대상이 임의로 정해진 게 아니다. */}
-            자산이 있는 EVM 체인 {chains.length}곳
+            지원하는 EVM 체인 {chains.length}곳
           </p>
         </div>
 
@@ -159,7 +159,8 @@ export function ImportProgressModal({
                 <span className={`text-sm font-semibold ${state === "pending" ? "text-zinc-400" : "text-zinc-900"}`}>
                   {chain.chainName}
                 </span>
-                <span className="text-xs text-zinc-400">자산 {chain.assetCount}건</span>
+                {/* 수집 건수는 응답이 온 뒤에만 안다. 모르는 동안 0을 그리면 "이 체인엔 아무것도 없다"로 읽힌다. */}
+                {chain.txCount !== undefined ? <span className="text-xs text-zinc-400">거래 {chain.txCount}건</span> : null}
                 <span className="ml-auto">
                   <ChainScanMark state={state} />
                 </span>
