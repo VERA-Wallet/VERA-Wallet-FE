@@ -14,6 +14,8 @@ const classificationStyles: Record<
     className: "bg-blue-100 text-blue-700",
   },
   UNKNOWN: { label: "미분류", className: "bg-zinc-100 text-zinc-600" },
+  // 스팸은 원장에서 빠지므로 목록에는 거의 뜨지 않지만, 오탐을 되돌리는 화면에는 이 라벨이 필요하다.
+  SPAM: { label: "스팸", className: "bg-zinc-200 text-zinc-500" },
 };
 
 export const CLASSIFICATION_LABEL: Record<Classification, string> = {
@@ -22,6 +24,7 @@ export const CLASSIFICATION_LABEL: Record<Classification, string> = {
   EXCHANGE: classificationStyles.EXCHANGE.label,
   INTERNAL_TRANSFER: classificationStyles.INTERNAL_TRANSFER.label,
   UNKNOWN: classificationStyles.UNKNOWN.label,
+  SPAM: classificationStyles.SPAM.label,
 };
 
 type ClassificationBadgeProps = {

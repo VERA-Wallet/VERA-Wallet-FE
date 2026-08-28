@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { eventRepository, summaryProvider } from "@/lib/composition-root.client";
 import { collectBoundedEvents } from "@/lib/collect/bounded-event-collector";
+import { isSpam } from "@/lib/review";
 import type { ReclassifyRequestDTO, SetValueOverrideRequestDTO } from "@/lib/http/dto";
 
 // React Query 무효화는 접두 매칭이라 list 키를 ["events","list"]로 분리해 둔다.
@@ -22,7 +23,11 @@ export function useEventList(maxPages: number = MAX_PAGES) {
       // 거래 탭은 "전체 거래"를 표방하므로 페이지를 끝까지 이어 받는다.
       // 상한·커서 반복 가드는 export·서버 스냅샷과 같은 수집기를 공유한다 —
       // 갈라지면 대시보드·내보내기·세금이 서로 다른 개수를 말하게 된다.
-      return collectBoundedEvents(eventRepository, { maxPages, pageLimit: PAGE_LIMIT });
+      const collected = await collectBoundedEvents(eventRepository, { maxPages, pageLimit: PAGE_LIMIT });
+      // 스팸은 원장에서 뺀다 — 실지갑에서 절반이 넘어 그대로 두면 목록도 확인 필요 큐도 스팸이 덮는다.
+      // 지우는 게 아니라 숨기는 것이므로 몇 건인지 함께 넘겨 화면이 그 사실을 말하게 한다.
+      const items = collected.items.filter((item) => !isSpam(item.event));
+      return { ...collected, items, spam: collected.items.length - items.length };
     },
     // "더 불러오기"로 상한이 바뀌면 키가 달라진다. 이전 목록을 유지해 화면이 빈 상태로 튀지 않게 한다.
     placeholderData: (previous) => previous,

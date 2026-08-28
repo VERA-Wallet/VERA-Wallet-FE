@@ -57,9 +57,11 @@ function event(over: Partial<NormalizedEvent> & { id: string }): NormalizedEvent
     fiat_value: "1400000.00",
     fiat_currency: "KRW",
     income_kind: null,
+    group_id: null,
     swap_to_symbol: null,
     swap_to_icon_url: null,
     bridge_dest_chain_id: null,
+    bridge_group_id: null,
     ...over,
   };
 }
@@ -73,10 +75,11 @@ const acquire = event({
   raw_amount: "2000000000",
   fiat_value: "2800000.00",
 });
-const swapOut = event({ id: "swap-out", tx_hash: "0xswap", counterparty: KYBER });
+const swapOut = event({ id: "swap-out", tx_hash: "0xswap", group_id: "grp-swap", counterparty: KYBER });
 const swapIn = event({
   id: "swap-in",
   tx_hash: "0xswap",
+  group_id: "grp-swap",
   classification: "RECEIVE",
   direction: "IN",
   asset_type: "NATIVE",
@@ -146,5 +149,34 @@ describe("스왑 두 다리는 한 행으로 묶인다", () => {
     expect(sheet.textContent).toContain(`취득가액 · ${formatFiat(swapIn.fiat_value, "KRW")}`);
     expect(sheet.textContent).toContain("손익 이연");
     expect(sheet.textContent).toContain("KyberSwap");
+  });
+
+  it("받은(IN) 다리 가격이 미확정이어도 병합하되, 상세 스왑 섹션에 '확인 필요'를 밝힌다 — 취득원가를 고칠 수 있게", async () => {
+    // 가격 게이트 제거로 가격 미확정 스왑도 한 행으로 묶이는데, 병합된 IN 다리의 확인 필요가
+    // 어디에도 안 뜨면 취득원가를 바로잡을 길이 사라진다(P1). 상세 스왑 섹션이 그 사유를 밝혀야 한다.
+    const swapInUnpriced = { ...swapIn, price_status: "UNKNOWN" as const, fiat_value: null };
+    const localEvents = [acquire, swapOut, swapInUnpriced];
+    ports.list.mockResolvedValue({ items: localEvents.map((item, i) => ({ event: item, version: i + 1 })), nextCursor: null });
+    ports.getById.mockImplementation(async (id: string) => ({ event: localEvents.find((e) => e.id === id)!, version: 1, override_history: [] }));
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <DashboardView countryCode="KR" />
+      </QueryClientProvider>,
+    );
+    const row = await waitFor(() => {
+      const found = document.querySelector('button[data-event-id="swap-out"]');
+      expect(found).not.toBeNull();
+      return found as HTMLButtonElement;
+    });
+    // 가격 미확정이어도 여전히 한 행으로 병합된다(IN 다리는 별도 행이 아니다).
+    expect(document.querySelector('button[data-event-id="swap-in"]')).toBeNull();
+
+    fireEvent.click(row);
+    await screen.findByText("스왑 구성 — 한 거래, 두 다리");
+    const sheet = screen.getByText("거래 상세").closest("div")!.parentElement!;
+    // 받은 다리의 가격 확인 필요가 취득가액 자리에서 드러난다 — 안 그러면 원가를 고칠 길이 없다.
+    expect(sheet.textContent).toContain("확인 필요");
+    expect(sheet.textContent).toContain("가격 확인 필요");
   });
 });

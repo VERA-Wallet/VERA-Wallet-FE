@@ -21,6 +21,22 @@ export function effectiveClassification(event: NormalizedEvent) {
   return event.user_override?.classification ?? event.classification;
 }
 
+/**
+ * 더스트·에어드랍 스팸인가.
+ *
+ * 스팸은 **원장에 들어오기 전에** 걸러낸다(`lib/queries/events.ts`와 세금 입력). 아래
+ * `taxExclusionReason`·`needsReview`에 스팸 갈래를 두지 않은 것은 의도적이다 — 이 파일의 불변식은
+ * "계산 제외 ⊆ 확인 필요"인데, 스팸을 계산 제외로 만들면서 확인 필요에서 빼면 그 불변식이 깨지고,
+ * 반대로 확인 필요에 넣으면 실지갑에서 절반이 넘는 스팸이 큐를 덮어 진짜 확인할 거래가 묻힌다.
+ * 원장에서 아예 빼면 사용자가 스팸 행을 볼 일이 없어 두 문제가 다 사라진다 —
+ * 대신 몇 건을 숨겼는지는 화면이 반드시 말한다(조용히 지우면 거래가 사라진 것과 같다).
+ *
+ * 유효 분류를 보므로 사용자가 오탐을 되돌리면(재분류) 그 즉시 원장으로 돌아온다.
+ */
+export function isSpam(event: NormalizedEvent): boolean {
+  return effectiveClassification(event) === "SPAM";
+}
+
 export function eventQuantity(event: NormalizedEvent): Decimal {
   return div(event.raw_amount, `1${"0".repeat(Math.max(0, event.decimals))}`);
 }

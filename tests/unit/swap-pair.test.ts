@@ -31,39 +31,52 @@ function event(over: Partial<NormalizedEvent> & { id: string }): NormalizedEvent
     fiat_value: "1400000.00",
     fiat_currency: "KRW",
     income_kind: null,
+    group_id: "grp-1",
     swap_to_symbol: null,
     swap_to_icon_url: null,
     bridge_dest_chain_id: null,
+    bridge_group_id: null,
     ...over,
   };
 }
 
 describe("스왑 두 다리 페어링", () => {
-  it("같은 tx_hash의 EXCHANGE·OUT + RECEIVE·IN을 한 쌍으로 묶는다", () => {
-    const out = event({ id: "out", classification: "EXCHANGE", direction: "OUT" });
-    const received = event({ id: "in", classification: "RECEIVE", direction: "IN", asset_symbol: "ETH" });
+  it("같은 group_id의 EXCHANGE·OUT + RECEIVE·IN을 한 쌍으로 묶는다", () => {
+    const out = event({ id: "out", classification: "EXCHANGE", direction: "OUT", group_id: "g1" });
+    const received = event({ id: "in", classification: "RECEIVE", direction: "IN", asset_symbol: "ETH", group_id: "g1" });
     const pairing = pairSwapLegs([out, received]);
     expect(pairing.inLegByOutId.get("out")?.id).toBe("in");
     expect(pairing.pairedInIds.has("in")).toBe(true);
   });
 
-  it("tx 그룹이 2건이 아니면(3건 이상) 어느 둘인지 단정하지 않고 묶지 않는다", () => {
-    const out = event({ id: "out" });
-    const inA = event({ id: "inA", classification: "RECEIVE", direction: "IN" });
-    const inB = event({ id: "inB", classification: "RECEIVE", direction: "IN" });
-    expect(pairSwapLegs([out, inA, inB]).inLegByOutId.size).toBe(0);
+  it("group_id가 다르면(같은 tx여도) 묶지 않는다 — 페어링은 서버 발급 키만 따른다", () => {
+    const out = event({ id: "out", group_id: "g1" });
+    const received = event({ id: "in", classification: "RECEIVE", direction: "IN", group_id: "g2" });
+    expect(pairSwapLegs([out, received]).inLegByOutId.size).toBe(0);
   });
 
-  it("어느 다리든 확인이 필요하면 묶지 않는다 — 문제를 페어 안에 숨기지 않는다", () => {
-    const out = event({ id: "out" });
-    // 가격 미확정 IN 다리 → needsReview. 페어로 숨기면 확인 필요 큐와 목록이 다른 말을 한다.
-    const received = event({ id: "in", classification: "RECEIVE", direction: "IN", price_status: "UNKNOWN", fiat_value: null });
+  it("group_id가 없는 leg는 묶지 않는다(서버가 스왑으로 인정하지 않음)", () => {
+    const out = event({ id: "out", group_id: null });
+    const received = event({ id: "in", classification: "RECEIVE", direction: "IN", group_id: null });
+    expect(pairSwapLegs([out, received]).inLegByOutId.size).toBe(0);
+  });
+
+  it("가격 미확정(price_status UNKNOWN)이어도 병합한다 — 병합은 표시, 가격은 세무", () => {
+    const out = event({ id: "out", price_status: "UNKNOWN", fiat_value: null, group_id: "g1" });
+    const received = event({ id: "in", classification: "RECEIVE", direction: "IN", price_status: "UNKNOWN", fiat_value: null, group_id: "g1" });
+    const pairing = pairSwapLegs([out, received]);
+    expect(pairing.inLegByOutId.get("out")?.id).toBe("in");
+  });
+
+  it("신뢰도가 바닥(0.5) 미만인 다리(브릿지 의심)는 묶지 않는다", () => {
+    const out = event({ id: "out", confidence: 0.4, group_id: "g1" });
+    const received = event({ id: "in", classification: "RECEIVE", direction: "IN", group_id: "g1" });
     expect(pairSwapLegs([out, received]).inLegByOutId.size).toBe(0);
   });
 
   it("소득 수령(IN)은 스왑 다리가 아니다", () => {
-    const out = event({ id: "out" });
-    const income = event({ id: "in", classification: "RECEIVE", direction: "IN", income_kind: "STAKING" });
+    const out = event({ id: "out", group_id: "g1" });
+    const income = event({ id: "in", classification: "RECEIVE", direction: "IN", income_kind: "STAKING", group_id: "g1" });
     expect(pairSwapLegs([out, income]).inLegByOutId.size).toBe(0);
   });
 
@@ -74,7 +87,8 @@ describe("스왑 두 다리 페어링", () => {
     expect(pairing.inLegByOutId.size).toBeGreaterThanOrEqual(2);
     for (const [outId, inLeg] of pairing.inLegByOutId) {
       const out = events.find((item) => item.id === outId)!;
-      expect(out.tx_hash).toBe(inLeg.tx_hash);
+      expect(out.group_id).toBe(inLeg.group_id);
+      expect(out.group_id).toBeTruthy();
       expect(out.direction).toBe("OUT");
       expect(inLeg.direction).toBe("IN");
     }

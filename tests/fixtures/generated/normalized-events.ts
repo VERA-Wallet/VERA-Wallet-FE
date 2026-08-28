@@ -178,9 +178,13 @@ function buildEvent({ eventNumber, at, classification, unknownPrice, lowConfiden
     fiat_currency: "KRW",
     // 기본 픽스처는 매수 취득이라 수익 종류가 없다. DeFi 수익 배치만 이 칸을 채운다.
     income_kind: null,
+    // These synthetic EXCHANGE rows are standalone disposals (not an IN/OUT pair sharing one tx),
+    // so they are not a swap-pairing target -> null.
+    group_id: null,
     swap_to_symbol: null,
     swap_to_icon_url: null,
     bridge_dest_chain_id: null,
+    bridge_group_id: null,
   };
 }
 
