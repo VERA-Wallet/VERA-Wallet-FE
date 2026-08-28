@@ -311,6 +311,11 @@ function EventDetails({
             <div className="rounded-lg bg-white p-3">
               <p className="font-semibold text-emerald-700">받은 자산 {formatSignedTokenAmount(swapInLeg)} {assetTicker(swapInLeg)}</p>
               <p className="mt-1 text-zinc-700">취득가액 · {formatFiat(swapInLeg.fiat_value, swapInLeg.fiat_currency)}</p>
+              {/* 받은 다리가 목록·대표 배지에서 빠지므로, 이 다리의 확인 필요(가격 미확정 등)는
+                  취득원가를 고치는 바로 이 자리에서 밝힌다 — 안 그러면 취득원가를 바로잡을 길이 없다. */}
+              {needsReview(swapInLeg) ? (
+                <p className="mt-1 rounded bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800">확인 필요 · {reviewReason(swapInLeg)}</p>
+              ) : null}
               <p className="mt-1 text-zinc-500">지금 내는 세금이 아닙니다 — 이 자산을 나중에 팔 때의 원가가 됩니다(손익 이연).</p>
             </div>
           </div>
@@ -693,6 +698,8 @@ const TYPE_BADGE_CLASS: Record<Classification, string> = {
   EXCHANGE: "bg-orange-100 text-orange-700",
   INTERNAL_TRANSFER: "bg-blue-100 text-blue-700",
   UNKNOWN: "bg-zinc-100 text-zinc-600",
+  // 스팸은 원장에서 빠져 목록에 뜨지 않지만 Record 계약상 빠짐없이 있어야 한다.
+  SPAM: "bg-zinc-200 text-zinc-500",
 };
 
 /** 목록 왼쪽의 **거래 타입 배지**. 라벨은 transactionTypeLabel, 색은 분류(또는 수익 수령이면 violet). */
@@ -737,13 +744,14 @@ function TransactionLogo({ event, swapInLeg }: { event: NormalizedEvent; swapInL
   }
 
   if (event.swap_to_symbol !== null) {
-    // 받은 자산은 원장이 알려준 표시 힌트다 — 아는 티커면 그 자산의 공식 로고로 그린다.
+    // 받은 자산은 원장이 알려준 표시 힌트다 — 컨트랙트가 없어 로고는 메타데이터 이미지나 대체 마크로 그린다.
     const toMark = {
+      chain_id: event.chain_id,
+      asset_type: "ERC20" as const,
+      asset_contract: null,
       asset_symbol: event.swap_to_symbol,
       asset_icon_url: event.swap_to_icon_url,
       token_id: null,
-      asset_type: "ERC20" as const,
-      asset_verified: true,
     };
     return (
       <span className="relative block h-10 w-10 shrink-0" aria-hidden="true">
@@ -892,6 +900,9 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
   const [group, setGroup] = useState<JudgmentGroup | "excluded" | null>(null);
   // 체인 필터. null = 전체. 목록에 없는 체인이 걸리면 아래에서 무시한다.
   const [chain, setChain] = useState<number | null>(null);
+  // 지갑 필터. null = 전체. 지갑을 여럿 등록하면 한 목록에 섞여 "이 지갑에서 무슨 일이 있었나"를
+  // 볼 방법이 없다. 체인·연도와 같은 성격의 **표시 필터**라 판정·요약 금액은 이 선택에 흔들리지 않는다.
+  const [wallet, setWallet] = useState<string | null>(null);
   // 연도 필터. null = 전체. 체인 필터와 같은 성격의 **표시 필터**라 판정·요약은 건드리지 않는다
   // (연도가 계산 경계인 곳은 세금 탭이고, 여기서 고른 해는 목록만 좁힌다).
   const [year, setYear] = useState<number | null>(null);
@@ -997,7 +1008,13 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
   const undatedDropped = periodNarrowed
     ? pairedItems.filter((item) => isoDay(item.record.event.block_timestamp) === "").length
     : 0;
-  const reviewItems = listItems.filter((item) => needsReview(item.record.event) || item.isDuplicate);
+  // 스왑은 대표(OUT) 한 줄로 합쳐 그리고 IN 다리는 목록에서 빠지므로, IN만 확인이 필요하면
+  // (예: 받은 자산 가격 미확정) 대표 행을 리뷰 탭에 올려야 사용자가 열어 취득원가를 고칠 수 있다.
+  // IN 다리를 함께 검사하지 않으면 그 확인 필요가 목록에서도 큐에서도 사라진다.
+  const reviewItems = listItems.filter((item) => {
+    const inLeg = swapPairing.inLegByOutId.get(item.record.event.id);
+    return needsReview(item.record.event) || (inLeg != null && needsReview(inLeg)) || item.isDuplicate;
+  });
   const tabItems = tab === "review" ? reviewItems : listItems;
   // 판정을 못 불러오면 그룹 필터를 유지할 근거가 없다. 조용히 빈 목록을 보이면 사용자가 원인을 모른다.
   // 탭을 바꿨는데 그 그룹이 이 탭에 없으면 필터를 유지할 근거가 없다.
@@ -1013,6 +1030,11 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
   };
   const matchesChain = (item: AnnotatedRecord, chain: number | null) =>
     chain === null || item.record.event.chain_id === chain;
+  // 주소 비교는 대소문자를 무시한다 — 체크섬 표기와 소문자 표기가 같은 지갑을 두 개로 갈라 놓으면
+  // 드롭다운에 같은 주소가 두 번 뜨고 어느 쪽을 골라도 절반만 보인다.
+  const walletOf = (item: AnnotatedRecord) => item.record.event.wallet_address.toLowerCase();
+  const matchesWallet = (item: AnnotatedRecord, target: string | null) =>
+    target === null || walletOf(item) === target;
   // 연도는 날짜 머리글과 같은 판정을 쓴다(`isoDay`) — 달력에 없는 날짜·깨진 오프셋은 연도도 없다.
   // 그런 건은 "날짜 미상"으로 남고 특정 연도 칩에는 잡히지 않는다.
   const yearOf = (item: AnnotatedRecord): number | null => {
@@ -1030,8 +1052,15 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
   const activeChain = chain !== null && tabItems.some((item) => matchesChain(item, chain)) ? chain : null;
   // 연도도 같은 규칙이다 — 고른 해가 이 탭에 없으면 놓는다.
   const activeYear = year !== null && tabItems.some((item) => matchesYear(item, year)) ? year : null;
+  // 지갑도 같은 규칙이다. 확인 필요 탭에 그 지갑의 거래가 없으면 선택을 유지할 근거가 없다 —
+  // 유지하면 빈 목록만 남고 사용자는 자기가 고른 지갑 때문인지 문제가 없는 건지 알 수 없다.
+  const activeWallet = wallet !== null && tabItems.some((item) => matchesWallet(item, wallet)) ? wallet : null;
   const displayedItems = tabItems.filter(
-    (item) => matchesChain(item, activeChain) && matchesGroup(item, activeGroup) && matchesYear(item, activeYear),
+    (item) =>
+      matchesWallet(item, activeWallet) &&
+      matchesChain(item, activeChain) &&
+      matchesGroup(item, activeGroup) &&
+      matchesYear(item, activeYear),
   );
   // 칩 건수는 **지금 눌렀을 때 남을 카드 수**다. 그래서 자기 자신을 뺀 나머지 필터를 적용한 뒤 센다.
   // 전체 목록 기준으로 세면 다른 필터가 걸린 상태에서 칩 건수와 카드 수가 어긋난다.
@@ -1040,25 +1069,36 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
   // 카드가 "판정 확인 중"인데 칩이 "취득 10"이라 하면 화면이 두 이야기를 한다.
   for (const item of judgmentsPending || judgments.isError
     ? []
-    : tabItems.filter((row) => matchesChain(row, activeChain) && matchesYear(row, activeYear))) {
+    : tabItems.filter((row) => matchesWallet(row, activeWallet) && matchesChain(row, activeChain) && matchesYear(row, activeYear))) {
     for (const key of groupsOf(item)) groupCounts.set(key, (groupCounts.get(key) ?? 0) + 1);
   }
   const groups = [...groupCounts.entries()];
   // 체인·연도 칩은 판정과 무관하게 온체인 사실이라 판정 조회 상태와 관계없이 셀 수 있다.
   const chainCounts = new Map<number, number>();
-  for (const item of tabItems.filter((row) => matchesGroup(row, activeGroup) && matchesYear(row, activeYear))) {
+  for (const item of tabItems.filter((row) => matchesWallet(row, activeWallet) && matchesGroup(row, activeGroup) && matchesYear(row, activeYear))) {
     const id = item.record.event.chain_id;
     chainCounts.set(id, (chainCounts.get(id) ?? 0) + 1);
   }
   // 체인이 하나뿐이면 고를 것이 없다 — 누를 수 없는 칩 한 줄은 자리만 차지한다.
   const chainFilters = chainCounts.size > 1 ? [...chainCounts.entries()].sort((left, right) => left[0] - right[0]) : [];
   const yearCounts = new Map<number, number>();
-  for (const item of tabItems.filter((row) => matchesChain(row, activeChain) && matchesGroup(row, activeGroup))) {
+  for (const item of tabItems.filter((row) => matchesWallet(row, activeWallet) && matchesChain(row, activeChain) && matchesGroup(row, activeGroup))) {
     const value = yearOf(item);
     if (value !== null) yearCounts.set(value, (yearCounts.get(value) ?? 0) + 1);
   }
   // 연도가 하나뿐이면 고를 것이 없다(체인 필터와 같은 규칙). 목록은 최신순이라 칩도 최신 연도가 먼저다.
   const yearFilters = yearCounts.size > 1 ? [...yearCounts.entries()].sort((left, right) => right[0] - left[0]) : [];
+  // 지갑 건수는 다른 필터를 적용한 뒤 센다(칩과 같은 규칙) — 드롭다운이 말하는 건수와 실제 목록이 어긋나면
+  // 사용자는 어느 쪽을 믿어야 할지 모른다. 거래가 있는 지갑만 나온다: 등록만 하고 거래가 없는 지갑은
+  // 이벤트에 흔적이 없어 여기서 알 수 없다(세션 계약이 지갑 목록을 내려주면 그때 합칠 자리다).
+  const walletCounts = new Map<string, number>();
+  for (const item of tabItems.filter((row) => matchesChain(row, activeChain) && matchesGroup(row, activeGroup) && matchesYear(row, activeYear))) {
+    const address = walletOf(item);
+    walletCounts.set(address, (walletCounts.get(address) ?? 0) + 1);
+  }
+  // 지갑이 하나뿐이면 고를 것이 없다 — 선택지 하나짜리 드롭다운은 자리만 차지한다(체인 칩과 같은 규칙).
+  const walletFilters = walletCounts.size > 1 ? [...walletCounts.entries()].sort((left, right) => right[1] - left[1]) : [];
+  const walletTotal = [...walletCounts.values()].reduce((sum, count) => sum + count, 0);
   const estimate = judgments.estimate;
   // 헤드라인 손익·건수는 이제 요약(이벤트 직접 집계)이 아니라 **세금 화면과 같은 estimate**에서 파생한다.
   // 그래야 같은 귀속연도에서 대시보드·세금·내보내기가 한 숫자를 말한다(P1-5).
@@ -1205,6 +1245,41 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
             <p>앰버 배지 — 확인이 필요한 문제. 정상 상태는 배지를 달지 않습니다.</p>
           </div>
         </details>
+        {/* 원장에서 빠진 것들을 반드시 말한다. 조용히 빼면 목록이 완전한 것처럼 보이면서 거래가 사라진다.
+            스팸은 숨긴 것(되돌릴 수 있음)이고, 형식 오류는 서버 응답이 계약을 벗어나 읽지 못한 것이다 —
+            원인이 다르므로 한 문장으로 뭉개지 않는다. */}
+        {(events.data?.spam ?? 0) > 0 || (events.data?.dropped ?? 0) > 0 ? (
+          <p data-surface="ledger-omissions" className="mt-3 text-xs text-zinc-500">
+            {(events.data?.spam ?? 0) > 0 ? `스팸으로 분류된 ${events.data!.spam}건은 목록·계산에서 빼고 있습니다.` : null}
+            {(events.data?.dropped ?? 0) > 0
+              ? `${(events.data?.spam ?? 0) > 0 ? " " : ""}형식이 맞지 않아 읽지 못한 ${events.data!.dropped}건이 있습니다.`
+              : null}
+          </p>
+        ) : null}
+        {/* 지갑 필터. 등록한 지갑이 여럿이면 거래가 한 목록에 섞여 "이 지갑에서 무슨 일이 있었나"를
+            볼 방법이 없다. 체인·연도가 칩인 것과 달리 드롭다운인 이유는 주소가 길어 칩으로 늘어놓으면
+            한 줄을 다 먹고, 지갑은 겹쳐 거는 필터가 아니라 **보는 대상을 바꾸는 선택**이기 때문이다.
+            체인·연도와 같은 표시 필터라 판정·요약 금액은 이 선택에 흔들리지 않는다. */}
+        {walletFilters.length > 0 ? (
+          <div className="mt-3" data-surface="wallet-filter">
+            <label className="text-xs font-medium text-zinc-500" htmlFor="dashboard-wallet-filter">
+              지갑
+            </label>
+            <select
+              id="dashboard-wallet-filter"
+              className="mt-1 w-full rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-sm font-semibold text-zinc-800"
+              value={activeWallet ?? ""}
+              onChange={(event) => setWallet(event.target.value === "" ? null : event.target.value)}
+            >
+              <option value="">전체 지갑 · {walletTotal}건</option>
+              {walletFilters.map(([address, count]) => (
+                <option key={address} value={address}>
+                  {shortHash(address)} · {count}건
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
         {/* 연도 필터. 목록 자체는 늘 최신순이고, 연도는 정렬이 아니라 **경계**다 —
             "2025년에 무슨 일이 있었나"를 보려면 그 해만 남길 문이 있어야 한다.
             체인 필터와 같은 표시 필터라 판정·요약 금액은 이 선택에 흔들리지 않는다. */}

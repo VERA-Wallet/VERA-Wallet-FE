@@ -20,6 +20,16 @@ import type { IncomeKind } from "@/lib/tax/types";
  */
 
 const WALLET = "0x1111111111111111111111111111111111111111";
+/**
+ * 두 번째 지갑. 사용자는 지갑을 여러 개 등록할 수 있고(BE는 userId당 다중 바인딩) 거래는 등록된
+ * 지갑 전체에서 합산돼 내려온다. 데모에 지갑이 하나뿐이면 대시보드의 지갑 드롭다운이 아예 뜨지 않아
+ * 그 사실이 화면에서 사라진다.
+ *
+ * **기존 이벤트 일부를 이 지갑으로 옮길 뿐 새로 만들지 않는다** — 건수·금액·체인·날짜가 그대로라
+ * 합계에 기대는 손익·리포트 픽스처가 흔들리지 않는다. 스왑 두 다리는 한 트랜잭션이므로 반드시
+ * 같은 지갑에 둔다(갈라 놓으면 페어링이 지갑 경계를 넘는 거짓 상황이 된다).
+ */
+const WALLET_L2 = "0x2222222222222222222222222222222222222222";
 
 type AssetType = NormalizedEvent["asset_type"];
 type Asset = { symbol: string; chainId: number; assetType: AssetType; contract: string | null; decimals: number };
@@ -79,6 +89,8 @@ type Spec = {
   unknownPrice?: boolean;
   /** 신뢰도 낮음 → 확인 필요 큐. */
   lowConf?: boolean;
+  /** 이 거래가 일어난 지갑. 비우면 주 지갑(WALLET)이다. */
+  wallet?: string;
 };
 
 function makeEvent(n: number, year: number, spec: Spec): NormalizedEvent {
@@ -95,7 +107,7 @@ function makeEvent(n: number, year: number, spec: Spec): NormalizedEvent {
     chain_id: asset.chainId,
     log_index: n,
     block_timestamp: new Date(Date.UTC(year, spec.day[0], spec.day[1], 9, 0, 0)).toISOString(),
-    wallet_address: WALLET,
+    wallet_address: spec.wallet ?? WALLET,
     direction: spec.dir,
     asset_type: asset.assetType,
     asset_contract: asset.contract,
@@ -117,9 +129,14 @@ function makeEvent(n: number, year: number, spec: Spec): NormalizedEvent {
     fiat_value: unknown ? null : (Number(spec.amount) * spec.unitKrw).toFixed(2),
     fiat_currency: "KRW",
     income_kind: spec.incomeKind ?? null,
+    // 스왑 두 다리(같은 txKey)는 하나의 서버 발급 페어링 키를 공유한다. 목록은 이 값이 같은
+    // leg끼리 한 행으로 묶는다. txKey가 없는 leg(순수 송·수신·브릿지)는 null이다. 데모 스왑은
+    // 두 다리의 chain_id가 서로 달라 chain:txHash 파생이 어긋나므로 txKey에서 공유 키를 만든다.
+    group_id: spec.txKey ? `swap:${spec.txKey}` : null,
     swap_to_symbol: spec.swapTo ?? null,
     swap_to_icon_url: null,
     bridge_dest_chain_id: spec.bridgeDest ?? null,
+    bridge_group_id: null,
   };
 }
 
@@ -140,7 +157,9 @@ const BASE_SPECS: Spec[] = [
   // 매수: ETH 2.0 @ ₩4.5M (총 ₩9,000,000). 이후 처분들의 취득원가가 된다.
   { asset: A.eth, dir: "IN", cls: "RECEIVE", amount: "2.0", unitKrw: 4_500_000, day: [6, 3] },
   { asset: A.usdc, dir: "IN", cls: "RECEIVE", amount: "5000", unitKrw: 1_400, day: [6, 8] },
-  { asset: A.arb, dir: "IN", cls: "RECEIVE", amount: "3000", unitKrw: 1_400, day: [6, 15] },
+  // 아래 L2 지갑(WALLET_L2) 묶음: ARB·OP·POL 매수/매도와 스테이킹 보상. 취득과 처분을 같은 지갑에 둬야
+  // 지갑별로 볼 때 "샀는데 판 기록이 없는" 반쪽짜리 이력이 되지 않는다(원가 매칭은 엔진이 사용자 단위로 한다).
+  { asset: A.arb, dir: "IN", cls: "RECEIVE", amount: "3000", unitKrw: 1_400, day: [6, 15], wallet: WALLET_L2 },
   // 스왑 ①: USDC → ETH — **같은 tx_hash를 공유하는 두 다리**(처분 OUT + 취득 IN)로 싣는다.
   // 내보낸 USDC는 스테이블이라 취득가≈양도가로 손익 거의 0. 받은 ETH는 취득가(원가)를 얻는다(이연).
   { asset: A.usdc, dir: "OUT", cls: "EXCHANGE", amount: "1000", unitKrw: 1_400, day: [6, 22], txKey: "swap-usdc-eth", counterparty: KYBER },
@@ -148,17 +167,17 @@ const BASE_SPECS: Spec[] = [
   // 브릿지: USDC Base → Arbitrum(처분 아님). 상대는 Across SpokePool.
   { asset: A.usdc, dir: "OUT", cls: "INTERNAL_TRANSFER", amount: "2000", unitKrw: 1_400, day: [7, 1], bridgeDest: 42161, counterparty: ACROSS },
   // 소득: 스테이킹 보상 0.05 stETH(₩250,000). KR은 명문 규정이 없어 판정 보류로 뜬다. 상대는 Lido.
-  { asset: A.steth, dir: "IN", cls: "RECEIVE", amount: "0.05", unitKrw: 5_000_000, day: [7, 10], incomeKind: "STAKING", counterparty: LIDO },
+  { asset: A.steth, dir: "IN", cls: "RECEIVE", amount: "0.05", unitKrw: 5_000_000, day: [7, 10], incomeKind: "STAKING", counterparty: LIDO, wallet: WALLET_L2 },
   // 매도: ETH 0.4 @ ₩5.5M(양도가 ₩2,200,000). 취득가 ₩4.5M 대비 이익.
   { asset: A.eth, dir: "OUT", cls: "SEND", amount: "0.4", unitKrw: 5_500_000, day: [7, 20] },
   // 소득: 대여 이자 120 aUSDC(₩168,000). KR에서 대여 대가는 과세 income. 상대는 Aave Pool.
   { asset: A.ausdc, dir: "IN", cls: "RECEIVE", amount: "120", unitKrw: 1_400, day: [8, 1], incomeKind: "LENDING", counterparty: AAVE },
   // 매도: ARB 3000 @ ₩1,100(양도가 ₩3,300,000). 취득가 ₩4,200,000 대비 손실.
-  { asset: A.arb, dir: "OUT", cls: "SEND", amount: "3000", unitKrw: 1_100, day: [8, 10] },
-  { asset: A.op, dir: "IN", cls: "RECEIVE", amount: "800", unitKrw: 3_000, day: [8, 20] },
+  { asset: A.arb, dir: "OUT", cls: "SEND", amount: "3000", unitKrw: 1_100, day: [8, 10], wallet: WALLET_L2 },
+  { asset: A.op, dir: "IN", cls: "RECEIVE", amount: "800", unitKrw: 3_000, day: [8, 20], wallet: WALLET_L2 },
   // 매도: OP 800 @ ₩2,600(양도가 ₩2,080,000). 취득가 ₩2,400,000 대비 손실.
-  { asset: A.op, dir: "OUT", cls: "SEND", amount: "800", unitKrw: 2_600, day: [9, 1] },
-  { asset: A.pol, dir: "IN", cls: "RECEIVE", amount: "5000", unitKrw: 550, day: [9, 10] },
+  { asset: A.op, dir: "OUT", cls: "SEND", amount: "800", unitKrw: 2_600, day: [9, 1], wallet: WALLET_L2 },
+  { asset: A.pol, dir: "IN", cls: "RECEIVE", amount: "5000", unitKrw: 550, day: [9, 10], wallet: WALLET_L2 },
   // 스왑 ②: ETH → USDC — 같은 tx_hash 두 다리. 내보낸 ETH는 취득가 ₩4.5M 대비 이익,
   // 받은 USDC는 그 시점 평가액으로 취득가를 얻는다(수수료만큼 OUT보다 약간 작다).
   { asset: A.eth, dir: "OUT", cls: "EXCHANGE", amount: "0.2", unitKrw: 5_600_000, day: [9, 20], txKey: "swap-eth-usdc", counterparty: KYBER },
@@ -171,7 +190,7 @@ const BASE_SPECS: Spec[] = [
   // 매도: ETH 0.3 @ ₩5.2M(양도가 ₩1,560,000). 이익.
   { asset: A.eth, dir: "OUT", cls: "SEND", amount: "0.3", unitKrw: 5_200_000, day: [10, 20] },
   // 매도: POL 5000 @ ₩600(양도가 ₩3,000,000). 취득가 ₩2,750,000 대비 소폭 이익이나 신뢰도 낮아 확인 필요.
-  { asset: A.pol, dir: "OUT", cls: "SEND", amount: "5000", unitKrw: 600, day: [11, 1], lowConf: true },
+  { asset: A.pol, dir: "OUT", cls: "SEND", amount: "5000", unitKrw: 600, day: [11, 1], lowConf: true, wallet: WALLET_L2 },
 ];
 
 /**
