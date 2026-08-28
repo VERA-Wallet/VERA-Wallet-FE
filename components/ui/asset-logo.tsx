@@ -1,26 +1,28 @@
 import { AssetMark } from "@/components/ui/asset-mark";
-import { TokenIcon, hasTokenMark } from "@/components/ui/token-icon";
+import { TokenIcon } from "@/components/ui/token-icon";
+import { resolveTokenMark } from "@/lib/assets/token-logo";
 import type { NormalizedEvent } from "@/lib/schema/normalized-event";
 
 /**
  * 자산 로고 — 하나의 규칙으로 거래 목록·지갑 포트폴리오가 같은 마크를 그린다.
  *
  * 순서:
- * 1. **검증된 자산이고 공식 인라인 마크가 있는 티커**(ETH·USDC·USDT 등 CC0 원본 벡터) → 그 마크.
+ * 1. **등록된 체인의 컨트랙트가 공식 인라인 마크에 매핑**되면(ETH·USDC·USDT) → 그 마크.
+ *    조회는 `(chainId, 컨트랙트)`로만 한다 — 심볼은 위조 가능해 키로 쓰지 않는다.
  * 2. 그 밖 → `AssetMark`의 대체 마크(메타데이터 이미지 → 심볼 이니셜 / NFT 박스).
  *
- * 심볼을 사칭하는 미검증 스팸(`asset_verified: false`)에는 진짜 로고를 빌려주지 않는다 —
- * 가짜 USDC가 진짜 USDC 로고를 달면 목록이 그 자산을 잘못 보증하게 된다. NFT(토큰 번호가 있는
- * 자산)도 티커가 아닌 개체라 인라인 마크를 쓰지 않고 대체 박스로 떨어진다.
+ * 심볼을 사칭하는 스팸은 컨트랙트가 레지스트리에 없으므로 자연히 대체 마크로 떨어진다 —
+ * 가짜 USDC가 진짜 USDC 로고를 빌리지 못한다.
  */
-type AssetLogoEvent = Pick<NormalizedEvent, "asset_symbol" | "asset_icon_url" | "token_id" | "asset_type"> & {
-  asset_verified?: boolean | null;
-};
+type AssetLogoEvent = Pick<
+  NormalizedEvent,
+  "chain_id" | "asset_type" | "asset_contract" | "asset_symbol" | "asset_icon_url" | "token_id"
+>;
 
 export function AssetLogo({ event, size = 40 }: { event: AssetLogoEvent; size?: number }) {
-  const symbol = event.asset_symbol;
-  if (symbol !== null && event.asset_verified !== false && event.token_id === null && hasTokenMark(symbol)) {
-    return <TokenIcon symbol={symbol} size={size} />;
+  const mark = resolveTokenMark(event);
+  if (mark !== null) {
+    return <TokenIcon symbol={mark} size={size} />;
   }
   return <AssetMark event={event} size={size} />;
 }

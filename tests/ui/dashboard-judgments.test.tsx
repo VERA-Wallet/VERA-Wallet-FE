@@ -295,22 +295,22 @@ describe("거래 탭이 세금 대신 판정 도장을 찍는다", () => {
 
   it("목록이 자산마다 표식을 붙이고, 이미지가 없는 NFT는 NFT 박스로 그린다", async () => {
     renderDashboard("KR");
-    // 검증된 데다 공식 인라인 마크가 있는 티커(USDC)는 진짜 로고를 그린다 — 지갑 포트폴리오와 같은 규칙.
-    const knownToken = events.find(
-      (event) => event.asset_verified && event.token_id === null && event.swap_to_symbol === null && event.asset_symbol === "USDC",
+    // 로고는 (체인·컨트랙트)로만 해석한다. 네이티브 ETH는 컨트랙트 없이 체인으로 공식 로고를 얻는다.
+    const nativeEth = events.find(
+      (event) => event.asset_type === "NATIVE" && event.token_id === null && [1, 10, 8453, 42161].includes(event.chain_id),
     )!;
-    // 공식 벡터가 없는 티커(ARB)는 기억으로 로고를 그리지 않고 정직하게 심볼 이니셜로 남긴다.
-    const unknownMarkToken = events.find(
-      (event) => event.asset_verified && event.token_id === null && event.swap_to_symbol === null && event.asset_symbol === "ARB",
+    // 픽스처의 ERC20은 합성 컨트랙트라 레지스트리에 없다 — 기억으로 로고를 그리지 않고 심볼 이니셜로 남긴다.
+    const unregisteredToken = events.find(
+      (event) => event.asset_type === "ERC20" && event.token_id === null && event.swap_to_symbol === null,
     )!;
     const nft = events.find((event) => event.token_id !== null)!;
     await settled();
 
-    expect(rowById(knownToken.id).querySelector('[data-token-icon="USDC"]')).not.toBeNull();
-    expect(rowById(knownToken.id).querySelector('[data-asset-mark="symbol"]')).toBeNull();
-    // 공식 벡터가 없으면 대체 마크가 그 자리를 채운다(지어내지 않는다).
-    expect(rowById(unknownMarkToken.id).querySelector('[data-asset-mark="symbol"]')).not.toBeNull();
-    expect(rowById(unknownMarkToken.id).querySelector("[data-token-icon]")).toBeNull();
+    expect(rowById(nativeEth.id).querySelector('[data-token-icon="ETH"]')).not.toBeNull();
+    expect(rowById(nativeEth.id).querySelector('[data-asset-mark="symbol"]')).toBeNull();
+    // 미등록 컨트랙트는 대체 마크가 그 자리를 채운다(지어내지 않는다).
+    expect(rowById(unregisteredToken.id).querySelector('[data-asset-mark="symbol"]')).not.toBeNull();
+    expect(rowById(unregisteredToken.id).querySelector("[data-token-icon]")).toBeNull();
     const nftMark = rowById(nft.id).querySelector('[data-asset-mark="nft"]')!;
     expect(nftMark.textContent).toBe("NFT");
 
