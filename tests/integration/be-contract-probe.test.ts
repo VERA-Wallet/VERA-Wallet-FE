@@ -93,8 +93,8 @@ describe("BE authentication contract", () => {
     expect(body.data.walletAddress).toBeNull();
   });
 
-  it("rejects events before a wallet is bound and exposes its BE error code", async () => {
-    // FE mock 이벤트도 지갑 미바인딩 오류를 동일한 404 경계로 재현하므로, 양쪽 계약을 함께 고정한다.
+  it("serves an empty ledger before a wallet is bound and keeps the 404 on explicit resync", async () => {
+    // 워치온리 전환 후 읽기 경로(list)는 미바인딩에도 200 빈 목록이고, 던지는 경계는 명시적 resync뿐이다.
     const presented = await fetch(`${origin}/api/auth/did/present`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -103,10 +103,15 @@ describe("BE authentication contract", () => {
     const cookie = presented.headers.get("set-cookie")?.match(/vw_access_token=[^;]+/)?.[0];
     expect(cookie).toBeDefined();
 
-    const response = await fetch(`${origin}/api/events`, { headers: { cookie: cookie! } });
-    expect(response.status).toBe(404);
-    const body = await response.json() as { error?: { code?: unknown } };
+    const list = await fetch(`${origin}/api/events`, { headers: { cookie: cookie! } });
+    expect(list.status).toBe(200);
+    expect(((await list.json()) as { data?: { items?: unknown[] } }).data?.items).toEqual([]);
+
+    const resync = await fetch(`${origin}/api/events/resync`, { method: "POST", headers: { cookie: cookie! } });
+    expect(resync.status).toBe(404);
+    const body = await resync.json() as { error?: { code?: unknown; message?: string } };
     expect(typeof body.error?.code).toBe("string");
-    console.info(`[be-contract-probe] GET /api/events error.code=${body.error?.code}`);
+    expect(body.error?.message).toContain("bound wallet");
+    console.info(`[be-contract-probe] POST /api/events/resync error.code=${body.error?.code}`);
   });
 });

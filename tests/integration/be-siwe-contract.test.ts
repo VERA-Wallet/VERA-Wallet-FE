@@ -70,11 +70,17 @@ describe.sequential("BE SIWE raw contract through the rewrite", () => {
     expect(response.status).toBe(401);
   });
 
-  it("denies events for a DID-only session with a bound-wallet 404, not a 401", async () => {
+  it("serves events for a DID-only session as an empty 200, never a 401", async () => {
+    // 핵심은 DID 쿠키가 인증으로는 유효하다는 것 — 워치온리 전환 후 미바인딩 읽기는 200 빈 목록이고,
+    // 지갑을 요구하는 경계는 명시적 resync의 bound-wallet 404로만 남는다.
     const cookie = await presentDid();
     const response = await fetch(`${FE}/api/events`, { headers: { cookie } });
-    expect(response.status).toBe(404);
-    expect((await response.json() as { error?: { message?: string } }).error?.message).toContain("bound wallet");
+    expect(response.status).toBe(200);
+    expect(((await response.json()) as { data?: { items?: unknown[] } }).data?.items).toEqual([]);
+
+    const resync = await fetch(`${FE}/api/events/resync`, { method: "POST", headers: { cookie } });
+    expect(resync.status).toBe(404);
+    expect((await resync.json() as { error?: { message?: string } }).error?.message).toContain("bound wallet");
   });
 
   it("binds a wallet once and reports the replay as already-consumed with 409", async () => {

@@ -64,19 +64,19 @@ describe("hybrid proxy route table", () => {
   });
 
   it("routes /api/events (exact and nested) to BE", async () => {
-    // FE와 BE가 같은 404를 주도록 정렬됐으므로 상태코드는 더 이상 판별자가 아니다.
-    // x-verawallet-fe-rewrite의 유무가 "BE로 넘겼는가"와 "FE가 직접 처리했는가"를 가른다.
+    // 워치온리 전환 후 미바인딩 원장 읽기는 404가 아니라 200 빈 목록이다(던지는 건 명시적 resync뿐).
+    // 상태코드는 판별자가 아니고, x-verawallet-fe-rewrite의 유무가 "BE로 넘겼는가"를 가른다.
     const { cookie } = await presentDid(FE);
     expect(cookie).toBeDefined();
 
     const list = await fetch(`${FE}/api/events`, { headers: { cookie: cookie! } });
-    expect(list.status).toBe(404);
+    expect(list.status).toBe(200);
     expect(list.headers.get("x-verawallet-fe-rewrite")).toBeTruthy();
-    const listBody = await list.json() as { error?: { message?: string } };
-    expect(listBody.error?.message).toContain("bound wallet");
+    const listBody = await list.json() as { data?: { items?: unknown[] } };
+    expect(listBody.data?.items).toEqual([]);
 
     const summary = await fetch(`${FE}/api/events/summary`, { headers: { cookie: cookie! } });
-    expect(summary.status).toBe(404);
+    expect(summary.status).toBe(200);
     expect(summary.headers.get("x-verawallet-fe-rewrite")).toBeTruthy();
   });
 
@@ -130,9 +130,9 @@ describe("hybrid proxy route table", () => {
   });
 
   it("keeps tax and ruleset routes on the frontend", async () => {
-    // /api/tax/estimate는 프록시 allowlist 밖의 FE Route Handler다. DID-only 쿠키로 source=scenario를
-    // 보내면 FE 엔진은 지갑 없이도 200으로 계산하지만, BE는 source를 무시하고 지갑 이벤트를 읽어 bound-wallet 404를 준다.
-    // 이 상태 비대칭(연도는 현재 연도로 계산)은 "tax는 FE가 처리한다"는 프록시 경계의 판별자다.
+    // /api/tax/estimate는 프록시 allowlist 밖의 FE Route Handler다. FE Route Handler는 200을,
+    // BE 직접 호출은 Nest POST 기본값인 201을 준다(워치온리 전환 후 BE는 미바인딩에도 던지지 않고
+    // 빈 지갑 이벤트로 계산한다). 상태코드 비대칭 + rewrite 헤더 부재가 "tax는 FE가 처리한다"는 판별자다.
     const { cookie } = await presentDid(FE);
     expect(cookie).toBeDefined();
     const taxYear = new Date().getFullYear();
@@ -154,10 +154,10 @@ describe("hybrid proxy route table", () => {
       headers: { "content-type": "application/json", cookie: cookie! },
       body: JSON.stringify(estimateBody),
     });
-    expect(beEstimate.status).toBe(404);
-    const beBody = await beEstimate.json() as { error?: { code?: string; message?: string } };
-    expect(beBody.error?.code).toBe("not_found");
-    expect(beBody.error?.message).toContain("bound wallet");
+    expect(beEstimate.status).toBe(201);
+    expect(beEstimate.headers.get("x-verawallet-fe-rewrite")).toBeNull();
+    const beBody = await beEstimate.json() as { data?: { totals?: Record<string, string> } };
+    expect(beBody.data?.totals).toBeDefined();
   });
 });
 

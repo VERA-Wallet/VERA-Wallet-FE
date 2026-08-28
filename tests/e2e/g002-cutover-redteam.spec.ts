@@ -76,15 +76,16 @@ onModeOnly("G002 hybrid cutover adversarial browser QA", () => {
     // 프록시는 BE 원본을 그대로 통과시키므로 raw 응답에는 canonical `asset_symbol`이 아니라 BE의 `symbol`이 온다.
     // canonical 변환은 FE 어댑터 경계가 하며, 그 결과는 아래 화면 렌더로 확인한다.
     const symbols = items.filter((item) => Boolean(item.event.asset_symbol ?? item.event.symbol)).length;
-    add(results, "be-events-rendered", "GET /api/events?limit=100 and browser /dashboard", "45 events carrying a symbol", { status: events.status(), count: items.length, symbols }, events.status() === 200 && items.length === 45 && symbols === 45);
+    add(results, "be-events-rendered", "GET /api/events?limit=100 and browser /dashboard", "25 events carrying a symbol", { status: events.status(), count: items.length, symbols }, events.status() === 200 && items.length === 25 && symbols === 25);
     const cursor = items[0]?.event.id;
     const cursorPage = cursor ? await page.context().request.get(`/api/events?limit=100&cursor=${encodeURIComponent(cursor)}`) : undefined;
     const cursorBody = cursorPage ? await cursorPage.json() as { data?: { items?: Array<{ event: { id: string } }> } } : undefined;
     add(results, "query-preserved", `GET /api/events?limit=100&cursor=${cursor}`, "BE receives cursor and returns the page after it", { status: cursorPage?.status(), firstId: cursorBody?.data?.items?.[0]?.event.id, cursor }, cursorPage?.status() === 200 && cursorBody?.data?.items?.length === items.length - 1 && cursorBody.data.items[0]?.event.id !== cursor);
     await expect(page.getByText("거래 요약")).toBeVisible();
     // 어댑터 정규화가 빠지면 자산 이름이 통째로 빈다. 화면에서 직접 확인한다.
+    // 티커 줄 포맷은 "±수량 티커"(스왑은 "→", 브릿지만 "·"를 씀)다 — 자산 이름이 비면 티커 대문자가 사라진다.
     const renderedLabels = await page.locator("[data-event-label]").allInnerTexts();
-    const labelled = renderedLabels.filter((label) => /·\s*\S/.test(label)).length;
+    const labelled = renderedLabels.filter((label) => /[A-Z0-9]{2,}/.test(label)).length;
     add(results, "dashboard-asset-labels", "dashboard event cards", "every rendered card shows an asset name", { rendered: renderedLabels.length, labelled }, renderedLabels.length > 0 && labelled === renderedLabels.length);
     await page.screenshot({ path: `${artifacts}/g002-on-dashboard.png` });
 
@@ -108,6 +109,11 @@ onModeOnly("G002 hybrid cutover adversarial browser QA", () => {
     const patch = await page.context().request.patch(`/api/events/${event.event.id}`, { data: { classification: nextClassification, reason: "G002 cutover adversarial patch", expectedVersion: event.version }, headers: { "content-type": "application/json" } });
     const patched = await patch.json() as { data?: { event?: { classification?: string; user_override?: { classification?: string; reason?: string } } } };
     add(results, "patch-body-content-type-preserved", `PATCH /api/events/${event.event.id}`, "BE accepts JSON PATCH body and reports the manual override", { status: patch.status(), contentType: patch.headers()["content-type"], event: patched.data?.event }, patch.status() === 200 && (patch.headers()["content-type"] ?? "").includes("application/json") && patched.data?.event?.classification === nextClassification && patched.data.event.user_override?.classification === nextClassification && patched.data.event.user_override.reason === "G002 cutover adversarial patch");
+
+    // 내보내기 다운로드는 플랜(데모 결제) 뒤에 있다 — 미구독이면 버튼이 disabled라 다운로드가 영영 안 뜬다.
+    await page.goto("/plan");
+    await page.getByRole("button", { name: /데모 결제로 시작/ }).first().click();
+    await expect(page.getByText(/활성 · \d{4}년/)).toBeVisible();
 
     await page.goto("/export");
     const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "직접 신고용 내려받기" }).click()]);

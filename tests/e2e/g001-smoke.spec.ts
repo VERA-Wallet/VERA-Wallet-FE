@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { mkdir, writeFile } from "node:fs/promises";
-import { effectiveClassification, needsReview, taxExclusionReason } from "@/lib/review";
+import { effectiveClassification } from "@/lib/review";
 import type { NormalizedEvent } from "@/lib/schema/normalized-event";
 import { useFreshBackend } from "./support/backend-lifecycle";
 import { bootstrapSession } from "./support/bootstrap-be-session";
@@ -134,14 +134,20 @@ test.describe.serial("G001 contract red team", () => {
 
     const summaryResponse = await request.get("/api/events/summary");
     const summaryBody = (await responseBody(summaryResponse)) as { data?: { periodPnl?: string; pendingReviewCount?: number; taxableEventCount?: number } };
-    const fixturePnl = items
-      .map(({ event }) => event)
-      .filter((event) => taxExclusionReason(event) === null && effectiveClassification(event) !== "INTERNAL_TRANSFER")
-      .reduce((total, event) => total + (event.direction === "IN" ? -1 : 1) * Number(event.fiat_value), 0);
-    const fixtureTaxableCount = items.filter(({ event }) => taxExclusionReason(event) === null && ["RECEIVE", "SEND", "EXCHANGE"].includes(effectiveClassification(event))).length;
-    const fixturePendingCount = items.filter(({ event }) => needsReview(event)).length;
+    // BE 요약 계약(워치온리 파이프라인 이후): computable = SPAM·UNKNOWN 분류·INTERNAL_TRANSFER·가격 UNKNOWN 제외,
+    // periodPnl = computable의 OUT(+)/IN(−) 합, taxable = computable 중 RECEIVE/SEND/EXCHANGE,
+    // pending = 비SPAM 중 UNKNOWN 분류·가격 UNKNOWN·confidence<0.5.
+    // FE lib/review의 리뷰 정의(방향 모순까지 잡음)보다 느슨하므로 여기서는 BE 규칙을 그대로 모델링한다.
+    const fixtureEvents = items.map(({ event }) => event);
+    const computable = fixtureEvents.filter((event) => {
+      const classification = effectiveClassification(event);
+      return classification !== "SPAM" && classification !== "UNKNOWN" && classification !== "INTERNAL_TRANSFER" && event.price_status !== "UNKNOWN";
+    });
+    const fixturePnl = computable.reduce((total, event) => total + (event.direction === "IN" ? -1 : 1) * Number(event.fiat_value), 0);
+    const fixtureTaxableCount = computable.filter((event) => ["RECEIVE", "SEND", "EXCHANGE"].includes(effectiveClassification(event))).length;
+    const fixturePendingCount = fixtureEvents.filter((event) => effectiveClassification(event) !== "SPAM" && (effectiveClassification(event) === "UNKNOWN" || event.price_status === "UNKNOWN" || Number(event.confidence) < 0.5)).length;
     const summaryPassed = summaryResponse.status() === 200 && Number(summaryBody.data?.periodPnl) === fixturePnl && summaryBody.data?.taxableEventCount === fixtureTaxableCount && Number(summaryBody.data?.pendingReviewCount) >= 1 && summaryBody.data?.pendingReviewCount === fixturePendingCount;
-    record(cases, "api-summary-fixture-cross-check", "Summary excludes UNKNOWN-price fiat values and counts only priced RECEIVE/SEND/EXCHANGE", { status: 200, periodPnl: fixturePnl, taxableEventCount: fixtureTaxableCount, pendingReviewCount: fixturePendingCount }, { status: summaryResponse.status(), summary: summaryBody.data }, summaryPassed);
+    record(cases, "api-summary-fixture-cross-check", "Summary counts only computable (classified, priced, non-internal) events and flags UNKNOWN/unpriced/low-confidence as pending", { status: 200, periodPnl: fixturePnl, taxableEventCount: fixtureTaxableCount, pendingReviewCount: fixturePendingCount }, { status: summaryResponse.status(), summary: summaryBody.data }, summaryPassed);
 
     const dynamicTarget = items.find(({ event }) => event.classification === "INTERNAL_TRANSFER" && event.price_status !== "UNKNOWN" && event.fiat_value !== null);
     const targetId = String(dynamicTarget?.event.id);
