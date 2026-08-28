@@ -3,61 +3,46 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { authClient as compositionAuthClient } from "@/lib/composition-root.client";
-import type { AuthClient } from "@/lib/ports/auth-client";
-import { demoDefiPositions, demoNftHoldings, demoWalletHoldings } from "@/lib/wallet/holdings";
+import type { SessionWalletVerification } from "@/lib/ports/session-snapshot";
+import { demoDefiPositions, demoNftHoldings, demoWalletHoldings, walletChains } from "@/lib/wallet/holdings";
 import { WalletPortfolio } from "@/components/wallet/wallet-portfolio";
 import { AccountView } from "@/components/wallet/account-view";
 
 /**
  * 연결된 지갑의 홈 화면. 두 뷰를 오간다:
  * - portfolio: 지갑 홈(상단 계정·주소·평가액 총합, 보유 토큰 목록).
- * - account: 상단 계정을 누르면 열리는 "계정" 화면(뒤로가기 + 다른 지갑 연결).
+ * - account: 상단 계정을 누르면 열리는 "계정" 화면(뒤로가기 + 지갑 추가).
  *
- * 보유 자산은 데모 보유 소스(ETH·USDT·USDC + 데모 시세)에서 온다. 지갑 바인딩은 세션(서버)이 단일
- * 진실이라 주소·체인은 서버에서 내려준 값을 쓴다. 다른 지갑 연결은 세션을 종료하고 로그인부터 다시
- * 인증하는 명시적 핸드오프다(WalletSessionWatcher 보안 규약 준수).
+ * 보유 자산은 데모 보유 소스(ETH·USDT·USDC + 데모 시세)에서 온다. 표시 중인 지갑은 세션(서버)이 단일
+ * 진실이라 주소는 서버에서 내려준 값을 쓴다. 체인은 세션이 아니라 보유 자산에서 파생한다 —
+ * EVM 주소는 체인 불문 동일하고, 세션 계약에는 chainId가 없다.
+ *
+ * 지갑 추가는 로그인과 무관하다. 신원은 DID 세션이 쥐고 지갑은 그 아래 등록되는 별도 바인딩이라,
+ * 지갑을 하나 더 붙이려고 세션을 끊을 이유가 없다 — 이미 등록된 지갑도 그대로 남는다.
  */
 export function WalletHome({
   walletAddress,
-  chainId,
-  authClient = compositionAuthClient,
+  walletVerification = null,
 }: {
   walletAddress: string;
-  chainId: number;
-  authClient?: AuthClient;
+  walletVerification?: SessionWalletVerification;
 }) {
   const router = useRouter();
   const [view, setView] = useState<"portfolio" | "account">("portfolio");
-  const [switching, setSwitching] = useState(false);
-  const [switchError, setSwitchError] = useState<string | null>(null);
   const holdings = useMemo(() => demoWalletHoldings(), []);
   const nfts = useMemo(() => demoNftHoldings(), []);
   const defi = useMemo(() => demoDefiPositions(), []);
-
-  async function connectOtherWallet() {
-    setSwitchError(null);
-    setSwitching(true);
-    try {
-      // 세션을 먼저 종료해 다른 지갑을 깨끗한 상태에서 다시 인증한다. 로그인으로 보내야 재바인딩이 시작된다.
-      await authClient.logout();
-      router.push("/login");
-    } catch {
-      // 로그아웃이 실패했는데 로그인으로 보내면 세션이 살아있는데 보호됐다고 오해하게 된다.
-      setSwitchError("세션을 종료하지 못했습니다. 다시 시도해 주세요.");
-      setSwitching(false);
-    }
-  }
+  // 자산이 실제로 놓여 있는 체인. 불러오기 모달과 같은 소스라 화면 간 체인 목록이 어긋나지 않는다.
+  const chains = useMemo(() => walletChains(holdings, nfts, defi), [holdings, nfts, defi]);
 
   if (view === "account") {
     return (
       <AccountView
         address={walletAddress}
-        chainId={chainId}
+        chains={chains}
+        walletVerification={walletVerification}
         onBack={() => setView("portfolio")}
-        onConnectOther={connectOtherWallet}
-        switching={switching}
-        error={switchError}
+        onAddWallet={() => router.push("/connect-wallet")}
       />
     );
   }
@@ -65,7 +50,7 @@ export function WalletHome({
   return (
     <WalletPortfolio
       address={walletAddress}
-      chainId={chainId}
+      chains={chains}
       tokens={holdings}
       nfts={nfts}
       defi={defi}

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { SessionWalletVerification } from "@/lib/ports/session-snapshot";
 import { Card } from "@/components/ui/card";
 import { ExchangeComingSoon } from "@/components/wallet/exchange-coming-soon";
 import { WalletHome } from "@/components/wallet/wallet-home";
@@ -9,11 +10,18 @@ import { WalletHome } from "@/components/wallet/wallet-home";
  * - 지갑이 연결돼 있으면 메타마스크식 포트폴리오 홈(`WalletHome`)을 보여준다:
  *   상단에 지갑 주소, 아래에 거래 내역에서 파생한 보유 자산 목록. 주소를 누르면 "계정" 화면이 열린다.
  * - 미연결(DID-only)이면 연결된 지갑이 없다는 사실과 기존 지갑 연결 안내를 그대로 유지한다.
- *   지갑 바인딩은 세션이 단일 진실이므로 주소·체인은 서버(세션)에서 내려준 값을 쓴다.
+ *   지갑 바인딩은 세션이 단일 진실이므로 주소는 서버(세션)에서 내려준 값을 쓴다.
+ *   체인은 세션의 사실이 아니다 — EVM 주소는 체인 불문 동일하므로 보유 자산에서 파생한다.
  */
-export function WalletsView({ walletAddress, chainId }: { walletAddress: string | null; chainId: number | null }) {
-  if (walletAddress && chainId !== null) {
-    return <WalletHome walletAddress={walletAddress} chainId={chainId} />;
+export function WalletsView({
+  walletAddress,
+  walletVerification = null,
+}: {
+  walletAddress: string | null;
+  walletVerification?: SessionWalletVerification;
+}) {
+  if (walletAddress) {
+    return <WalletHome walletAddress={walletAddress} walletVerification={walletVerification} />;
   }
 
   return (

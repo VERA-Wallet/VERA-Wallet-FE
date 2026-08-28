@@ -1,7 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { AuthClient } from "@/lib/ports/auth-client";
 
 const nav = vi.hoisted(() => ({ push: vi.fn() }));
 
@@ -12,17 +11,19 @@ vi.mock("@/lib/composition-root.client", () => ({
   authClient: { requestNonce: vi.fn(), verify: vi.fn(), presentDid: vi.fn(), logout: vi.fn(), getSession: vi.fn() },
 }));
 
+import { authClient } from "@/lib/composition-root.client";
 import { WalletHome } from "@/components/wallet/wallet-home";
 import { WalletsView } from "@/components/wallet/wallets-view";
 
 const WALLET = "0x1111111111111111111111111111111111111111";
 
-function renderConnected(authClient?: AuthClient) {
-  return render(<WalletHome walletAddress={WALLET} chainId={1} authClient={authClient} />);
+function renderConnected() {
+  return render(<WalletHome walletAddress={WALLET} />);
 }
 
 beforeEach(() => {
   nav.push.mockReset();
+  vi.mocked(authClient.logout).mockReset();
 });
 
 describe("wallet home (portfolio + account)", () => {
@@ -131,27 +132,29 @@ describe("wallet home (portfolio + account)", () => {
     await user.click(screen.getByRole("button", { name: /계정 열기/ }));
     expect(screen.getByRole("heading", { name: "계정" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "뒤로" })).toBeInTheDocument();
-    expect(screen.getByText(/다시 인증/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "다른 지갑 연결하기" })).toBeInTheDocument();
+    expect(screen.getByText(/로그인은 유지/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "지갑 추가하기" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "뒤로" }));
     expect(screen.getByRole("button", { name: /계정 열기/ })).toBeInTheDocument();
   });
 
-  it("connecting another wallet ends the session and routes to /login", async () => {
-    const logout = vi.fn().mockResolvedValue(undefined);
+  // 지갑 추가는 로그인과 별개다. DID 세션은 살아 있어야 하고 이미 등록한 지갑도 남아야 하므로,
+  // 여기서 로그아웃하거나 /login으로 보내면 요구사항이 깨진 것이다. 두 조건을 함께 못박는다.
+  it("adding a wallet routes to /connect-wallet without ending the session", async () => {
     const user = userEvent.setup();
-    renderConnected({ logout } as unknown as AuthClient);
+    renderConnected();
 
     await user.click(screen.getByRole("button", { name: /계정 열기/ }));
-    await user.click(screen.getByRole("button", { name: "다른 지갑 연결하기" }));
+    await user.click(screen.getByRole("button", { name: "지갑 추가하기" }));
 
-    expect(logout).toHaveBeenCalledTimes(1);
-    await waitFor(() => expect(nav.push).toHaveBeenCalledWith("/login"));
+    await waitFor(() => expect(nav.push).toHaveBeenCalledWith("/connect-wallet"));
+    expect(authClient.logout).not.toHaveBeenCalled();
+    expect(nav.push).not.toHaveBeenCalledWith("/login");
   });
 
   it("keeps the connect CTA when no wallet is bound", () => {
-    render(<WalletsView walletAddress={null} chainId={null} />);
+    render(<WalletsView walletAddress={null} />);
     expect(screen.getByText("아직 연결된 지갑이 없습니다")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "지갑 연결하기" })).toBeInTheDocument();
   });
