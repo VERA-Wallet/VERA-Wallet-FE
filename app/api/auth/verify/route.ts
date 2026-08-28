@@ -33,6 +33,8 @@ export async function POST(request: Request) {
   if (!await verifySiweSignature(body.message, body.signature, parsed.address)) return Response.json(error("invalid_signature", "Signature verification failed."), { status: 401 });
   const previous = await authStore.get(id) ?? blankSession();
   const walletExpiresAt = Date.now() + 60 * 60_000;
-  await authStore.set(id, { ...previous, walletAddress: parsed.address, chainId: parsed.chainId, walletExpiresAt });
+  // 서명으로 소유가 증명된 등록이다. 주소만 받은 watch_only와 구분해야 화면이 "미검증"을 정확히 말할 수 있다.
+  // 응답의 chainId는 서명 메시지 실측값 echo다. 세션에는 저장하지 않는다 — 서명 시점 네트워크는 우연적 사실이다.
+  await authStore.set(id, { ...previous, walletAddress: parsed.address, walletVerification: "siwe", walletExpiresAt });
   return new Response(JSON.stringify(success({ walletAddress: parsed.address, chainId: parsed.chainId })), { status: 201, headers: { "content-type": "application/json", "set-cookie": sessionCookie(id) } });
 }

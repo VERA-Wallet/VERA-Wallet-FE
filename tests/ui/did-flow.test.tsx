@@ -8,7 +8,7 @@ const push = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
 
 function stubAuthClient(presentDid: AuthClient["presentDid"]): AuthClient {
-  return { requestNonce: vi.fn(), verify: vi.fn(), presentDid, logout: vi.fn(), getSession: vi.fn() };
+  return { requestNonce: vi.fn(), verify: vi.fn(), presentDid, registerWatchWallet: vi.fn(), logout: vi.fn(), getSession: vi.fn() };
 }
 
 describe("DID login flow", () => {

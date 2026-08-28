@@ -183,10 +183,11 @@ describe("SIWE contract matrix", () => {
   });
 
   it("requires all six onboarding conditions and blocks production test login", async () => {
-    const complete = { source: "mock" as const, didVerified: true as const, countryCode: "KR", walletAddress: account.address, chainId: 1, didExpiresAt: 2, walletExpiresAt: 2 };
+    const complete = { source: "mock" as const, didVerified: true as const, countryCode: "KR", walletAddress: account.address, didExpiresAt: 2, walletExpiresAt: 2 };
     expect(isCompletedOnboarding(complete, 1)).toBe(true);
     // didVerified=false 또는 countryCode=null은 이제 mock variant로 표현할 수 없다. 그 불변식은 session-snapshot-invariant 테스트가 고정한다.
-    for (const partial of [{ source: "anonymous" as const }, { ...complete, walletAddress: null }, { ...complete, chainId: null }, { ...complete, didExpiresAt: 1 }, { ...complete, walletExpiresAt: 1 }]) expect(isCompletedOnboarding(partial, 1)).toBe(false);
+    // chainId는 세션 계약에서 제거됐다 — 완료 조건에서 빠진 것이 의도된 사실이다.
+    for (const partial of [{ source: "anonymous" as const }, { ...complete, walletAddress: null }, { ...complete, didExpiresAt: 1 }, { ...complete, walletExpiresAt: 1 }]) expect(isCompletedOnboarding(partial, 1)).toBe(false);
     vi.stubEnv("NODE_ENV", "production");
     expect((await testLogin()).status).toBe(404);
     vi.unstubAllEnvs();

@@ -24,7 +24,7 @@ export class MockSessionReader implements SessionReader {
       didVerified: true,
       countryCode: session.countryCode,
       walletAddress: session.walletAddress,
-      chainId: session.chainId,
+      walletVerification: session.walletVerification,
       didExpiresAt: session.didExpiresAt,
       walletExpiresAt: session.walletExpiresAt,
     };

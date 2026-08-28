@@ -61,7 +61,7 @@ describe.sequential("G001 session gate adversarial integration", () => {
     record("harness-pid-validation", { unsafeValues: unsafe.length }, "unsafe pid/port records are rejected fail-closed", { rejected: unsafe.length }, true);
   });
   it("keeps mock and BE cookie namespaces isolated and preserves mock expiry boundaries", async () => {
-    const mock = new MockSessionReader({ get: async (id: string) => id === "mock" ? { didVerified: true, countryCode: "KR", walletAddress: "0xwallet", chainId: 1, didExpiresAt: 100, walletExpiresAt: null } : null, set: async () => undefined, destroy: async () => undefined });
+    const mock = new MockSessionReader({ get: async (id: string) => id === "mock" ? { didVerified: true, countryCode: "KR", walletAddress: "0xwallet", walletVerification: "siwe" as const, didExpiresAt: 100, walletExpiresAt: null } : null, set: async () => undefined, destroy: async () => undefined });
     const onOrigin = process.env.VERAWALLET_BACKEND_ORIGIN;
     process.env.VERAWALLET_BACKEND_ORIGIN = "http://localhost:3200";
     const be = new BeSessionReader();
@@ -78,7 +78,7 @@ describe.sequential("G001 session gate adversarial integration", () => {
 
   it("sends only vw_access_token to BE and classifies malformed and slow 200 responses", async () => {
     let cookie = "";
-    const target = await stub((request, response) => { cookie = request.headers.cookie ?? ""; response.setHeader("content-type", "application/json"); response.end(JSON.stringify({ data: { didVerified: false, countryCode: null, walletAddress: null, chainId: null } })); });
+    const target = await stub((request, response) => { cookie = request.headers.cookie ?? ""; response.setHeader("content-type", "application/json"); response.end(JSON.stringify({ data: { didVerified: false, countryCode: null, walletAddress: null } })); });
     const previous = process.env.VERAWALLET_BACKEND_ORIGIN;
     process.env.VERAWALLET_BACKEND_ORIGIN = target.origin;
     const reader = new BeSessionReader();

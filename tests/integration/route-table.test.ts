@@ -190,8 +190,10 @@ describe.sequential("backend outage and restart contracts", () => {
     // 반면 JwtStrategy.validate는 조회하므로 같은 토큰이 세션에선 살아 있고 이벤트에선 401이 된다.
     const session = await fetch(`${FE}/api/auth/session`, { headers: { cookie: cookie! } });
     expect(session.status).toBe(200);
-    const body = await session.json() as { data: { didVerified: boolean; walletAddress: string | null; chainId: number | null } };
-    expect(body.data).toMatchObject({ didVerified: true, walletAddress: null, chainId: null });
+    const body = await session.json() as { data: { didVerified: boolean; walletAddress: string | null; chainId?: number } };
+    expect(body.data).toMatchObject({ didVerified: true, walletAddress: null });
+    // 세션 계약에서 chainId가 제거됐다 — 남아 있으면 BE가 옛 계약을 내려주는 것이다.
+    expect(body.data.chainId).toBeUndefined();
 
     const events = await fetch(`${FE}/api/events`, { headers: { cookie: cookie! } });
     expect(events.status).toBe(401);

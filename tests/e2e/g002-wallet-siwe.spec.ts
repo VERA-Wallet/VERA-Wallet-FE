@@ -151,6 +151,9 @@ offModeOnly("G002 synthetic wallet SIWE red team", () => {
     act({ type: "click", selector: "role=link[name='데이터 불러오기']" });
     await page.getByRole("link", { name: "데이터 불러오기" }).click();
     await expect(page).toHaveURL(/\/connect-wallet$/);
+    // 기본 탭은 주소 입력이다. 이 스펙은 SIWE 계약을 검증하므로 소유 증명 탭으로 옮긴다.
+    act({ type: "click", selector: "role=tab[name='소유 증명']" });
+    await page.getByRole("tab", { name: "소유 증명" }).click();
     act({ type: "click", selector: "role=button[name='지갑 연결하기']" });
     await page.getByRole("button", { name: "지갑 연결하기" }).click();
     await page.waitForTimeout(750);
@@ -222,7 +225,8 @@ offModeOnly("G002 synthetic wallet SIWE red team", () => {
 
     const session = await request.get("/api/auth/session");
     const sessionBody = (await session.json()) as { data?: { countryCode?: string; walletAddress?: string; chainId?: number } };
-    record(cases, "completed-session", "Verified session preserves DID country and wallet", { countryCode: "US", walletAddress: account.address, chainId: 1 }, { status: session.status(), session: sessionBody.data }, session.status() === 200 && sessionBody.data?.countryCode === "US" && sessionBody.data?.walletAddress?.toLowerCase() === account.address.toLowerCase() && sessionBody.data?.chainId === 1);
+    // 세션 계약에서 chainId가 제거됐다 — 존재하면 계약 위반이다.
+    record(cases, "completed-session", "Verified session preserves DID country and wallet without a chain claim", { countryCode: "US", walletAddress: account.address, chainId: undefined }, { status: session.status(), session: sessionBody.data }, session.status() === 200 && sessionBody.data?.countryCode === "US" && sessionBody.data?.walletAddress?.toLowerCase() === account.address.toLowerCase() && sessionBody.data?.chainId === undefined);
 
     const redTeamStatus = cases.every((result) => result.verdict === "passed") ? "passed" : "failed";
     const blockers = cases.filter((result) => result.verdict === "failed" && result.id === "wallet-connect-and-siwe").map(() => "Initial wallet connection triggers the account-change logout subscription before SIWE can be signed.");

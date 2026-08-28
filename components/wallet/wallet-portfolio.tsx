@@ -15,6 +15,7 @@ import {
   type DefiPosition,
   type Holding,
   type NftHolding,
+  type WalletChain,
 } from "@/lib/wallet/holdings";
 
 type Tab = "token" | "nft" | "defi";
@@ -68,7 +69,14 @@ function TokenAvatar({ holding }: { holding: Holding }) {
   return (
     <BadgedAvatar chainId={holding.chainId} ariaLabel={`${holding.name} · ${holding.chainName}`}>
       <AssetLogo
-        event={{ asset_symbol: holding.symbol, asset_icon_url: null, token_id: null, asset_type: "ERC20" }}
+        event={{
+          chain_id: holding.chainId,
+          asset_type: holding.contract === null ? "NATIVE" : "ERC20",
+          asset_contract: holding.contract,
+          asset_symbol: holding.symbol,
+          asset_icon_url: null,
+          token_id: null,
+        }}
         size={40}
       />
     </BadgedAvatar>
@@ -190,14 +198,15 @@ function DefiRow({ position }: { position: DefiPosition }) {
  */
 export function WalletPortfolio({
   address,
-  chainId,
+  chains,
   tokens,
   nfts,
   defi,
   onOpenAccount,
 }: {
   address: string;
-  chainId: number;
+  /** 자산이 있는 체인들(보유 자산 파생). 주소 칩이 "이 지갑이 걸쳐 있는 네트워크"를 이 목록으로 말한다. */
+  chains: WalletChain[];
   tokens: Holding[];
   nfts: NftHolding[];
   defi: DefiPosition[];
@@ -253,7 +262,14 @@ export function WalletPortfolio({
 
         <div className="mt-3 flex items-center gap-2">
           <span className="inline-flex items-center gap-2 rounded-full bg-zinc-100 px-3 py-1.5">
-            <ChainIcon chainId={chainId} size={16} />
+            {/* 단일 체인 배지가 아니라 자산이 놓인 체인들을 겹쳐 보인다 — EVM 주소는 어느 한 체인의 것이 아니다. */}
+            <span className="flex items-center" aria-label={`네트워크 ${chains.map((chain) => chain.chainName).join(", ")}`}>
+              {chains.map((chain, index) => (
+                <span key={chain.chainId} className={`inline-flex rounded-full ring-2 ring-zinc-100 ${index > 0 ? "-ml-1.5" : ""}`}>
+                  <ChainIcon chainId={chain.chainId} size={16} />
+                </span>
+              ))}
+            </span>
             <span className="font-mono text-sm text-zinc-700">{shortHash(address)}</span>
             <button
               type="button"

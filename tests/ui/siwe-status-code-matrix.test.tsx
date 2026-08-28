@@ -24,6 +24,7 @@ function authClientRejecting(error: AuthClientError): AuthClient {
     requestNonce: async () => { throw error; },
     verify: async () => { throw error; },
     presentDid: async () => { throw error; },
+    registerWatchWallet: async () => { throw error; },
     logout: async () => undefined,
     getSession: async () => ({ didVerified: false, countryCode: null, walletAddress: null, chainId: null }),
   };
@@ -43,12 +44,16 @@ const matrix: Array<[string, number, string, string]> = [
 describe("SIWE error code mapping", () => {
   it.each(matrix)("maps %s to its own message", async (_name, status, code, expected) => {
     render(<ConnectWalletFlow walletPort={walletPort()} authClient={authClientRejecting(new AuthClientError(status, code, "raw backend message"))} />);
+    // 기본 탭은 주소 입력이다. 서명 경로를 보려면 소유 증명 탭으로 옮겨야 한다.
+    await userEvent.click(screen.getByRole("tab", { name: "소유 증명" }));
     await userEvent.click(screen.getByRole("button", { name: "SIWE 서명으로 계속" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(expected);
   });
 
   it("does not collapse an unrelated 400 into the mismatch message", async () => {
     render(<ConnectWalletFlow walletPort={walletPort()} authClient={authClientRejecting(new AuthClientError(400, "invalid_request", "chainId is required."))} />);
+    // 기본 탭은 주소 입력이다. 서명 경로를 보려면 소유 증명 탭으로 옮겨야 한다.
+    await userEvent.click(screen.getByRole("tab", { name: "소유 증명" }));
     await userEvent.click(screen.getByRole("button", { name: "SIWE 서명으로 계속" }));
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("chainId is required.");

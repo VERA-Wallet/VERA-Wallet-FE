@@ -11,7 +11,9 @@ const sessionEnvelopeSchema = z.object({
     didVerified: z.boolean(),
     countryCode: z.string().nullable(),
     walletAddress: z.string().nullable(),
-    chainId: z.number().int().nullable(),
+    // 선택인 이유: BE 세션 계약에 아직 이 필드가 없다. 필수로 걸면 지금 BE 응답이 invalid_contract로 떨어져
+    // 미인증이 아니라 인프라 장애로 분류되고 전 페이지가 에러 화면이 된다. BE가 내려주기 시작하면 그대로 실린다.
+    walletVerification: z.enum(["siwe", "watch_only"]).nullable().optional(),
   }),
 });
 
@@ -53,7 +55,7 @@ export class BeSessionReader implements SessionReader {
     // 미인증 또는 DID 국가 미완성은 오류가 아니라 BE가 알려 준 정상적인 익명 상태다.
     if (!data.didVerified || data.countryCode === null) return anonymousSnapshot();
 
-    return { source: "be", didVerified: true, countryCode: data.countryCode, walletAddress: data.walletAddress, chainId: data.chainId };
+    return { source: "be", didVerified: true, countryCode: data.countryCode, walletAddress: data.walletAddress, walletVerification: data.walletVerification };
   }
 }
 

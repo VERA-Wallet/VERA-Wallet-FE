@@ -11,7 +11,6 @@ type DidVerifiedSession = Exclude<SessionSnapshot, { source: "anonymous" }>;
 
 export type CompletedOnboardingSession = DidVerifiedSession & {
   walletAddress: string;
-  chainId: number;
 };
 
 // 보호 페이지가 requireCompletedOnboarding() 실패 시 requireDidSession()을 다시 부르므로 그대로 두면 렌더당 BE 왕복이 2회다.
@@ -47,7 +46,7 @@ export function isDidVerified(snapshot: SessionSnapshot, now = Date.now()): snap
 }
 
 export function isCompletedOnboarding(snapshot: SessionSnapshot, now = Date.now()): snapshot is CompletedOnboardingSession {
-  if (!isDidVerified(snapshot, now) || snapshot.walletAddress === null || snapshot.chainId === null) return false;
+  if (!isDidVerified(snapshot, now) || snapshot.walletAddress === null) return false;
   // mock 세션은 지갑 클레임이 생길 때 만료 타임스탬프도 함께 기록된다. null이면 지갑 단계가 끝나지 않은 것이므로 완료가 아니다.
   if (snapshot.source === "mock") return snapshot.walletExpiresAt !== null && now < snapshot.walletExpiresAt;
   return true;

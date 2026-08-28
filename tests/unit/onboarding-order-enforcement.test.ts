@@ -14,7 +14,6 @@ function toSnapshot(session: OnboardingSession | null): SessionSnapshot {
     didVerified: true,
     countryCode: session.countryCode,
     walletAddress: session.walletAddress,
-    chainId: session.chainId,
     didExpiresAt: session.didExpiresAt,
     walletExpiresAt: session.walletExpiresAt,
   };
@@ -25,7 +24,7 @@ const walletOnly = {
   didVerified: false,
   countryCode: null,
   walletAddress: "0x71C7656EC7ab88b098defB751B7401B5f6d8976F",
-  chainId: 1,
+  walletVerification: "siwe" as const,
   didExpiresAt: null,
   walletExpiresAt: Date.now() + 30 * 60_000,
 };
@@ -53,7 +52,7 @@ describe("onboarding order enforcement", () => {
       didVerified: true,
       countryCode: "KR",
       walletAddress: walletOnly.walletAddress,
-      chainId: 1,
+      walletVerification: "siwe" as const,
       didExpiresAt,
       walletExpiresAt: null,
     }))).toBe(false);
@@ -102,11 +101,10 @@ describe("onboarding order enforcement", () => {
   it("keeps DID claims intact when wallet verification follows DID", async () => {
     const sessionId = "forward-order-session";
     const didExpiresAt = Date.now() + 30 * 60_000;
-    await authStore.set(sessionId, { didVerified: true, countryCode: "KR", walletAddress: null, chainId: null, didExpiresAt, walletExpiresAt: null });
+    await authStore.set(sessionId, { didVerified: true, countryCode: "KR", walletAddress: null, walletVerification: null, didExpiresAt, walletExpiresAt: null });
     await authStore.set(sessionId, {
       ...(await authStore.get(sessionId))!,
       walletAddress: walletOnly.walletAddress,
-      chainId: 1,
       walletExpiresAt: Date.now() + 30 * 60_000,
     });
     expect(isCompletedOnboarding(toSnapshot(await authStore.get(sessionId)))).toBe(true);

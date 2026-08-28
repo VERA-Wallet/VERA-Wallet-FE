@@ -12,6 +12,9 @@ export interface Holding {
   name: string;
   chainId: number;
   chainName: string; // chainLabel(chainId)
+  // 로고 조회 키. 네이티브 코인은 컨트랙트가 없어 null이고, 그때는 체인으로 로고를 정한다.
+  // 심볼은 위조 가능해 로고 키로 쓰지 않으므로, 캐노니컬 컨트랙트 주소를 함께 싣는다.
+  contract: string | null;
   isNft: boolean;
   amount: string; // 사람이 읽는 수량(십진 문자열)
   priceUsd: string; // 단가(USD, 십진 문자열)
@@ -125,10 +128,10 @@ export function totalValueUsd(holdings: Holding[]): string {
 // 이 앱은 목/데모 모드다. 지갑 홈은 ETH·USDT·USDC 세 자산을 데모 시세와 함께 보여준다.
 // costUsd는 데모용 mock 취득 평가액(USD)이다. 실시간 원가 추적이 아니라, 평가손익·수익률을 화면이
 // **표시만** 하도록 그럴듯한 값을 담는다: ETH는 이익, USDT는 소폭 손실, USDC는 소폭 이익.
-const DEMO_TOKENS: ReadonlyArray<{ symbol: string; name: string; chainId: number; amount: string; priceUsd: string; costUsd: string }> = [
-  { symbol: "ETH", name: "Ethereum", chainId: 1, amount: "0.75", priceUsd: "3200.00", costUsd: "1800.00" },
-  { symbol: "USDT", name: "Tether USD", chainId: 137, amount: "850", priceUsd: "1.00", costUsd: "900.00" },
-  { symbol: "USDC", name: "USD Coin", chainId: 8453, amount: "500", priceUsd: "1.00", costUsd: "480.00" },
+const DEMO_TOKENS: ReadonlyArray<{ symbol: string; name: string; chainId: number; contract: string | null; amount: string; priceUsd: string; costUsd: string }> = [
+  { symbol: "ETH", name: "Ethereum", chainId: 1, contract: null, amount: "0.75", priceUsd: "3200.00", costUsd: "1800.00" },
+  { symbol: "USDT", name: "Tether USD", chainId: 137, contract: "0xc2132d05d31c914a87c6611c10748aecb2540811", amount: "850", priceUsd: "1.00", costUsd: "900.00" },
+  { symbol: "USDC", name: "USD Coin", chainId: 8453, contract: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913", amount: "500", priceUsd: "1.00", costUsd: "480.00" },
 ];
 
 /**
@@ -142,6 +145,7 @@ export function demoWalletHoldings(): Holding[] {
     name: token.name,
     chainId: token.chainId,
     chainName: chainLabel(token.chainId),
+    contract: token.contract,
     isNft: false,
     amount: token.amount,
     priceUsd: token.priceUsd,

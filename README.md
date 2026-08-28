@@ -95,7 +95,7 @@ BE가 실행 중 죽어도 앱이 알아서 mock으로 넘어가지 않는다 �
 - **ON 모드 최초 진입 시 기존 FE demo 데이터는 보존되지 않는다.** 재분류 이력을 포함한 mock 저장소 상태는
   FE 프로세스 메모리에만 있었고 BE로 옮기지 않는다.
 - **DID 재제시가 지갑 바인딩을 지우지 않는다.** FE mock과 BE 모두 지갑 클레임을 보존한다. 역순(SIWE→DID) 차단은 nonce·verify의 DID 가드와 challenge 세션 귀속이 담당한다.
-- **`/api/auth/session`의 `chainId`는 바인딩이 있으면 하드코딩 `1`이다** (BE 후속 스키마 작업 대상).
+- **`/api/auth/session`에는 `chainId`가 없다.** EVM 주소는 체인 불문 동일하므로 세션은 체인 클레임을 내려주지 않고, 활동 체인은 이벤트 데이터(`chain_id`)나 `POST /api/events/resync` 응답의 `chains`에서 파생한다.
 - **앵커 제출은 멱등이 아니다.** 같은 이벤트를 다시 sync하면 `tx_hash`/`anchored_at`이 바뀔 수 있다.
 
 ## SIWE 설정이 사는 곳

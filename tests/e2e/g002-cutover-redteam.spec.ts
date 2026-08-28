@@ -41,6 +41,8 @@ async function browserCompleteSession(page: import("@playwright/test").Page, act
   await page.waitForURL("**/dashboard"); addAction("Open dashboard (empty shell)", "url=/dashboard");
   await page.getByRole("link", { name: "데이터 불러오기" }).click();
   await page.waitForURL("**/connect-wallet"); addAction("Open wallet connection", "url=/connect-wallet");
+  // 기본 탭은 주소 입력이다. 이 흐름은 SIWE 소유 증명을 검증하므로 탭을 먼저 옮긴다.
+  await page.getByRole("tab", { name: "소유 증명" }).click(); addAction("Switch to ownership proof tab", "role=tab[name=소유 증명]");
   await page.getByRole("button", { name: "지갑 연결하기" }).click(); addAction("Connect synthetic wallet", "role=button[name=지갑 연결하기]");
   await expect(page.getByRole("button", { name: "SIWE 서명으로 계속" })).toBeVisible();
   await page.getByRole("button", { name: "SIWE 서명으로 계속" }).click(); addAction("Sign SIWE", "role=button[name=SIWE 서명으로 계속]");

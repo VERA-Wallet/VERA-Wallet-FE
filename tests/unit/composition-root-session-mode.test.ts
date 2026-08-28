@@ -17,7 +17,7 @@ describe("composition-root session reader mode", () => {
       didVerified: true,
       countryCode: "KR",
       walletAddress: "0x123",
-      chainId: 1,
+      walletVerification: "siwe",
       didExpiresAt: Date.now() + 60_000,
       walletExpiresAt: Date.now() + 60_000,
     });
@@ -58,7 +58,7 @@ describe("composition-root session reader mode", () => {
     const { requireCompletedOnboarding } = await import("@/lib/dal");
 
     const expiry = Date.now() + 60_000;
-    await authStore.set("dal-session", { didVerified: true, countryCode: "KR", walletAddress: "0x123", chainId: 1, didExpiresAt: expiry, walletExpiresAt: expiry });
+    await authStore.set("dal-session", { didVerified: true, countryCode: "KR", walletAddress: "0x123", walletVerification: "siwe", didExpiresAt: expiry, walletExpiresAt: expiry });
     const request = new Request("http://localhost", { headers: { cookie: "other=1; vw_session=dal-session" } });
     await expect(requireCompletedOnboarding(request)).resolves.toMatchObject({ source: "mock", countryCode: "KR" });
   });

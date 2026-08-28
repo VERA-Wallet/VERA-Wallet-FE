@@ -17,7 +17,7 @@ function walletPort(): WalletPort {
 }
 
 function authClient(): AuthClient {
-  return { requestNonce: vi.fn(), verify: vi.fn(), presentDid: vi.fn(), logout: vi.fn(), getSession: vi.fn() };
+  return { requestNonce: vi.fn(), verify: vi.fn(), presentDid: vi.fn(), registerWatchWallet: vi.fn(), logout: vi.fn(), getSession: vi.fn() };
 }
 
 describe("wallet connection SIWE flow", () => {
@@ -29,6 +29,8 @@ describe("wallet connection SIWE flow", () => {
     const nonce = { nonce: "noncefromserver123", domain: "wallet.example", uri: "https://wallet.example/login", chainId: 8453, issuedAt: "2026-07-30T00:00:00.000Z", expiresAtMs: 1785373200000 };
     vi.mocked(auth.requestNonce).mockResolvedValue(nonce);
     render(<ConnectWalletFlow walletPort={port} authClient={auth} />);
+    // 기본 탭은 주소 입력이다. 서명 경로는 소유 증명 탭으로 옮겨야 나온다.
+    fireEvent.click(screen.getByRole("tab", { name: "소유 증명" }));
     fireEvent.click(screen.getByRole("button", { name: "SIWE 서명으로 계속" }));
     await waitFor(() => expect(port.signMessage).toHaveBeenCalled());
     const message = vi.mocked(port.signMessage).mock.calls[0][0];
@@ -42,12 +44,67 @@ describe("wallet connection SIWE flow", () => {
     expect(push).toHaveBeenCalledWith("/dashboard?importing=1");
   });
 
+  // 주소 입력은 서명 없이 등록하는 기본 경로다. 체크섬을 흘려보내면 존재하지 않는 주소가 등록되고
+  // 사용자는 "거래가 왜 안 뜨죠"로 돌아온다 — 형식·체크섬·정규화·중복을 한 번에 못박는다.
+  it("registers a pasted address without signing, normalizing it to checksum form", async () => {
+    const auth = authClient();
+    vi.mocked(auth.registerWatchWallet).mockResolvedValue({ walletAddress: "0x71C7656EC7ab88b098defB751B7401B5f6d8976F" });
+    render(<ConnectWalletFlow walletPort={walletPort()} authClient={auth} />);
+
+    fireEvent.change(screen.getByLabelText("지갑 주소"), { target: { value: "0x71c7656ec7ab88b098defb751b7401b5f6d8976f" } });
+    fireEvent.click(screen.getByRole("button", { name: "이 주소로 계속" }));
+
+    await waitFor(() => expect(auth.registerWatchWallet).toHaveBeenCalledWith({ address: "0x71C7656EC7ab88b098defB751B7401B5f6d8976F" }));
+    expect(auth.verify).not.toHaveBeenCalled();
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/dashboard?importing=1"));
+  });
+
+  it("rejects an address whose checksum does not match instead of registering it", async () => {
+    const auth = authClient();
+    render(<ConnectWalletFlow walletPort={walletPort()} authClient={auth} />);
+
+    // 마지막 글자만 대소문자를 뒤집은 값 — 형식은 맞지만 EIP-55 체크섬이 깨진다.
+    fireEvent.change(screen.getByLabelText("지갑 주소"), { target: { value: "0x71C7656EC7ab88b098defB751B7401B5f6d8976f" } });
+    fireEvent.click(screen.getByRole("button", { name: "이 주소로 계속" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("체크섬");
+    expect(auth.registerWatchWallet).not.toHaveBeenCalled();
+  });
+
+  it("blocks re-registering the wallet that is already bound", async () => {
+    const auth = authClient();
+    render(<ConnectWalletFlow walletPort={walletPort()} authClient={auth} boundAddress="0x71C7656EC7ab88b098defB751B7401B5f6d8976F" />);
+
+    fireEvent.change(screen.getByLabelText("지갑 주소"), { target: { value: "0x71c7656ec7ab88b098defb751b7401b5f6d8976f" } });
+    fireEvent.click(screen.getByRole("button", { name: "이 주소로 계속" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("이미 등록된 지갑입니다");
+    expect(auth.registerWatchWallet).not.toHaveBeenCalled();
+  });
+
+  // 확장 프로그램은 승인된 오리진에서 활성 계정을 그대로 돌려준다. 그대로 서명하면 같은 지갑을
+  // 다시 등록하는 셈이고 서버는 upsert라 조용히 통과한다 — 서명을 요구하기 전에 끊어야 한다.
+  it("blocks signing when the connected account is the wallet already bound", async () => {
+    const port = walletPort();
+    const auth = authClient();
+    render(<ConnectWalletFlow walletPort={port} authClient={auth} boundAddress="0x71C7656EC7ab88b098defB751B7401B5f6d8976F" />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "소유 증명" }));
+    fireEvent.click(screen.getByRole("button", { name: "SIWE 서명으로 계속" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("이미 등록된 지갑입니다");
+    expect(auth.requestNonce).not.toHaveBeenCalled();
+    expect(port.signMessage).not.toHaveBeenCalled();
+  });
+
   it("shows the mismatch message for a 400 verification response", async () => {
     const port = walletPort();
     const auth = authClient();
     vi.mocked(auth.requestNonce).mockResolvedValue({ nonce: "nonce12345", domain: "wallet.example", uri: "https://wallet.example", chainId: 8453, issuedAt: "2026-07-30T00:00:00.000Z", expiresAtMs: 1785373200000 });
     vi.mocked(auth.verify).mockRejectedValue(new AuthClientError(400, "challenge_mismatch", "Challenge does not match signed message."));
     render(<ConnectWalletFlow walletPort={port} authClient={auth} />);
+    // 기본 탭은 주소 입력이다. 서명 경로는 소유 증명 탭으로 옮겨야 나온다.
+    fireEvent.click(screen.getByRole("tab", { name: "소유 증명" }));
     fireEvent.click(screen.getByRole("button", { name: "SIWE 서명으로 계속" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("인증 요청 불일치");
   });

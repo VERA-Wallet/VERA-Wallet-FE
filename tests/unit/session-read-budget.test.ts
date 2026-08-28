@@ -60,7 +60,7 @@ describe("session cookie helpers", () => {
 
 describe("BeSessionReader error classification", () => {
   const cookie = "vw_access_token=token";
-  const complete = { data: { didVerified: true, countryCode: "KR", walletAddress: "0x123", chainId: 1 } };
+  const complete = { data: { didVerified: true, countryCode: "KR", walletAddress: "0x123" } };
 
   function mockFetch(value: Response | Error) {
     vi.stubEnv("VERAWALLET_BACKEND_ORIGIN", "https://be.example");
@@ -71,7 +71,7 @@ describe("BeSessionReader error classification", () => {
   }
 
   it("maps normal anonymous and completed backend responses", async () => {
-    mockFetch(new Response(JSON.stringify({ data: { didVerified: false, countryCode: null, walletAddress: null, chainId: null } }), { status: 200 }));
+    mockFetch(new Response(JSON.stringify({ data: { didVerified: false, countryCode: null, walletAddress: null } }), { status: 200 }));
     await expect(new BeSessionReader().read(cookie)).resolves.toEqual({ source: "anonymous" });
     mockFetch(new Response(JSON.stringify(complete), { status: 200 }));
     await expect(new BeSessionReader().read(cookie)).resolves.toEqual({ source: "be", ...complete.data });

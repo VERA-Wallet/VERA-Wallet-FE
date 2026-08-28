@@ -26,7 +26,7 @@ async function completedSessionCookie() {
     didVerified: true,
     countryCode: "KR",
     walletAddress: "0x0000000000000000000000000000000000000001",
-    chainId: 1,
+    walletVerification: "siwe",
     didExpiresAt: Date.now() + 30 * 60_000,
     walletExpiresAt: Date.now() + 30 * 60_000,
   });

@@ -179,6 +179,9 @@ mockModeOnly("wallet portfolio and 계정 screen live QA", () => {
       act({ type: "click", selector: "role=link[name='데이터 불러오기']" });
       await page.getByRole("link", { name: "데이터 불러오기", exact: true }).click();
       await expect(page).toHaveURL(/\/connect-wallet$/);
+      // 기본 탭은 주소 입력이다. 이 시나리오는 SIWE 소유 증명 경로를 검증하므로 탭을 옮긴다.
+      act({ type: "click", selector: "role=tab[name='소유 증명']" });
+      await page.getByRole("tab", { name: "소유 증명", exact: true }).click();
       act({ type: "click", selector: "role=button[name='지갑 연결하기']" });
       await page.getByRole("button", { name: "지갑 연결하기", exact: true }).click();
       await expect(page.getByText(account.address, { exact: true })).toBeVisible({ timeout: 15_000 });
@@ -277,15 +280,15 @@ mockModeOnly("wallet portfolio and 계정 screen live QA", () => {
       await expect(accountView).toBeVisible();
       await expect(page.getByRole("heading", { name: "계정", exact: true })).toBeVisible();
       await expect(backButton).toBeVisible();
-      await expect(page.getByText(/다시 인증/)).toBeVisible();
-      const switchButton = accountConnect.getByRole("button", { name: "다른 지갑 연결하기", exact: true });
+      await expect(page.getByText(/로그인은 유지/)).toBeVisible();
+      const addWalletButton = accountConnect.getByRole("button", { name: "지갑 추가하기", exact: true });
       const accountSurfacePassed =
         (await accountView.isVisible()) &&
         (await backButton.isVisible()) &&
         (await accountConnect.isVisible()) &&
-        (await switchButton.isVisible());
+        (await addWalletButton.isVisible());
       await check(
-        "A3 계정 exposes a real 다른 지갑 연결하기 re-auth handoff (no fake account list)",
+        "A3 계정 exposes a 지갑 추가하기 path that keeps the login (no fake account list)",
         accountSurfacePassed,
         "[data-surface=account-connect] button",
         { accountConnectText: await accountConnect.innerText() },
@@ -293,9 +296,9 @@ mockModeOnly("wallet portfolio and 계정 screen live QA", () => {
       recordCase(
         cases,
         "A3",
-        "계정 screen exposes a real re-auth handoff to connect another wallet",
-        "button 다른 지갑 연결하기 inside data-surface=account-connect",
-        { accountView: await accountView.isVisible(), backButton: await backButton.isVisible(), switchButton: await switchButton.isVisible() },
+        "계정 screen exposes an additive wallet registration path that keeps the login",
+        "button 지갑 추가하기 inside data-surface=account-connect",
+        { accountView: await accountView.isVisible(), backButton: await backButton.isVisible(), addWalletButton: await addWalletButton.isVisible() },
         accountSurfacePassed,
       );
       act({ type: "screenshot", selector: "body", target: accountScreenshot });
@@ -326,21 +329,29 @@ mockModeOnly("wallet portfolio and 계정 screen live QA", () => {
         forbiddenCallsPassed,
       );
 
-      // 다른 지갑 연결 핸드오프: 계정 화면의 전환 버튼은 세션을 종료하고 /login으로 재인증을 유도한다.
-      act({ type: "click", selector: "role=button[name=/계정 열기/]", target: "reopen account for switch" });
+      // 지갑 추가 핸드오프: 계정 화면의 추가 버튼은 세션을 끊지 않는다. DID 로그인은 그대로 살아 있고
+      // /connect-wallet이 추가 등록 모드로 열려야 한다 — /login으로 튀면 로그인이 풀린 것이므로 실패다.
+      act({ type: "click", selector: "role=button[name=/계정 열기/]", target: "reopen account to add a wallet" });
       await page.getByRole("button", { name: /계정 열기 ·/ }).click();
-      act({ type: "click", selector: "role=button[name='다른 지갑 연결하기']" });
-      await accountConnect.getByRole("button", { name: "다른 지갑 연결하기", exact: true }).click();
-      await expect(page).toHaveURL(/\/login$/, { timeout: 15_000 });
-      const switchHandoffPassed = /\/login$/.test(new URL(page.url()).pathname);
-      await check("Connecting another wallet ends the session and routes to /login", switchHandoffPassed, "url.pathname=/login", new URL(page.url()).pathname);
+      act({ type: "click", selector: "role=button[name='지갑 추가하기']" });
+      await accountConnect.getByRole("button", { name: "지갑 추가하기", exact: true }).click();
+      await expect(page).toHaveURL(/\/connect-wallet$/, { timeout: 15_000 });
+      const addWalletHeadingVisible = await page.getByRole("heading", { name: "지갑을 추가하세요", exact: true }).isVisible();
+      const addWalletPath = new URL(page.url()).pathname;
+      const addHandoffPassed = addWalletPath === "/connect-wallet" && addWalletHeadingVisible;
+      await check(
+        "Adding a wallet keeps the session and opens /connect-wallet in add mode",
+        addHandoffPassed,
+        "url.pathname=/connect-wallet + heading 지갑을 추가하세요",
+        { path: addWalletPath, addWalletHeadingVisible },
+      );
       recordCase(
         cases,
-        "switch-handoff",
-        "다른 지갑 연결하기 logs out and routes to /login for a clean re-auth",
-        "/login",
-        new URL(page.url()).pathname,
-        switchHandoffPassed,
+        "add-wallet-handoff",
+        "지갑 추가하기 keeps the DID session and opens the additive registration screen",
+        { path: "/connect-wallet", heading: "지갑을 추가하세요" },
+        { path: addWalletPath, heading: addWalletHeadingVisible },
+        addHandoffPassed,
       );
 
       const failedCases = cases.filter((result) => result.verdict === "failed");

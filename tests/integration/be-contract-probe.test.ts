@@ -11,7 +11,7 @@ beforeAll(async () => {
   await startBackend({ port: 3200 });
 }, 180_000);
 
-type SessionEnvelope = { data: { didVerified: boolean; countryCode: string | null; walletAddress: string | null; chainId: number | null } };
+type SessionEnvelope = { data: { didVerified: boolean; countryCode: string | null; walletAddress: string | null } };
 
 describe("BE authentication contract", () => {
   it("runs in the mock mode required by the integration harness", async () => {
@@ -71,7 +71,8 @@ describe("BE authentication contract", () => {
     // FE mock도 익명 세션을 200 envelope로 표현하므로 양쪽의 응답 구조가 동일하다.
     const response = await fetch(`${origin}/api/auth/session`);
     expect(response.status).toBe(200);
-    expect((await response.json() as SessionEnvelope).data).toEqual({ didVerified: false, countryCode: null, walletAddress: null, chainId: null });
+    // chainId는 세션 계약에서 제거됐다 — toEqual이라 키가 존재하면 실패한다.
+    expect((await response.json() as SessionEnvelope).data).toEqual({ didVerified: false, countryCode: null, walletAddress: null, walletVerification: null });
   });
 
   it("reads the DID session from the BE access-token cookie", async () => {
