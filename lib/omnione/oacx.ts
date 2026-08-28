@@ -108,9 +108,15 @@ function buildOverlayFrame(): HTMLIFrameElement {
 
 /** iframe 문서에 마운트 지점과 투명 배경을 세팅한다. oacx-ux.css의 `html{font-size:62.5%}`는 이 문서 루트에만 적용된다. */
 function writeFrameDocument(doc: Document): void {
+  // SDK 자산은 문서 상대경로다(config의 로고 "./esign/img/logo.gif", 번들 publicPath "./esign/").
+  // about:blank iframe은 부모 페이지 URL을 base로 상속해 로고가 우리 호스트로 해석돼 404가 나므로,
+  // authBase(".../ent/esign")의 상위 디렉터리(".../ent/")를 <base>로 명시한다. 주입 CSS/JS/config와
+  // config 내 API·템플릿 경로는 전부 절대 URL이라 <base>의 영향은 SDK 상대경로 자산에만 미친다.
+  const assetBase = new URL(".", authBase()).href;
   doc.open();
   doc.write(
     '<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8">' +
+      `<base href="${assetBase}">` +
       '<meta name="viewport" content="width=device-width, initial-scale=1">' +
       "<style>html,body{margin:0;padding:0;height:100%;background:transparent}</style>" +
       `</head><body><div id="${OACX_MOUNT_ID}"></div></body></html>`,
