@@ -18,24 +18,28 @@ export class EventCollectionTruncatedError extends Error {
 export async function collectBoundedEvents(
   repository: Pick<EventRepository, "list">,
   opts: { maxPages?: number; pageLimit?: number } = {},
-): Promise<{ items: EventMutation[]; nextCursor: string | null; truncated: boolean }> {
+): Promise<{ items: EventMutation[]; nextCursor: string | null; truncated: boolean; dropped: number }> {
   const maxPages = opts.maxPages ?? 50;
   const pageLimit = opts.pageLimit ?? 100;
   const items: EventMutation[] = [];
   const seenCursors = new Set<string>();
   let cursor: string | undefined;
+  // 페이지마다 형식이 어긋나 버려진 건수를 합친다. 페이지 하나에만 남겨 두면
+  // 여러 페이지에 걸쳐 빠진 거래를 화면이 과소 보고한다.
+  let dropped = 0;
 
   for (let page = 0; page < maxPages; page += 1) {
     const result = await repository.list({ cursor, limit: pageLimit });
     if (cursor !== undefined) seenCursors.add(cursor);
     items.push(...result.items);
+    dropped += result.dropped ?? 0;
 
     const next = result.nextCursor ?? undefined;
     // 서버가 방금 쓴 커서를 그대로 되돌려주면 같은 페이지다. 쌓지 않고 멈춘다.
-    if (next !== undefined && seenCursors.has(next)) return { items, nextCursor: next, truncated: true };
-    if (!next || result.items.length === 0) return { items, nextCursor: null, truncated: false };
+    if (next !== undefined && seenCursors.has(next)) return { items, nextCursor: next, truncated: true, dropped };
+    if (!next || result.items.length === 0) return { items, nextCursor: null, truncated: false, dropped };
     cursor = next;
   }
 
-  return { items, nextCursor: cursor ?? null, truncated: true };
+  return { items, nextCursor: cursor ?? null, truncated: true, dropped };
 }

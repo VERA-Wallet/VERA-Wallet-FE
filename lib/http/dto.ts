@@ -11,7 +11,16 @@ export type OverrideTransition = {
   overridden_at: string;
 };
 export type EventDetailDTO = EventMutation & { override_history: OverrideTransition[] };
-export type EventListDTO = { items: EventMutation[]; nextCursor: string | null };
+export type EventListDTO = {
+  items: EventMutation[];
+  nextCursor: string | null;
+  /**
+   * 형식이 맞지 않아 이 페이지에서 버린 항목 수. 화면이 "몇 건이 빠졌다"를 말할 수 있어야 한다 —
+   * 조용히 버리면 목록이 완전한 것처럼 보이면서 거래가 사라진다. 선택 필드인 이유는 이미 canonical인
+   * mock 경로가 이 값을 만들지 않아도 되게 하기 위함이다(없으면 버린 것이 없다는 뜻).
+   */
+  dropped?: number;
+};
 export type ReclassifyRequestDTO = {
   classification: Classification;
   reason?: string;
@@ -67,10 +76,29 @@ export const eventDetailSchema: z.ZodType<EventDetailDTO> = z.object({
   override_history: z.array(overrideTransitionSchema),
 });
 
-export const eventListSchema: z.ZodType<EventListDTO> = z.object({
-  items: z.array(eventMutationSchema),
-  nextCursor: z.string().nullable(),
-});
+/**
+ * 목록을 **항목 단위로** 파싱한다. `z.array(itemSchema)`는 전부 아니면 전무라, 한 건이 계약을 벗어나면
+ * 배열 전체가 실패해 거래를 한 건도 못 보게 된다. 실제로 서버가 분류를 하나 추가했을 때 그 일이 일어났다.
+ *
+ * 그렇다고 조용히 버리면 목록이 완전한 것처럼 보이면서 거래가 사라진다 — 그래서 버린 수를 함께 돌려주고
+ * 화면이 그 사실을 말한다. 이 파일이 이미 지키는 원칙과 같다: 모르면 모른다고 하되, 아는 것까지 버리지 않는다.
+ */
+export function tolerantEventListSchema(itemSchema: z.ZodType<EventMutation>): z.ZodType<EventListDTO> {
+  return z
+    .object({ items: z.array(z.unknown()), nextCursor: z.string().nullable() })
+    .transform(({ items, nextCursor }) => {
+      const parsed: EventMutation[] = [];
+      let dropped = 0;
+      for (const raw of items) {
+        const result = itemSchema.safeParse(raw);
+        if (result.success) parsed.push(result.data);
+        else dropped += 1;
+      }
+      return { items: parsed, nextCursor, dropped };
+    }) as unknown as z.ZodType<EventListDTO>;
+}
+
+export const eventListSchema: z.ZodType<EventListDTO> = tolerantEventListSchema(eventMutationSchema);
 
 export const summarySchema: z.ZodType<SummaryDTO> = z.object({
   periodPnl: decimalString,

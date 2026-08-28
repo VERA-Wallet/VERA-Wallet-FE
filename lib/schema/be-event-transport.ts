@@ -3,7 +3,8 @@ import { z } from "zod";
 import { nativeSymbol } from "@/lib/format";
 import { classificationSchema } from "@/lib/schema/normalized-event";
 import { normalizedEventSchema } from "@/lib/schema/normalized-event";
-import type { EventDetailDTO, EventListDTO, EventMutation } from "@/lib/http/dto";
+import { tolerantEventListSchema } from "@/lib/http/dto";
+import type { EventDetailDTO, EventMutation } from "@/lib/http/dto";
 
 /**
  * BE 이벤트 payload를 FE canonical 이벤트로 옮기는 transport 경계.
@@ -39,10 +40,8 @@ const beEventMutationShape = z.object({
 
 export const beEventMutationSchema = beEventMutationShape as unknown as z.ZodType<EventMutation>;
 
-export const beEventListSchema = z.object({
-  items: z.array(beEventMutationShape),
-  nextCursor: z.string().nullable(),
-}) as unknown as z.ZodType<EventListDTO>;
+// 항목 단위 파싱. 한 건이 계약을 벗어난다고 원장 전체를 잃지 않는다 — 버린 수는 화면이 고지한다.
+export const beEventListSchema = tolerantEventListSchema(beEventMutationShape as unknown as z.ZodType<EventMutation>);
 
 export const beEventDetailSchema = z.object({
   event: beNormalizedEventSchema,

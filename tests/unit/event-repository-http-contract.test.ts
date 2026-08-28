@@ -11,7 +11,8 @@ describe("HTTP event repository", () => {
       .fn()
       .mockResolvedValue(Response.json({ data: { items: [{ event, version: 7 }], nextCursor: null }, meta }));
     const repository = new HttpEventRepository(fetcher);
-    await expect(repository.list({ limit: 5 })).resolves.toEqual({ items: [{ event, version: 7 }], nextCursor: null });
+    // 목록은 항목 단위로 파싱하므로 정상 페이지도 "버린 것 0건"을 함께 말한다.
+    await expect(repository.list({ limit: 5 })).resolves.toEqual({ items: [{ event, version: 7 }], nextCursor: null, dropped: 0 });
     expect(fetcher).toHaveBeenCalledWith("/api/events?limit=5");
   });
 

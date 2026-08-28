@@ -10,7 +10,26 @@ export const classificationSchema = z.enum([
   "EXCHANGE",
   "INTERNAL_TRANSFER",
   "UNKNOWN",
+  /**
+   * 더스트·에어드랍 스팸. 파이프라인이 태그만 하고 **지우지는 않는다**(오탐이면 되돌릴 수 있어야 한다).
+   * 원장·계산·확인 필요 큐에서는 빠지고 건수로만 고지된다 — `lib/review.ts`의 `isSpam` 참고.
+   */
+  "SPAM",
 ]);
+
+/**
+ * **수신 전용** 분류 스키마. 모르는 값이 오면 거절하지 않고 `UNKNOWN`으로 강등한다.
+ *
+ * 이 파일은 이미 `asset_symbol`·`value_override`·`income_kind`에 `default`를 둬서
+ * "칸 하나가 비었다고 이력 전부를 못 보여주는 건 균형이 맞지 않는다"는 원칙을 지키는데,
+ * enum에는 그 방어가 없었다. 서버가 분류를 하나 추가하는 순간(SPAM이 그랬다) 목록 전체가
+ * 파싱에 실패해 거래를 한 건도 못 보게 된다 — 모르는 분류 하나 때문에 원장을 통째로 잃는 건
+ * 균형이 맞지 않는다. 모른다고 읽고 화면이 그렇게 말하게 한다(UNKNOWN은 확인 필요로 뜬다).
+ *
+ * **송신 요청에는 쓰지 않는다.** `reclassifyRequestSchema`는 엄격한 `classificationSchema`를 쓴다 —
+ * 나가는 값까지 강등하면 사용자가 고른 적 없는 분류를 서버에 저장하게 된다.
+ */
+export const incomingClassificationSchema = classificationSchema.catch("UNKNOWN");
 
 /**
  * 수령분(INCOME)의 소득 종류. `lib/tax/types.ts`의 `IncomeKind`가 단일 진실 원천이며,
@@ -65,11 +84,12 @@ export const normalizedEventSchema = z
     raw_amount: decimalString,
     counterparty: z.string().min(1),
     gas_fee_native: decimalString,
-    classification: classificationSchema,
+    // 수신 값이라 모르는 분류는 UNKNOWN으로 강등한다(위 incomingClassificationSchema 주석 참고).
+    classification: incomingClassificationSchema,
     confidence: z.number().min(0).max(1),
     user_override: z
       .object({
-        classification: classificationSchema,
+        classification: incomingClassificationSchema,
         reason: z.string().nullable(),
         overridden_at: z.string().datetime(),
       })
@@ -121,6 +141,16 @@ export const normalizedEventSchema = z
      */
     income_kind: incomeKindSchema.nullable().default(null),
     /**
+     * **스왑 페어링 키**(서버 발급). 하나의 스왑을 이루는 처분(OUT·EXCHANGE) leg와
+     * 취득(IN·RECEIVE) leg가 **동일한 값**을 가진다. 목록·상세는 이 값이 같은 leg끼리 한 행으로
+     * 묶는다 — tx_hash·leg 개수(정확히 2건) 휴리스틱을 대체한다. **불투명 문자열**로 다루고
+     * 파싱하지 않는다: 현재 서버 파생식은 `chain:txHash`지만 향후 브릿지·수수료 등 다중 leg
+     * 액션이 같은 필드를 다른 파생식(한 tx에 1:1로 대응하지 않는)으로 재사용한다. 페어링 대상이
+     * 아닌 leg(순수 송·수신·스팸)에는 null이다.
+     * `default(null)`은 이 칸을 모르는 옛 응답에도 파싱이 깨지지 않게 하는 버전 스큐 방어다.
+     */
+    group_id: z.string().min(1).nullable().default(null),
+    /**
      * **스왑(EXCHANGE)에서 받은 상대 자산의 심볼** — 목록에서 "무엇을 무엇으로 바꿨나"를
      * 두 로고로 보이기 위한 **표시 힌트**다(계산에는 쓰지 않는다 — EXCHANGE 손익은 여전히
      * 피아트 처분으로 근사한다). 지갑 데이터에 상대 자산이 잡히기 전까지는 null이고,
@@ -137,6 +167,14 @@ export const normalizedEventSchema = z
      * 계산에는 영향이 없다(INTERNAL_TRANSFER는 처분이 아니다).
      */
     bridge_dest_chain_id: z.number().int().positive().nullable().default(null),
+    /**
+     * 브릿지 페어링 키(서버 발급). 하나의 크로스체인 이동을 이루는 출발 체인의 leg와 도착 체인의
+     * leg가 동일한 값을 가진다. 스왑(group_id)과 달리 두 leg는 tx_hash도 체인도 달라서, 이 키가
+     * 유일한 연결고리다. 서버가 도착 IN을 자기 지갑으로 확인해 양쪽을 INTERNAL_TRANSFER(비과세
+     * 자기이동)로 만들 때만 찍힌다. 불투명 문자열로 다룬다. `default(null)`은 이 칸을 모르는 옛
+     * 응답에도 파싱이 깨지지 않게 하는 버전 스큐 방어다.
+     */
+    bridge_group_id: z.string().min(1).nullable().default(null),
   })
   .superRefine((event, ctx) => {
     if (event.price_status === "UNKNOWN" && event.fiat_value !== null) {

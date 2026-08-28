@@ -28,7 +28,8 @@ function envelope(body: unknown, status: number): Response {
 describe("BeHttpEventRepository boundary", () => {
   it("returns the decoded page on success", async () => {
     mockFetch(envelope({ data: { items: [], nextCursor: null }, meta: { provenance: "mock", generatedAt: new Date().toISOString() } }, 200));
-    await expect(new BeHttpEventRepository(cookie).list()).resolves.toEqual({ items: [], nextCursor: null });
+    // 목록은 항목 단위로 파싱하므로 정상 페이지도 "버린 것 0건"을 함께 말한다.
+    await expect(new BeHttpEventRepository(cookie).list()).resolves.toEqual({ items: [], nextCursor: null, dropped: 0 });
   });
 
   it("preserves an unauthenticated rejection as a domain error", async () => {
