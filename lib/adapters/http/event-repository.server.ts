@@ -66,7 +66,7 @@ export class BeEventReadError extends Error {
  */
 export async function readBeWalletEventsWithProvenance(cookieHeader: string | undefined): Promise<WalletEventSource> {
   const repository = new BeHttpEventRepository(cookieHeader);
-  const { items, truncated } = await collectBoundedEvents(repository, { pageLimit: 100 });
+  const { items, truncated } = await collectBoundedEvents(repository, { pageLimit: 1_000 });
   if (truncated) throw new EventCollectionTruncatedError(items.length, 50);
   // 스팸은 대시보드 원장에서 빠지므로 계산 입력에서도 빠져야 한다. 한쪽만 걸러내면
   // 화면에 없는 거래가 세금 숫자에는 들어가 두 화면이 다른 이야기를 한다.

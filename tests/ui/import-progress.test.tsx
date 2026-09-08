@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ImportProgressGate } from "@/components/dashboard/import-progress-gate";
@@ -308,6 +309,12 @@ describe("불러오기 모달", () => {
 });
 
 describe("불러오기 게이트", () => {
+  // 게이트는 완료 시 원장·요약·추정 쿼리를 무효화한다 — QueryClient 안에서 렌더해야 한다.
+  let queryClient: QueryClient;
+  function renderGate() {
+    queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return render(<QueryClientProvider client={queryClient}><ImportProgressGate walletAddress={ADDRESS} /></QueryClientProvider>);
+  }
   // BE 동기화 결과 계약 미러: 지원 체인 전체를 항상 포함하는 체인별 수집 건수.
   const syncResult = {
     bindings: 1,
@@ -367,7 +374,7 @@ describe("불러오기 게이트", () => {
   });
 
   it("지원하는 EVM 체인 전체를 스캔 대상으로 나열한다", () => {
-    render(<ImportProgressGate walletAddress={ADDRESS} />);
+    renderGate();
     const list = screen.getByRole("list", { name: "조회할 체인" });
     // BE 인덱서는 지원 체인 전체를 스캔한다 — "자산이 있는 체인만"은 응답 전에는 알 수 없는 사실이다.
     for (const chainId of EVM_CHAIN_IDS) {
@@ -376,7 +383,7 @@ describe("불러오기 게이트", () => {
   });
 
   it("작업이 done으로 폴링되면 체인별 수집 건수가 사실로 붙는다", async () => {
-    render(<ImportProgressGate walletAddress={ADDRESS} />);
+    renderGate();
     // POST(202) 정산 → 첫 폴링(running) → 둘째 폴링(done).
     await act(async () => {});
     expect(screen.queryByText("거래 3건")).toBeNull();
@@ -388,16 +395,27 @@ describe("불러오기 게이트", () => {
     expect(polled.length).toBe(2);
   });
 
+  it("작업이 끝나면 원장·요약·세금 추정 캐시를 무효화한다 — 시간이 아니라 사실이 갱신을 만든다", async () => {
+    renderGate();
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    await act(async () => {});
+    await poll(2);
+    const keys = invalidate.mock.calls.map(([filters]) => JSON.stringify(filters?.queryKey));
+    expect(keys).toContain(JSON.stringify(["events", "list"]));
+    expect(keys).toContain(JSON.stringify(["events", "summary"]));
+    expect(keys).toContain(JSON.stringify(["tax", "estimate"]));
+  });
+
   it("구 BE의 동기 응답(결과가 POST에 바로 실림)도 그대로 받는다", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => json(legacyEnvelope, 201)));
-    render(<ImportProgressGate walletAddress={ADDRESS} />);
+    renderGate();
     await act(async () => {});
     expect(within(chainItem("Ethereum")).getByText("거래 3건")).toBeTruthy();
   });
 
   it("작업이 failed로 폴링되면 실패를 말한다 — 실패도 실제 응답에서만 나온다", async () => {
     vi.stubGlobal("fetch", jobFetch([{ status: "failed", extra: { error: { code: "sync_unavailable", message: "Sync failed for all 1 wallet(s)." } } }]));
-    render(<ImportProgressGate walletAddress={ADDRESS} />);
+    renderGate();
     await act(async () => {});
     await poll();
     expect(screen.getByRole("dialog", { name: "거래를 다 불러오지 못했습니다" })).toBeTruthy();
@@ -407,7 +425,7 @@ describe("불러오기 게이트", () => {
   it("작업 상태가 404로 사라지면(BE 재시작) 실패로 보고 재시도를 준다", async () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) =>
       init?.method === "POST" ? json(jobEnvelope("queued"), 202) : json({ error: { code: "not_found", message: "Sync job not found." } }, 404)));
-    render(<ImportProgressGate walletAddress={ADDRESS} />);
+    renderGate();
     await act(async () => {});
     await poll();
     expect(screen.getByRole("dialog", { name: "거래를 다 불러오지 못했습니다" })).toBeTruthy();
@@ -416,7 +434,7 @@ describe("불러오기 게이트", () => {
   it("백그라운드로 보내면 폴링을 멈춘다 — 사라진 모달이 계속 BE를 두드리지 않는다", async () => {
     const fetchMock = jobFetch([{ status: "running" }]);
     vi.stubGlobal("fetch", fetchMock);
-    render(<ImportProgressGate walletAddress={ADDRESS} />);
+    renderGate();
     await act(async () => {});
     await poll();
     const before = fetchMock.mock.calls.length;
@@ -430,7 +448,7 @@ describe("불러오기 게이트", () => {
   it("응답이 오기 전에는 타이머가 끝나도 완료를 말하지 않는다", async () => {
     // 완료는 실제 응답에서만 나온다 — 연출 타이머도, 폴링 횟수도 완료를 만들 수 없다.
     vi.stubGlobal("fetch", jobFetch([{ status: "running" }]));
-    render(<ImportProgressGate walletAddress={ADDRESS} />);
+    renderGate();
     await act(async () => {});
     const total = IMPORT_STEP_DURATIONS_MS.reduce((sum, duration) => sum + duration, 0);
     await act(async () => {
@@ -441,14 +459,14 @@ describe("불러오기 게이트", () => {
 
   it("resync 접수가 거절되면 실패를 말하고 재시도를 준다", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 503 })));
-    render(<ImportProgressGate walletAddress={ADDRESS} />);
+    renderGate();
     await act(async () => {});
     expect(screen.getByRole("dialog", { name: "거래를 다 불러오지 못했습니다" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "다시 시도" })).toBeTruthy();
   });
 
   it("불러오기가 끝나면 스스로 닫고 URL에서 importing을 지운다", async () => {
-    render(<ImportProgressGate walletAddress={ADDRESS} />);
+    renderGate();
     expect(screen.getByRole("dialog")).toBeTruthy();
 
     // 완료는 실제 응답 AND 연출 타이머 종료다 — 작업이 done으로 폴링된 뒤 전체 단계를 지나게 한다.
@@ -470,7 +488,7 @@ describe("불러오기 게이트", () => {
   });
 
   it("백그라운드를 누르면 즉시 대시보드를 내준다", () => {
-    render(<ImportProgressGate walletAddress={ADDRESS} />);
+    renderGate();
     act(() => {
       fireEvent.click(screen.getByRole("button", { name: "백그라운드에서 계속" }));
     });

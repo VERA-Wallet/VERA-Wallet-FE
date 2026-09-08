@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { ImportProgressModal, useMockImportProgress } from "@/components/wallet/import-progress-modal";
 import { chainLabel } from "@/lib/format";
 import {
@@ -11,6 +12,7 @@ import {
   type ImportProgress,
   type ScanChain,
 } from "@/lib/wallet/import-progress";
+import { eventQueryKey, eventSummaryQueryKey } from "@/lib/queries/events";
 import { runImportSync, type ImportSyncResult } from "@/lib/wallet/import-sync";
 
 /**
@@ -42,6 +44,7 @@ type SyncState =
  */
 export function ImportProgressGate({ walletAddress, returnTo = "/dashboard" }: { walletAddress: string; returnTo?: string }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [dismissed, setDismissed] = useState(false);
   const [sync, setSync] = useState<SyncState>({ status: "pending" });
   const [attempt, setAttempt] = useState(0);
@@ -55,14 +58,21 @@ export function ImportProgressGate({ walletAddress, returnTo = "/dashboard" }: {
     // pending 재설정을 여기서 하지 않는다 — effect 본문의 동기 setState는 연쇄 렌더를 만든다.
     // 초기값이 이미 pending이고, 재시도는 onRetry가 attempt 증가와 함께 pending으로 되돌린다.
     runImportSync({ signal: controller.signal }).then(
-      (result) => { if (!cancelled) setSync({ status: "done", result }); },
+      (result) => {
+        if (cancelled) return;
+        setSync({ status: "done", result });
+        // 새 거래가 들어왔다는 사실은 여기서만 안다. 캐시(staleTime)에 맡기면 대시보드가 1분 동안 옛 원장을 보인다.
+        void queryClient.invalidateQueries({ queryKey: eventQueryKey });
+        void queryClient.invalidateQueries({ queryKey: eventSummaryQueryKey });
+        void queryClient.invalidateQueries({ queryKey: ["tax", "estimate"] });
+      },
       () => { if (!cancelled) setSync({ status: "failed" }); },
     );
     return () => {
       cancelled = true;
       controller.abort();
     };
-  }, [attempt, dismissed]);
+  }, [attempt, dismissed, queryClient]);
 
   // 응답이 오면 체인 목록이 사실(수집 건수)로 바뀐다. 그 전에는 지원 체인 전체를 건수 없이 보여준다.
   const chains = useMemo<ScanChain[]>(() => {
