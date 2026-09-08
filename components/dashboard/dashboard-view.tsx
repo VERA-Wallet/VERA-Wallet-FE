@@ -920,8 +920,11 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
   // 판정 조회 자체가 비활성이고(useJudgments의 enabled), 화면·상세 어디에도 이 값으로 만든 결과가 흘러가지 않는다.
   // 근거 판정은 표시 판정과 **같은 규칙**을 써야 한다.
   // 갈리면 헤더는 "기간 미정"인데 판정 기준은 "2025년 세금"을 말하게 된다.
+  // 기준 시각은 기간의 **끝**(마지막 거래)이다 — 세금 화면(app/tax/page.tsx)과 같은 규칙. 시작일로 잡으면
+  // 여러 해에 걸친 지갑(2021년부터 이력이 있는 지갑을 추가한 순간)에서 가장 오래된 해를 계산해
+  // 가격도 없는 첫 해를 두고 "계산할 거래 없음"을 말한다.
   const referencePeriod = isGroundedPeriod(summaryFresh.data?.period)
-    ? summaryFresh.data!.period.from
+    ? summaryFresh.data!.period.to
     : null;
   // 기본 귀속연도는 마지막 활동연도(요약 기간)에서 파생한다. 하지만 사용자가 세금 화면 셀렉터로
   // 다른 연도를 고르면 그 선택이 전역 소스에 있고, 이 화면도 같은 연도를 봐야 desync가 없다.

@@ -1771,6 +1771,27 @@ describe("DeFi 수익은 종류 배지로 드러난다", () => {
   });
 });
 
+describe("기본 과세연도는 마지막 활동에서 나온다", () => {
+  it("여러 해에 걸친 이력(2021~픽스처 연도)에서는 첫 해가 아니라 마지막 거래의 해를 계산한다", async () => {
+    // 2021년부터 이력이 있는 지갑을 추가한 순간 대시보드가 2021년을 계산해 "계산할 거래 없음"을 말하던 결함.
+    // 세금 화면(app/tax/page.tsx)과 같은 규칙 — 기준은 요약 기간의 끝(마지막 거래)이다.
+    ports.getSummary.mockResolvedValue({
+      periodPnl: "1000",
+      computableEventCount: 1,
+      taxableEventCount: 1,
+      pendingReviewCount: 1,
+      currency: "KRW",
+      period: { from: "2021-05-12T09:00:00.000Z", to: FIXTURE_PERIOD.to },
+    });
+    renderDashboard("KR");
+    await settled();
+    const years = ports.estimate.mock.calls.filter(([input]) => input.source === "wallet").map(([input]) => input.taxYear);
+    expect(years.length).toBeGreaterThan(0);
+    expect(years.every((year) => year === FIXTURE_TAX_YEAR)).toBe(true);
+    expect(years).not.toContain(2021);
+  });
+});
+
 describe("목록이 실현 손익(₩)을 상세와 같은 소스에서 뽑아 노출한다", () => {
   it("처분 행에 실현 손익 금액(부호·색)을 찍고, 무손익 행은 거래 평가액을·가격 미확인만 —로 둔다", async () => {
     const target = events.find((event) => derived.events.some((tax) => tax.id === event.id && tax.kind === "DISPOSE"))!;
