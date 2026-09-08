@@ -46,6 +46,15 @@ export const RECEIPT_COST_SUFFIX = " 무상취득분 취득가액 규정이 없�
  */
 export const COST_METHOD_SUFFIX = " 거주자별 총평균법은 그 사람의 모든 출처를 합산해야 하나, 아직 지갑 단위로만 통산해 평균단가가 실제와 다를 수 있습니다 — 예상 부담은 잠정치입니다.";
 
+/** 거래일 환율이 없어 계산에서 제외했다는 고정 꼬리(앞에는 이벤트 id). */
+export const FX_RATE_SUFFIX = " 거래일 환율(ECB 기준)을 확인하지 못해 계산에서 제외했습니다.";
+
+/**
+ * 이벤트 통화를 룰셋 통화로 환산했다는 근사의 고정 꼬리(앞에는 "KRW → USD"처럼 통화쌍).
+ * 세무 당국이 정한 환율·기준일(고시환율·월평균 등)과 다를 수 있으므로 근사로 분류한다.
+ */
+export const FX_CONVERSION_SUFFIX = " 금액은 거래일의 ECB 기준환율로 환산했습니다 — 세무 당국이 정한 환율·기준일과 다를 수 있습니다.";
+
 /**
  * 답이 얼마나 흔들리는지의 순서.
  *
@@ -77,14 +86,15 @@ export function classifyLimitation(message: string): LimitationKind {
   if (
     message.endsWith(DEEMED_COST_SUFFIX) ||
     message.endsWith(RECEIPT_COST_SUFFIX) ||
-    message.endsWith(COST_METHOD_SUFFIX)
+    message.endsWith(COST_METHOD_SUFFIX) ||
+    message.endsWith(FX_CONVERSION_SUFFIX)
   ) {
     return "approximation";
   }
   // 부인 손실의 원가 가산 누락은 "취득가액 0"이 아니라 "반영 안 함"이다.
   // zero_basis로 찍으면 화면 배지가 존재하지 않는 계산 사실을 말한다.
   if (message.endsWith(DENIED_ACB_SUFFIX) || message.endsWith(PENDING_ACB_SUFFIX)) return "not_reflected";
-  if (message.endsWith(EXCLUSION_SUFFIX) || message.endsWith(EXCLUDED_ID_SUFFIX)) return "excluded";
+  if (message.endsWith(EXCLUSION_SUFFIX) || message.endsWith(EXCLUDED_ID_SUFFIX) || message.endsWith(FX_RATE_SUFFIX)) return "excluded";
   return "other";
 }
 

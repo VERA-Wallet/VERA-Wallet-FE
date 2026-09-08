@@ -1,3 +1,4 @@
+import type { Provenance } from "@/lib/http/envelope";
 import type { Decimal } from "@/lib/tax/decimal";
 
 /** PDF PART 1 기준 룰셋 보유 국가 + 벤치마크 대상인 KR. */
@@ -169,7 +170,8 @@ export type TaxEstimate = {
   requiredInputs: string[];
   /** 가격 미확인 등으로 계산에서 제외한 이벤트. */
   excludedEventIds: string[];
-  provenance: "mock";
+  /** 계산 입력(지갑 이벤트)의 출처. 시나리오와 FE mock store는 mock, 실 BE 스냅샷은 그 응답의 provenance를 따른다. */
+  provenance: Provenance;
   /** 적용된 과세기간 [from, to). 영국 4/6~·호주 7/1~ 때문에 화면이 재계산하면 안 된다. */
   period: { from: string; to: string };
   /**

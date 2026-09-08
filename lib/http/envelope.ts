@@ -1,7 +1,9 @@
+/** 응답 데이터의 출처. BE는 MOCK_MODE에 따라 두 값을 모두 보낸다(`shared/api.ts#success`). FE-소유 라우트도 입력 데이터의 출처를 따른다. */
+export type Provenance = "mock" | "live";
+
 export type SuccessEnvelope<T> = {
   data: T;
-  // BE는 MOCK_MODE에 따라 두 값을 모두 보낸다(`shared/api.ts#success`). 지금 운영 모드가 mock일 뿐 계약은 union이다.
-  meta: { provenance: "mock" | "live"; generatedAt: string };
+  meta: { provenance: Provenance; generatedAt: string };
 };
 
 export type ErrorEnvelope = {

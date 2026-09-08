@@ -107,7 +107,7 @@ export const taxEstimateSchema: z.ZodType<TaxEstimate> = z.object({
   ),
   requiredInputs: z.array(z.string()),
   excludedEventIds: z.array(z.string()),
-  provenance: z.literal("mock"),
+  provenance: z.enum(["mock", "live"]),
   judgments: z.array(judgmentRowSchema),
   marginalContributions: z.record(z.string(), decimalString).optional(),
 });

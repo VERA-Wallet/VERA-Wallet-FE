@@ -9,6 +9,8 @@ import type { EventListDTO } from "@/lib/http/dto";
 import { SessionInfrastructureError } from "@/lib/ports/session-reader";
 import { beEventListSchema } from "@/lib/schema/be-event-transport";
 import type { NormalizedEvent } from "@/lib/schema/normalized-event";
+import type { Provenance } from "@/lib/http/envelope";
+import type { WalletEventSource } from "@/lib/tax/tax-engine-service.server";
 
 /**
  * 서버에서 BE 이벤트를 읽는 어댑터.
@@ -18,6 +20,9 @@ import type { NormalizedEvent } from "@/lib/schema/normalized-event";
  * 세금 계산이 대시보드와 같은 이벤트를 보게 하는 것이 이 어댑터의 존재 이유다.
  */
 export class BeHttpEventRepository {
+  /** 마지막 성공 응답의 meta.provenance. 페이지마다 같은 BE가 답하므로 마지막 값이 곧 스냅샷의 출처다. */
+  lastProvenance: Provenance | null = null;
+
   constructor(private readonly cookieHeader: string | undefined) {}
 
   async list(input: { cursor?: string; limit?: number } = {}): Promise<EventListDTO> {
@@ -35,7 +40,10 @@ export class BeHttpEventRepository {
     }
 
     const decoded = await decodeResponse(response, beEventListSchema);
-    if ("data" in decoded && "meta" in decoded) return decoded.data;
+    if ("data" in decoded && "meta" in decoded) {
+      this.lastProvenance = decoded.meta.provenance;
+      return decoded.data;
+    }
     // 인증 실패(401)·지갑 미바인딩(404)은 인프라 장애가 아니라 도메인 상태다.
     // 하나로 뭉개면 호출부가 "계산할 거래 없음"과 "로그인 필요"를 구분하지 못한다.
     // 다만 2xx인데 오류 envelope가 온 경우는 도메인 상태가 아니라 계약 위반이다 — status 200짜리 오류를 만들지 않는다.
@@ -52,13 +60,25 @@ export class BeEventReadError extends Error {
   }
 }
 
-/** 세금 계산 입력이 될 BE 이벤트 스냅샷. 잘린 스냅샷으로 계산하면 사용자에게 틀린 숫자를 말한다. */
-export async function readBeWalletEvents(cookieHeader: string | undefined): Promise<NormalizedEvent[]> {
-  const { items, truncated } = await collectBoundedEvents(new BeHttpEventRepository(cookieHeader), { pageLimit: 100 });
+/**
+ * 세금 계산 입력이 될 BE 이벤트 스냅샷과 그 출처. 잘린 스냅샷으로 계산하면 사용자에게 틀린 숫자를 말한다.
+ * 출처(provenance)는 BE 응답의 meta를 그대로 잇는다 — BE가 MOCK_MODE면 mock, 실어댑터면 live.
+ */
+export async function readBeWalletEventsWithProvenance(cookieHeader: string | undefined): Promise<WalletEventSource> {
+  const repository = new BeHttpEventRepository(cookieHeader);
+  const { items, truncated } = await collectBoundedEvents(repository, { pageLimit: 100 });
   if (truncated) throw new EventCollectionTruncatedError(items.length, 50);
   // 스팸은 대시보드 원장에서 빠지므로 계산 입력에서도 빠져야 한다. 한쪽만 걸러내면
   // 화면에 없는 거래가 세금 숫자에는 들어가 두 화면이 다른 이야기를 한다.
-  return items.filter((item) => !isSpam(item.event)).map((item) => item.event);
+  const events = items.filter((item) => !isSpam(item.event)).map((item) => item.event);
+  // 응답이 한 페이지도 없었다면(빈 지갑) 출처를 단정할 근거가 없다. 그때는 BE가 답했다는 사실만 남으므로 live로 둔다 —
+  // 어차피 이벤트가 없어 배지가 가리킬 데이터도 없다.
+  return { events, provenance: repository.lastProvenance ?? "live" };
+}
+
+/** 이벤트만 필요한 호출부(세금 화면의 진입 연도 판정)용. */
+export async function readBeWalletEvents(cookieHeader: string | undefined): Promise<NormalizedEvent[]> {
+  return (await readBeWalletEventsWithProvenance(cookieHeader)).events;
 }
 
 /**

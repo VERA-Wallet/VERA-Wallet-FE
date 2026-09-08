@@ -26,6 +26,8 @@ export default defineConfig({
     env: {
       ...(EFFECTIVE_ORIGIN ? { VERAWALLET_BACKEND_ORIGIN: EFFECTIVE_ORIGIN } : {}),
       ...(process.env.VERAWALLET_MOCK_MODE ? { VERAWALLET_MOCK_MODE: process.env.VERAWALLET_MOCK_MODE } : {}),
+      // 세금 화면의 통화 환산은 외부 환율 API(ECB) 대신 고정표를 쓴다 — e2e가 네트워크·환율 변동에 흔들리지 않게.
+      VERAWALLET_FX_SOURCE: "fixed",
     },
   },
 });
