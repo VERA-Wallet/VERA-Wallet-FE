@@ -1808,8 +1808,13 @@ describe("목록이 실현 손익(₩)을 상세와 같은 소스에서 뽑아 �
 
     const gainCard = rowById(target.id);
     const gainRow = gainCard.querySelector('[data-surface="event-gain"]')!;
-    // 우측 손익 칸은 라벨 없이 값과 수익률만 보인다(목록 재설계 — 좌: 타입·티커 / 우: 손익·%).
-    // 손익 금액이 주(主)다 — 부호(+)와 통화 금액을 함께 보인다. 상세 손익과 같은 소스라 값이 일치한다.
+    // 우측 칸의 1줄은 방향과 무관하게 **거래 당시 평가액**이다. 처분 행이라고 손익을 1줄에 두면 수량 줄의 방향 부호(−)와
+    // 손익 부호(−)가 한 행에 섞여, 사용자가 손익 금액을 "보낸 금액"으로 읽는다(실지갑 검증에서 실제로 그렇게 읽혔다).
+    expect(target.fiat_value, "처분 픽스처는 가격이 확인돼 있어야 한다").not.toBeNull();
+    expect(gainRow.textContent, "처분 행도 1줄은 거래 평가액이다").toContain(formatFiat(target.fiat_value, target.fiat_currency));
+    // 손익은 2줄에 눈에 보이는 라벨을 달고 온다 — 라벨이 없으면 1줄의 평가액과 뜻이 섞인다.
+    expect(gainRow.textContent).toContain("실현 손익");
+    // 손익 금액은 부호(+)와 통화 금액을 함께 보인다. 상세 손익과 같은 소스라 값이 일치한다.
     const gainText = formatFiat("1980", "EUR");
     expect(gainRow.textContent).toContain(`+${gainText}`);
     // 상승은 색으로도 표시하되(브랜드 receive), 색만으로 구분하지 못하도록 부호를 함께 둔다.

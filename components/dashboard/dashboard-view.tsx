@@ -849,43 +849,40 @@ function EventRow({
             이미 텍스트로 읽어주므로 중복을 피해 생략한다. */}
         {event.bridge_dest_chain_id === null ? <span className="sr-only">{chainLabel(event.chain_id)}</span> : null}
       </div>
-      {/* 오른쪽: 실현 손익(₩)과 수익률(%). 상세의 손익 근거표와 같은 판정 행(amountKind==="gain")을
-          합산하므로 목록과 상세가 갈리지 않는다. 상승은 receive(녹)·하락은 dispose(적) 토큰을 쓰고,
-          색만으로 못 가르는 사용자를 위해 부호를 함께 둔다.
-          실현 손익이 없는 건(매수·수령·이동·브릿지·NFT 등)은 손익 대신 **거래 당시 평가액(₩)**을 보인다
-          — 가격을 잃지 않되, 손익이 아니므로 부호·색 없이 중립으로 둔다. 가격조차 미확인이면 "—".
+      {/* 오른쪽 칸은 방향과 무관하게 같은 뜻을 가진다.
+          1줄: **거래 당시 평가액**(이벤트 통화 그대로). 수량 줄의 −/+는 지갑 기준 방향이고, 이 줄은 그 수량의 가치라
+          부호·색 없이 중립으로 둔다. 가격 미확인이면 "—". 손익을 이 자리에 두면 "-563 USDC / -₩33,767"처럼
+          방향 부호와 손익 부호가 한 행에 섞여 3만 원어치를 보냈다고 읽힌다(실제 가치는 77만 원).
+          2줄: **실현 손익**(처분 행에만). 상세의 손익 근거표와 같은 판정 행(amountKind==="gain")을 합산하므로
+          목록과 상세가 갈리지 않는다. 눈에 보이는 라벨을 붙여 1줄의 평가액과 뜻이 섞이지 않게 하고,
+          상승은 receive(녹)·하락은 dispose(적) 토큰을 쓰되 색만으로 못 가르는 사용자를 위해 부호를 함께 둔다.
           판정이 아직 오지 않았으면(보류) 오른쪽을 비운다 — 손익 블록의 유무가 곧 정착 신호다.
-          배지(판정 도장·미검증·확인 필요 등)는 이제 목록이 아니라 거래 상세에서만 말한다. */}
+          배지(판정 도장·미검증·확인 필요 등)는 목록이 아니라 거래 상세에서만 말한다. */}
       {isExcluded || isDuplicate || inPeriod !== null ? (
         <div data-surface="event-gain" className="flex shrink-0 flex-col items-end text-right">
-          {gain !== null ? (
-            // 실현 손익(처분). 색·부호로 손익임을 말하므로 스크린리더에 "손익" 라벨을 sr-only로 붙인다.
-            hideBalances ? (
-              <><span className="sr-only">손익 </span><span className="text-[0.9375rem] font-bold tabular-nums text-zinc-500">•••••</span></>
-            ) : (
-              <>
-                <span className="sr-only">손익 </span>
-                <span className={`text-[0.9375rem] font-bold tabular-nums ${isPositive(gain) ? "text-receive" : isNegative(gain) ? "text-dispose" : "text-zinc-500"}`}>
-                  {isPositive(gain) ? "+" : ""}{formatFiat(gain, currency)}
-                </span>
-                {returnPercent !== null ? (
-                  <span className="mt-0.5 text-[0.8125rem] tabular-nums text-zinc-400">
-                    <span className="sr-only">수익률 </span>{isPositive(returnPercent) ? "+" : ""}{returnPercent}%
-                  </span>
-                ) : null}
-              </>
-            )
-          ) : event.fiat_value !== null ? (
-            // 실현 손익이 없으면 거래 당시 평가액을 보인다(₩은 이벤트 통화 그대로). 손익이 아니므로 중립색.
-            <>
-              <span className="sr-only">거래 평가액 </span>
-              <span className="text-[0.9375rem] font-bold tabular-nums text-zinc-900">
-                {hideBalances ? "•••••" : formatFiat(event.fiat_value, event.fiat_currency)}
-              </span>
-            </>
+          <span className="sr-only">거래 평가액 </span>
+          {event.fiat_value !== null ? (
+            <span className="text-[0.9375rem] font-bold tabular-nums text-zinc-900">
+              {hideBalances ? "•••••" : formatFiat(event.fiat_value, event.fiat_currency)}
+            </span>
           ) : (
-            <><span className="sr-only">손익 </span><span className="text-[0.9375rem] font-bold tabular-nums text-zinc-400">—</span></>
+            <span className="text-[0.9375rem] font-bold tabular-nums text-zinc-400">—</span>
           )}
+          {gain !== null ? (
+            hideBalances ? (
+              <span className="mt-0.5 text-[0.8125rem] tabular-nums text-zinc-500">
+                <span className="text-zinc-400">실현 손익 </span>•••••
+              </span>
+            ) : (
+              <span className={`mt-0.5 text-[0.8125rem] font-semibold tabular-nums ${isPositive(gain) ? "text-receive" : isNegative(gain) ? "text-dispose" : "text-zinc-500"}`}>
+                <span className="font-normal text-zinc-400">실현 손익 </span>
+                {isPositive(gain) ? "+" : ""}{formatFiat(gain, currency)}
+                {returnPercent !== null ? (
+                  <span className="font-normal text-zinc-400"> (<span className="sr-only">수익률 </span>{isPositive(returnPercent) ? "+" : ""}{returnPercent}%)</span>
+                ) : null}
+              </span>
+            )
+          ) : null}
         </div>
       ) : null}
     </button>
