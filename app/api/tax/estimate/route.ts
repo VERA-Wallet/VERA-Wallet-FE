@@ -16,7 +16,9 @@ export async function POST(request: Request) {
   if (parsed.data.source === "wallet" && session.walletAddress === null) return walletNotBoundResponse();
 
   try {
-    return Response.json(success(await taxEngine.estimate(parsed.data)));
+    const estimate = await taxEngine.estimate(parsed.data);
+    // 엔벨로프 provenance는 계산 입력(이벤트 스냅샷)의 출처를 따른다. 시나리오·FE mock store는 mock, 실 BE 스냅샷은 live.
+    return Response.json(success(estimate, estimate.provenance));
   } catch (cause) {
     if (cause instanceof MarginalBudgetError) return Response.json(error("payload_too_large", "Marginal contribution budget exceeded."), { status: 413 });
     if (cause instanceof UnknownRuleSetError) return Response.json(error("not_found", "Ruleset not found."), { status: 404 });
@@ -30,6 +32,9 @@ export async function POST(request: Request) {
     // 이걸 그대로 던지면 Next가 500 HTML을 돌려줘 화면이 원인을 모른다 — 세션 경계와 같은 502 계약으로 맞춘다.
     const { SessionInfrastructureError } = await import("@/lib/ports/session-reader");
     if (cause instanceof SessionInfrastructureError) return Response.json(error("upstream_unavailable", "인증 서버에서 정상적인 응답을 받지 못했습니다."), { status: 502 });
+    // 룰셋 통화로 환산할 환율 소스가 응답하지 못했다. 빈 결과로 뭉개면 "계산할 거래 없음"이라는 거짓말이 된다.
+    const { FxRateUnavailableError } = await import("@/lib/ports/fx-rate");
+    if (cause instanceof FxRateUnavailableError) return Response.json(error("fx_unavailable", "환율 서버에서 정상적인 응답을 받지 못해 계산을 중단했습니다."), { status: 502 });
     throw cause;
   }
 }

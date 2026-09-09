@@ -9,7 +9,7 @@ import type { EventRepository } from "@/lib/ports/event-repository";
  * 이제는 상한과 커서 반복 가드를 둔 공유 수집기를 쓰고, 상한에 걸리면 조용히 자르는 대신 던진다.
  */
 export async function collectAllEvents(repository: EventRepository): Promise<EventMutation[]> {
-  const { items, truncated } = await collectBoundedEvents(repository, { pageLimit: 100 });
+  const { items, truncated } = await collectBoundedEvents(repository, { pageLimit: 1_000 });
   if (truncated) throw new EventCollectionTruncatedError(items.length, 50);
   return items;
 }

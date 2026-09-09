@@ -4,9 +4,10 @@ import { randomUUID } from "node:crypto";
 
 import { siweEnv } from "@/lib/env";
 import { SessionInfrastructureError } from "@/lib/ports/session-reader";
-import type { ErrorEnvelope, SuccessEnvelope } from "@/lib/http/envelope";
+import type { ErrorEnvelope, Provenance, SuccessEnvelope } from "@/lib/http/envelope";
 
-export function success<T>(data: T): SuccessEnvelope<T> { return { data, meta: { provenance: "mock", generatedAt: new Date().toISOString() } }; }
+// provenance는 응답 데이터의 출처다. FE mock store·시나리오·정적 룰셋은 mock, BE 스냅샷으로 계산한 답은 그 스냅샷의 출처를 따른다.
+export function success<T>(data: T, provenance: Provenance = "mock"): SuccessEnvelope<T> { return { data, meta: { provenance, generatedAt: new Date().toISOString() } }; }
 export function error(code: string, message: string, details?: unknown): ErrorEnvelope { return { error: { code, message, ...(details === undefined ? {} : { details }) } }; }
 // BE JwtAuthGuard 401 계약(passport 기본 메시지).
 export function unauthorizedResponse(): Response {

@@ -16,7 +16,16 @@ async function latestActivityTaxYear(countryCode: string): Promise<number | unde
   // ON 모드에서는 대시보드와 같은 BE 이벤트를 봐야 한다. FE mock 요약을 쓰면 세금 화면만 다른 연도를 연다.
   if (!isMockApiMode()) {
     const { readBeWalletEvents } = await import("@/lib/adapters/http/event-repository.server");
-    const events = await readBeWalletEvents(await getSessionCookieHeaderForEventReader());
+    const { SessionInfrastructureError } = await import("@/lib/ports/session-reader");
+    let events;
+    try {
+      events = await readBeWalletEvents(await getSessionCookieHeaderForEventReader());
+    } catch (cause) {
+      // 진입 연도는 편의값이다. BE 이벤트 조회가 타임아웃·네트워크로 실패했다고 화면 전체를 500으로 죽이지 않는다 —
+      // 연도를 비우면 화면은 올해로 열리고, 계산 자체는 클라이언트가 다시 시도한다.
+      if (cause instanceof SessionInfrastructureError) return undefined;
+      throw cause;
+    }
     // 문자열 비교는 offset이 섞인 RFC3339에서 순서를 틀린다. 시각으로 비교한다.
     const latest = events.reduce<string | null>((max, event) => (max === null || Date.parse(event.block_timestamp) > Date.parse(max) ? event.block_timestamp : max), null);
     // 인증은 됐는데 이벤트가 0건인 것은 정상 상태다(빈 지갑). 그때만 연도를 비운다.

@@ -1,15 +1,15 @@
 {
-  "source": "BE MockAlchemyAdapter 25-event fixture via FE lib/tax engine — 2026-08-28 재생성(리뷰 게이팅 반영). taxableGains 83000은 판정 처분(02·08·12·22=44000)+스왑(03·13·23=39000, 전부 zero-basis) 합으로 독립 검산함.",
+  "source": "BE MockAlchemyAdapter 25-event fixture via FE lib/tax engine — 2026-09-08 재생성(통화 환산 반영). BE 픽스처는 KRW라 미국 룰셋은 고정 환율표(FixedFxRateProvider: EUR당 KRW 1500·USD 1.1 → KRW 1 = USD 0.000733…)로 환산된다. 원화 기준 taxableGains 83000(판정 처분 02·08·12·22=44000 + zero-basis 스왑 03·13·23=39000, 2026-08-28 검산)에 그 환율을 곱하면 60.8666… → 60.87이고, 미국 첫 구간 10%가 그대로 적용돼 6.09·실효 10%로 독립 검산함.",
   "eventCount": 25,
   "taxYear": 2025,
   "us": {
     "totals": {
-      "taxableGains": "83000",
+      "taxableGains": "60.87",
       "exemptGains": "0",
       "incomeTotal": "0",
-      "taxableBase": "83000",
-      "estimatedCharge": "13174",
-      "effectiveRatePercent": "15.87"
+      "taxableBase": "60.87",
+      "estimatedCharge": "6.09",
+      "effectiveRatePercent": "10"
     },
     "status": "CONFIRMED",
     "method": "FIFO (지갑별, Rev. Proc. 2024-28)"

@@ -4,6 +4,9 @@ import { MockAuthStore } from "@/lib/mock/auth-store";
 import { getMockRuleset } from "@/lib/mock/rulesets";
 import { MockEventStore } from "@/lib/mock/store";
 import { TaxEngineService } from "@/lib/tax/tax-engine-service.server";
+import { FixedFxRateProvider } from "@/lib/adapters/fx/fixed-fx-rate";
+import { FrankfurterFxRateProvider } from "@/lib/adapters/fx/frankfurter-fx-rate.server";
+import type { FxRateProvider } from "@/lib/ports/fx-rate";
 import { BeSessionReader } from "@/lib/adapters/session/be-session-reader.server";
 import { MockSessionReader } from "@/lib/adapters/session/mock-session-reader.server";
 import type { AnchorProofProvider } from "@/lib/ports/anchor-proof-provider";
@@ -50,12 +53,17 @@ export const ruleSetRepository: RuleSetRepository = {
 // 세금 계산의 지갑 이벤트 출처를 모드로 고른다.
 // ON에서 FE mock store를 그대로 쓰면 대시보드(BE 25건)와 세금 화면(FE fixture)이 서로 다른 우주를 말한다.
 // dal ↔ composition-root 순환을 피하려고 ON 경로만 지연 import한다.
+// 환율 소스. 룰셋 통화가 이벤트 통화(BE는 KRW)와 다를 때 거래일 환율로 환산한다.
+// `VERAWALLET_FX_SOURCE=fixed`는 결정적 테스트·CI 전용 고정표다 — 운영에서 켜면 취득·양도 시점의 환율 차이가 사라진다.
+const fxRateProvider: FxRateProvider = process.env.VERAWALLET_FX_SOURCE === "fixed" ? new FixedFxRateProvider() : new FrankfurterFxRateProvider();
+
 export const taxEngine: TaxEnginePort = new TaxEngineService(async () => {
-  if (isMockApiMode()) return store.list({ limit: 100 }).items.map((item) => item.event);
+  if (isMockApiMode()) return { events: store.list({ limit: 100 }).items.map((item) => item.event), provenance: "mock" as const };
   const { getSessionCookieHeaderForEventReader } = await import("@/lib/dal");
-  const { readBeWalletEvents } = await import("@/lib/adapters/http/event-repository.server");
-  return readBeWalletEvents(await getSessionCookieHeaderForEventReader());
-});
+  const { readBeWalletEventsWithProvenance } = await import("@/lib/adapters/http/event-repository.server");
+  // BE 응답의 provenance를 그대로 잇는다. BE가 MOCK_MODE면 mock, 실어댑터면 live — 세금 화면의 배지는 이 값을 따른다.
+  return readBeWalletEventsWithProvenance(await getSessionCookieHeaderForEventReader());
+}, fxRateProvider);
 
 export const anchorProofProvider: AnchorProofProvider = {
   getProof: async (eventId) => {

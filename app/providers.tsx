@@ -7,7 +7,12 @@ import { wagmiConfig } from "@/lib/wallet/wagmi-config";
 import { TaxYearProvider } from "@/lib/tax/tax-year-context";
 
 export function Providers({ children }: { children: React.ReactNode }) {
-  const [queryClient] = useState(() => new QueryClient());
+  // 기본값(staleTime 0·포커스 재조회)이면 탭을 오가거나 창을 클릭할 때마다 이벤트 13페이지·요약·세금 추정을 전부 다시 받는다.
+  // 원장은 분 단위로만 바뀌는 데이터라 1분은 신선하다고 본다. 실제로 바뀌는 순간(재분류·값 입력·동기화 완료)은
+  // 각 뮤테이션과 불러오기 게이트가 명시적으로 무효화한다 — 시간이 아니라 사실이 갱신을 만든다.
+  const [queryClient] = useState(() => new QueryClient({
+    defaultOptions: { queries: { staleTime: 60_000, refetchOnWindowFocus: false, retry: 1 } },
+  }));
 
   return (
     <WagmiProvider config={wagmiConfig}>

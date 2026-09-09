@@ -10,8 +10,8 @@ import type { ReclassifyRequestDTO, SetValueOverrideRequestDTO } from "@/lib/htt
 export const eventQueryKey = ["events", "list"] as const;
 export const eventSummaryQueryKey = ["events", "summary"] as const;
 
-/** 한 번에 가져올 페이지 크기. 커서가 남으면 계속 이어 받는다. */
-const PAGE_LIMIT = 100;
+/** 한 번에 가져올 페이지 크기(BE 상한 1,000). 커서가 남으면 계속 이어 받는다. 100이면 실지갑 1,300건에 13번 왕복한다. */
+const PAGE_LIMIT = 1_000;
 /** 한 번에 이어 받을 최대 페이지 수. 화면의 "더 불러오기"가 이 값을 늘린다. */
 const MAX_PAGES = 50;
 

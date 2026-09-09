@@ -380,7 +380,8 @@ export function TaxSimulator({
             </details>
           ) : null}
         </div>
-        <MockProvenanceChip />
+        {/* 배지는 계산 입력의 출처를 말한다. 실 BE 스냅샷(live)으로 계산한 답에 mock 배지를 붙이면 거짓이 된다. */}
+        {result?.provenance === "mock" ? <MockProvenanceChip /> : null}
       </header>
 
       {/* 지갑 미연결 동안 상시 노출한다 — 가정 배너와 같은 원칙: 답 옆에 그 사실이 계속 있어야 한다. */}

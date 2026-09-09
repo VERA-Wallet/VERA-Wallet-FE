@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { ImportProgressModal, useMockImportProgress } from "@/components/wallet/import-progress-modal";
 import { chainLabel } from "@/lib/format";
 import {
@@ -11,6 +12,7 @@ import {
   type ImportProgress,
   type ScanChain,
 } from "@/lib/wallet/import-progress";
+import { eventQueryKey, eventSummaryQueryKey } from "@/lib/queries/events";
 import { runImportSync, type ImportSyncResult } from "@/lib/wallet/import-sync";
 
 /**
@@ -27,7 +29,8 @@ type SyncState =
 /**
  * `/dashboard?importing=1`로 들어왔을 때만 불러오기 모달을 띄우고, 끝나면 스스로 걷어낸다.
  *
- * 단계 애니메이션은 연출(타이머)이지만 **완료·실패는 실제 `POST /api/events/resync` 응답에서만 나온다.**
+ * 단계 애니메이션은 연출(타이머)이지만 **완료·실패는 실제 동기화 작업의 응답에서만 나온다**
+ * (`POST /api/events/resync`로 받은 작업을 `GET /api/events/resync/:jobId`로 폴링 — `runImportSync`가 그 왕복을 숨긴다).
  * 타이머가 먼저 끝나면 마지막 단계에서 응답을 기다리고, 응답이 먼저 오면 타이머가 끝나는 대로 완료를 표시한다.
  * 응답의 체인별 수집 건수(`chains`)가 목록의 최종 사실이다.
  *
@@ -41,20 +44,35 @@ type SyncState =
  */
 export function ImportProgressGate({ walletAddress, returnTo = "/dashboard" }: { walletAddress: string; returnTo?: string }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [dismissed, setDismissed] = useState(false);
   const [sync, setSync] = useState<SyncState>({ status: "pending" });
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
+    // 모달이 걷히면(백그라운드·언마운트) 폴링도 같이 멈춘다. BE 작업 자체는 계속 돌아 결과가 원장에 남는다.
+    // 라우터가 목적지로 옮겨 주면 이 컴포넌트는 어차피 언마운트되지만, 그 전에도 사라진 모달이 BE를 두드리지 않게 한다.
+    if (dismissed) return;
     let cancelled = false;
+    const controller = new AbortController();
     // pending 재설정을 여기서 하지 않는다 — effect 본문의 동기 setState는 연쇄 렌더를 만든다.
     // 초기값이 이미 pending이고, 재시도는 onRetry가 attempt 증가와 함께 pending으로 되돌린다.
-    runImportSync().then(
-      (result) => { if (!cancelled) setSync({ status: "done", result }); },
+    runImportSync({ signal: controller.signal }).then(
+      (result) => {
+        if (cancelled) return;
+        setSync({ status: "done", result });
+        // 새 거래가 들어왔다는 사실은 여기서만 안다. 캐시(staleTime)에 맡기면 대시보드가 1분 동안 옛 원장을 보인다.
+        void queryClient.invalidateQueries({ queryKey: eventQueryKey });
+        void queryClient.invalidateQueries({ queryKey: eventSummaryQueryKey });
+        void queryClient.invalidateQueries({ queryKey: ["tax", "estimate"] });
+      },
       () => { if (!cancelled) setSync({ status: "failed" }); },
     );
-    return () => { cancelled = true; };
-  }, [attempt]);
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [attempt, dismissed, queryClient]);
 
   // 응답이 오면 체인 목록이 사실(수집 건수)로 바뀐다. 그 전에는 지원 체인 전체를 건수 없이 보여준다.
   const chains = useMemo<ScanChain[]>(() => {
