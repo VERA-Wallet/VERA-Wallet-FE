@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // aside repl 번들 조각(header/footer/harness/specs)은 이어 붙여야 유효한 JS라 단독 lint 대상이 아니다.
+    "tests/e2e-aside/**",
   ]),
 ]);
 

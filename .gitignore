@@ -49,3 +49,6 @@ artifacts/
 # GJC 런타임 상태·아티팩트 (소스가 아님)
 .gjc/
 .omc/
+
+# aside e2e 실행 산출물
+tests/e2e-aside/reports/
