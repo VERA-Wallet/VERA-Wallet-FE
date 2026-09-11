@@ -10,7 +10,7 @@ import { WalletPortfolio } from "@/components/wallet/wallet-portfolio";
 import { NotFoundView } from "@/components/ui/not-found-view";
 import { Skeleton } from "@/components/ui/skeleton";
 import { WalletMark } from "@/components/wallet/wallet-mark";
-import { WalletVerificationBadge, walletLabel } from "@/components/wallet/wallet-verification-badge";
+import { walletLabel } from "@/components/wallet/wallet-verification-badge";
 import { shortHash } from "@/lib/format";
 
 /**
@@ -99,7 +99,6 @@ function WalletDetailLoading({ walletAddress, verification }: { walletAddress: s
         </Link>
         <WalletMark size={28} />
         <span className="font-semibold text-zinc-900">{walletLabel(verification)}</span>
-        {verification ? <WalletVerificationBadge verification={verification} /> : null}
       </div>
       <p className="mt-3 inline-flex items-center gap-2 rounded-full bg-zinc-100 px-3 py-1.5 font-mono text-sm text-zinc-700">{shortHash(walletAddress)}</p>
       <Skeleton className="mt-5 block h-10 w-44" />

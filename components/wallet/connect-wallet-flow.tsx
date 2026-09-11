@@ -70,6 +70,7 @@ export function ConnectWalletFlow({
   mode = "onboarding",
   exitTo = "/dashboard",
   countryCode = null,
+  initialStep = "method",
 }: {
   walletPort?: WalletPort;
   authClient?: AuthClient;
@@ -80,9 +81,11 @@ export function ConnectWalletFlow({
   /** 닫기(X)가 돌아갈 곳. 온보딩은 대시보드(빈 상태), 추가 등록은 지갑 탭. */
   exitTo?: string;
   countryCode?: string | null;
+  /** 진입 단계. 지갑 탭의 시트가 방법을 미리 골랐으면 그 단계로 바로 연다. */
+  initialStep?: Step;
 }) {
   const router = useRouter();
-  const [step, setStep] = useState<Step>("method");
+  const [step, setStep] = useState<Step>(initialStep);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [account, setAccount] = useState<WalletAccount | null>(() => walletPort.getAccount());
   const [addressInput, setAddressInput] = useState("");

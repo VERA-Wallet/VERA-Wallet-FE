@@ -12,14 +12,18 @@ import { ConnectWalletFlow } from "@/components/wallet/connect-wallet-flow";
  *
  * 헤더·진행 표시·거래소 안내는 단계마다 달라지므로 화면 전체를 `ConnectWalletFlow`가 그린다.
  */
-export default async function ConnectWalletPage() {
+export default async function ConnectWalletPage({ searchParams }: { searchParams?: Promise<{ [key: string]: string | string[] | undefined }> } = {}) {
   const session = await requireDidSession();
   if (!session) redirect("/login");
   const completed = await requireCompletedOnboarding();
   const adding = completed !== null;
+  // 지갑 탭의 "지갑 불러오기" 시트가 방법을 미리 고르고 들어온다. 모르는 값이면 방법 선택 단계다.
+  const method = (await searchParams)?.method;
+  const initialStep = method === "browser" ? "siwe" : method === "address" ? "address" : "method";
   return (
     <ConnectWalletFlow
       mode={adding ? "add" : "onboarding"}
+      initialStep={initialStep}
       // 닫기는 왔던 곳으로. 온보딩은 빈 대시보드(거기서 다시 "데이터 불러오기"로 돌아올 수 있다), 추가 등록은 지갑 탭.
       exitTo={adding ? "/wallets" : "/dashboard"}
       redirectTo={adding ? "/wallets?importing=1" : "/dashboard?importing=1"}

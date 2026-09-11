@@ -148,11 +148,13 @@ describe("wallet home (portfolio of one registered wallet)", () => {
     expect(rows[0]).toHaveTextContent("USDT");
   });
 
-  it("heads with a back link to the wallet list and the wallet's registration badge from the list source", async () => {
+  it("heads with a back link to the wallet list and the wallet label from the list source, without a badge", async () => {
     await renderConnected();
     expect(screen.getByRole("link", { name: "지갑 목록으로" })).toHaveAttribute("href", "/wallets");
     expect(screen.getByText("브라우저 지갑")).toBeInTheDocument();
-    expect(screen.getByText("소유 증명됨")).toBeInTheDocument();
+    // 등록 방식 배지는 어느 화면에도 두지 않는다.
+    expect(screen.queryByText("소유 증명됨")).toBeNull();
+    expect(screen.queryByText("미검증")).toBeNull();
     expect(screen.queryByRole("button", { name: /계정 열기/ })).toBeNull();
     expect(authClient.logout).not.toHaveBeenCalled();
   });

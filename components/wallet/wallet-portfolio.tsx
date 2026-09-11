@@ -8,7 +8,7 @@ import { AssetLogo } from "@/components/ui/asset-logo";
 import { ChainIcon } from "@/components/ui/chain-icon";
 import Link from "next/link";
 import { WalletMark } from "@/components/wallet/wallet-mark";
-import { WalletVerificationBadge, walletLabel } from "@/components/wallet/wallet-verification-badge";
+import { walletLabel } from "@/components/wallet/wallet-verification-badge";
 import type { SessionWalletVerification } from "@/lib/ports/session-snapshot";
 import { chainLabel, formatFiat, shortHash } from "@/lib/format";
 import {
@@ -260,7 +260,7 @@ export function WalletPortfolio({
   coverage?: { skippedChainIds: number[]; truncatedChainIds: number[]; unresolvedCount: number; droppedCount: number };
   /** 데이터가 있는 채로 다시 조회 중이거나 배경 재조회가 실패했을 때. 이전 값을 "지금 것"처럼 단정하지 않게 알린다. */
   freshness?: "refreshing" | "stale";
-  /** 등록 방식. 모르면 "연결됨"에 머문다 — 등록 방식을 모른다는 이유로 증명된 척하지 않는다. */
+  /** 등록 방식. 이름("등록한 주소"/"브라우저 지갑")만 정한다 — 배지는 두지 않는다. */
   verification?: SessionWalletVerification | string | null;
 }): React.JSX.Element {
   const [tab, setTab] = useState<Tab>("token");
@@ -314,7 +314,6 @@ export function WalletPortfolio({
           </Link>
           <WalletMark size={28} />
           <span className="font-semibold text-zinc-900">{walletLabel(verification)}</span>
-          <WalletVerificationBadge verification={verification} />
         </div>
 
         <div className="mt-3 flex items-center gap-2">
