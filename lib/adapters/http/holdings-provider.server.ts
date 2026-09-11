@@ -23,6 +23,8 @@ import { costCurrenciesNeedingFx, toPortfolioHoldings } from "@/lib/wallet/holdi
  * 환율 소스 장애는 조회 전체를 실패시키지 않는다 — 잔액·시세는 이미 손에 있으므로 원가만 `fx_unavailable`로
  * 비우고 나머지를 돌려준다. 반대로 BE 조회 실패는 그대로 전한다(빈 목록으로 뭉개면 "자산 없음"이라는 거짓말).
  */
+const NEST_ROUTE_MISSING = /^Cannot (GET|POST|PUT|PATCH|DELETE) /;
+
 export class BeHttpHoldingsProvider implements HoldingsProvider {
   constructor(
     private readonly cookieHeader: string | undefined,
@@ -43,6 +45,11 @@ export class BeHttpHoldingsProvider implements HoldingsProvider {
     const decoded = await decodeResponse(response, beHoldingsSchema);
     if (!("data" in decoded && "meta" in decoded)) {
       if (response.ok) throw new SessionInfrastructureError("invalid_contract", `BE 잔액 응답이 성공 상태인데 오류 envelope다: ${decoded.error.code}`, response.status);
+      // BE 예외 필터는 라우트 없음(Nest "Cannot GET …")도 지갑 미등록과 같은 `not_found`로 감싼다. 코드만 보면 둘이 같아
+      // "지갑을 등록하라"는 엉뚱한 안내가 나간다 — 엔드포인트가 없는 BE(예전 배포)는 따로 말한다.
+      if (response.status === 404 && NEST_ROUTE_MISSING.test(decoded.error.message)) {
+        throw new HoldingsReadError(502, "backend_endpoint_missing", "BE에 /api/portfolio/holdings 엔드포인트가 없다. BE 배포 버전을 확인하라.");
+      }
       throw new HoldingsReadError(response.status, decoded.error.code, decoded.error.message);
     }
 

@@ -79,6 +79,13 @@ describe("BeHttpHoldingsProvider boundary", () => {
     expect(outage).toMatchObject({ status: 503, code: "service_unavailable" });
   });
 
+  it("tells an old BE without the route (Nest 'Cannot GET' 404) apart from the unbound-wallet 404", async () => {
+    mockFetch(envelope({ error: { code: "not_found", message: "Cannot GET /api/portfolio/holdings" } }, 404));
+    const missing = await new BeHttpHoldingsProvider(cookie, new FixedFxRateProvider(), today).getHoldings().catch((cause: unknown) => cause);
+    expect(missing).toBeInstanceOf(HoldingsReadError);
+    expect(missing).toMatchObject({ status: 502, code: "backend_endpoint_missing" });
+  });
+
   it("classifies timeout, network loss, a 2xx error envelope, and a malformed body as infrastructure failures", async () => {
     mockFetch(Object.assign(new Error("aborted"), { name: "TimeoutError" }));
     await expect(new BeHttpHoldingsProvider(cookie, new FixedFxRateProvider(), today).getHoldings()).rejects.toMatchObject({ cause: "timeout" });

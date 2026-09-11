@@ -212,8 +212,14 @@ describe("wallet home (portfolio + account)", () => {
     unmount();
 
     ports.getHoldings.mockRejectedValueOnce(new HoldingsFetchError("not_found", "A bound wallet is required before reading holdings."));
+    const second = renderWithQuery(<WalletHome walletAddress={WALLET} />);
+    expect(await screen.findByText(/이 지갑의 등록을 찾지 못했습니다/)).toBeInTheDocument();
+    second.unmount();
+
+    // 예전 BE(엔드포인트 없음)는 "지갑을 등록하라"가 아니라 배포 확인을 안내한다.
+    ports.getHoldings.mockRejectedValueOnce(new HoldingsFetchError("backend_endpoint_missing", "missing"));
     renderWithQuery(<WalletHome walletAddress={WALLET} />);
-    expect(await screen.findByText(/등록된 지갑이 없습니다/)).toBeInTheDocument();
+    expect(await screen.findByText(/서버 배포 버전을 확인해 주세요/)).toBeInTheDocument();
   });
 
   it("keeps the last portfolio on a background refetch failure and says it is stale, instead of blanking it", async () => {

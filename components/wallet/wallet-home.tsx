@@ -114,7 +114,10 @@ function describeFailure(error: unknown): { kind: "session" | "retry"; message: 
     case "unauthorized":
       return { kind: "session", message: "로그인이 만료되었습니다. 다시 로그인한 뒤 확인해 주세요." };
     case "not_found":
-      return { kind: "retry", message: "등록된 지갑이 없습니다. 지갑을 먼저 등록해 주세요." };
+      // 이 화면은 세션에 지갑이 있을 때만 열린다. 그런데 잔액 서버가 못 찾았다면 세션과 BE 저장소가 어긋난 것이다.
+      return { kind: "session", message: "잔액 서버에서 이 지갑의 등록을 찾지 못했습니다. 다시 로그인한 뒤에도 같으면 지갑을 다시 등록해 주세요." };
+    case "backend_endpoint_missing":
+      return { kind: "retry", message: "잔액 서버가 아직 보유 자산 조회를 지원하지 않습니다. 서버 배포 버전을 확인해 주세요." };
     case "service_unavailable":
     case "upstream_unavailable":
       return { kind: "retry", message: "잔액 서버에서 응답을 받지 못했습니다. 잠시 후 다시 시도해 주세요." };
