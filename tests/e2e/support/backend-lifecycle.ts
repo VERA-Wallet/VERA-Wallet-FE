@@ -13,13 +13,20 @@ import { startBackend, stopBackend } from "../../integration/support/server-harn
  * 실효 mock 모드에서는 BE 자체가 필요 없으므로 아무것도 하지 않는다.
  */
 export function useFreshBackend(): void {
-  if (!backendOrigin()) return;
+  const origin = backendOrigin();
+  if (!origin) return;
+
+  // 포트는 origin에서 뽑는다. 여기에 3200을 박아 두면 FE 프록시가 보는 주소(VERAWALLET_BACKEND_ORIGIN)와
+  // 하네스가 띄우는 포트가 서로 다른 진실이 되어, 다른 BE가 이미 3200을 쥔 머신에서는
+  // 스펙이 하네스가 띄우지 않은 BE를 조용히 검증하게 된다. CI는 여전히 3200을 준다.
+  const url = new URL(origin);
+  const port = Number(url.port || (url.protocol === "https:" ? 443 : 80));
 
   test.beforeAll(async () => {
     // 정리 실패를 삼키면 옛 BE가 살아 있는 채로 다음 스펙이 green이 된다.
     // stopBackend()는 PID 기록이 없으면 이미 no-op이므로 여기서 따로 봐줄 필요가 없다.
     await stopBackend();
-    await startBackend({ port: 3200 });
+    await startBackend({ port });
   });
 
   test.afterAll(async () => {
