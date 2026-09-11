@@ -1,15 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { SiweMessage } from "siwe";
-import { Card } from "@/components/ui/card";
+import { AlertCircle, Building2, Check, ChevronLeft, ChevronRight, ClipboardPaste, Info, KeyRound, ShieldCheck, X } from "lucide-react";
+import { BottomSheet } from "@/components/ui/bottom-sheet";
 import { MockProvenanceChip } from "@/components/ui/mock-provenance-chip";
 import { ChainIcon } from "@/components/ui/chain-icon";
 import { chainLabel } from "@/lib/format";
+import { EXCHANGES } from "@/lib/exchange/mock-links";
+import { EVM_CHAIN_IDS } from "@/lib/wallet/import-progress";
 import type { WalletAccount, WalletPort } from "@/lib/ports/wallet-port";
 import { wagmiWalletPort } from "@/lib/wallet/wagmi-wallet-port";
-import { parseWalletAddress } from "@/lib/wallet/address";
+import { assessWalletAddress, type WalletAddressAssessment } from "@/lib/wallet/address";
 import { authClient as compositionAuthClient } from "@/lib/composition-root.client";
 import { AuthClientError, type AuthClient } from "@/lib/ports/auth-client";
 
@@ -33,17 +37,26 @@ function isSameAddress(left: string, right: string | null) {
   return right !== null && left.toLowerCase() === right.toLowerCase();
 }
 
-type RegistrationTab = "watch" | "siwe";
+/** 화면 순서. 확인은 별도 화면이 아니라 `address` 위에 뜨는 바텀시트다. */
+type Step = "method" | "address" | "siwe";
+
+export type ConnectWalletMode = "onboarding" | "add";
+
+const STEP_TOTAL = 3;
+
+const CTA_CLASS =
+  "flex h-14 w-full items-center justify-center rounded-[14px] bg-primary-500 text-base font-bold text-white disabled:bg-primary-200";
 
 /**
- * 지갑을 등록한다. 방법이 둘이고 커버리지가 다르다.
+ * 지갑을 등록한다. 토스식 "한 화면 한 질문"으로 세 단계를 밟는다.
  *
- * - **주소 입력(기본)**: 거래 조회에는 주소만 있으면 되므로 하드웨어·컨트랙트·모바일·과거 지갑이 전부 들어온다.
- *   대신 소유 증명이 없어 `watch_only`로 남는다.
- * - **소유 증명(SIWE)**: 브라우저에 꽂힌 키로 서명해 소유를 증명한다. 증빙이 필요한 자료는 이쪽만 쓴다.
+ * 1. **방법 선택** — 주소로 추가(추천) · 브라우저 지갑으로 연결 · 거래소(준비 중).
+ * 2. **주소 입력** — 붙여넣는 즉시 형식·체크섬·중복을 판정해 입력창 아래에 말한다. 조회 체인은 고르게 하지 않는다:
+ *    EVM 주소는 체인이 달라도 같고 서버가 지원 체인 전체를 스캔하므로, 읽기 전용 칩으로 보여만 준다.
+ * 3. **확인 시트** — 전체 주소·조회 체인·미검증 안내를 한 번 더 보이고 등록한다.
  *
- * 기본을 주소 입력으로 두는 이유: 서명은 "지금 이 브라우저에 있는 키"만 커버하는데 세금은 과거 전체를 봐야 한다.
- * 서명 가능한 지갑은 탭 한 번으로 증명하면 되지만, 서명 불가능한 지갑은 주소 입력이 없으면 등록할 길 자체가 없다.
+ * 브라우저 지갑 경로(SIWE)는 2단계의 대안이다. 서명은 "지금 이 브라우저에 있는 키"만 커버하는데 세금은 과거 전체를 봐야 하므로
+ * 주소 입력이 기본이고, 소유 증명은 등록 뒤 지갑 화면에서 뒤늦게 할 수 있게 둔다.
  *
  * 첫 등록이든 추가 등록이든 절차는 같다 — 두 경로 모두 DID 세션을 유지한 채 지갑 바인딩만 만든다.
  * redirectTo가 갈리는 이유는 시작 지점이 다르기 때문이다. 온보딩은 대시보드에서 불러오기를 보여줘야 하고,
@@ -54,44 +67,58 @@ export function ConnectWalletFlow({
   authClient = compositionAuthClient,
   redirectTo = "/dashboard?importing=1",
   boundAddress = null,
+  mode = "onboarding",
+  exitTo = "/dashboard",
+  countryCode = null,
 }: {
   walletPort?: WalletPort;
   authClient?: AuthClient;
   redirectTo?: string;
   /** 이미 등록된 지갑 주소. 같은 주소를 다시 등록하면 서버가 upsert라 아무 일도 안 일어나므로 미리 막는다. */
   boundAddress?: string | null;
+  mode?: ConnectWalletMode;
+  /** 닫기(X)가 돌아갈 곳. 온보딩은 대시보드(빈 상태), 추가 등록은 지갑 탭. */
+  exitTo?: string;
+  countryCode?: string | null;
 }) {
   const router = useRouter();
-  const [tab, setTab] = useState<RegistrationTab>("watch");
+  const [step, setStep] = useState<Step>("method");
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [account, setAccount] = useState<WalletAccount | null>(() => walletPort.getAccount());
   const [addressInput, setAddressInput] = useState("");
+  const [addressTouched, setAddressTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isSigning, setIsSigning] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
 
-  function switchTab(next: RegistrationTab) {
-    // 오류는 탭에 딸린 것이다. 남겨 두면 주소 형식 오류가 서명 화면에 떠 있게 된다.
+  const assessment = useMemo(() => assessWalletAddress(addressInput, boundAddress), [addressInput, boundAddress]);
+  const adding = mode === "add";
+
+  function go(next: Step) {
+    // 오류는 화면에 딸린 것이다. 남겨 두면 주소 형식 오류가 서명 화면에 떠 있게 된다.
     setError(null);
-    setTab(next);
+    setConfirmOpen(false);
+    setStep(next);
+  }
+
+  async function pasteFromClipboard() {
+    setError(null);
+    try {
+      const text = await navigator.clipboard.readText();
+      setAddressInput(text.trim());
+      setAddressTouched(true);
+    } catch {
+      setError("브라우저가 클립보드 접근을 막았어요. 입력창에 직접 붙여넣어 주세요.");
+    }
   }
 
   async function registerAddress() {
+    if (assessment.kind !== "valid") return;
     setError(null);
-    const parsed = parseWalletAddress(addressInput);
-    if (!parsed.ok) {
-      setError(parsed.reason === "checksum"
-        ? "주소의 체크섬이 맞지 않습니다. 한 글자라도 잘못 붙여넣지 않았는지 확인해 주세요."
-        : "0x로 시작하는 40자리 주소를 입력해 주세요.");
-      return;
-    }
-    if (isSameAddress(parsed.address, boundAddress)) {
-      setError("이미 등록된 지갑입니다. 다른 주소를 입력해 주세요.");
-      return;
-    }
     setIsRegistering(true);
     try {
-      await authClient.registerWatchWallet({ address: parsed.address });
+      await authClient.registerWatchWallet({ address: assessment.address });
       router.push(redirectTo);
     } catch (cause) {
       setError(errorMessage(cause));
@@ -122,7 +149,7 @@ export function ConnectWalletFlow({
     // 확장 프로그램은 이미 승인된 오리진에서 활성 계정을 그대로 돌려준다. 그대로 서명하면 같은 지갑을
     // 다시 등록하는 셈이고 서버는 upsert라 조용히 아무 일도 일어나지 않는다 — 서명을 요구하기 전에 끊는다.
     if (isSameAddress(account.address, boundAddress)) {
-      setError("이미 등록된 지갑입니다. 지갑 확장 프로그램에서 다른 계정으로 바꾼 뒤 다시 시도해 주세요.");
+      setError("이미 등록된 지갑이에요. 지갑 확장 프로그램에서 다른 계정으로 바꾼 뒤 다시 시도해 주세요.");
       return;
     }
     setIsSigning(true);
@@ -150,77 +177,531 @@ export function ConnectWalletFlow({
     }
   }
 
+  const stepIndex = step === "method" ? 1 : confirmOpen ? 3 : 2;
+  const flowLabel = adding ? "지갑 추가" : "지갑 연결";
+
   return (
-    <Card className="mt-8">
-      <div data-surface="wallet-connect" className="flex items-center justify-between">
-        <p className="font-semibold text-zinc-900">등록할 지갑</p>
-        <MockProvenanceChip />
-      </div>
-
-      <div className="mt-4 flex gap-2" role="tablist" aria-label="지갑 등록 방법">
-        {([["watch", "주소 입력"], ["siwe", "소유 증명"]] as const).map(([value, label]) => (
+    <main data-surface="wallet-connect" className="flex min-h-dvh flex-col pb-7">
+      {/* 상단 바: 첫 화면에는 뒤로가기가 없다(온보딩은 앞 화면이 없고, 추가 등록은 닫기가 같은 일을 한다). */}
+      <div className="flex h-14 items-center justify-between pl-2 pr-3">
+        {step === "method" ? (
+          <span className="w-10" />
+        ) : (
           <button
-            key={value}
-            role="tab"
             type="button"
-            aria-selected={tab === value}
-            onClick={() => switchTab(value)}
-            className={`flex-1 rounded-full px-3 py-2 text-sm font-semibold ${tab === value ? "bg-primary-500 text-white" : "bg-zinc-100 text-zinc-700"}`}
+            aria-label="뒤로"
+            onClick={() => go("method")}
+            className="flex h-10 w-10 items-center justify-center rounded-full text-zinc-600 transition-colors hover:bg-zinc-100 active:bg-zinc-200"
           >
-            {label}
+            <ChevronLeft aria-hidden="true" className="size-6" />
           </button>
-        ))}
+        )}
+        <Link
+          href={exitTo}
+          aria-label="닫기"
+          className="flex h-10 w-10 items-center justify-center rounded-full text-zinc-600 transition-colors hover:bg-zinc-100 active:bg-zinc-200"
+        >
+          <X aria-hidden="true" className="size-6" />
+        </Link>
       </div>
 
-      {tab === "watch" ? (
-        <div data-surface="wallet-watch">
-          <label className="mt-5 block text-sm font-medium text-zinc-700" htmlFor="watch-address">지갑 주소</label>
+      <ol aria-label={`${flowLabel} 진행 단계`} className="flex gap-1.5 px-5">
+        {Array.from({ length: STEP_TOTAL }, (_, index) => (
+          <li
+            key={index}
+            aria-current={index + 1 === stepIndex ? "step" : undefined}
+            className={`h-[3px] flex-1 rounded-full ${index < stepIndex ? "bg-primary-500" : "bg-zinc-200"}`}
+          />
+        ))}
+      </ol>
+
+      {step === "method" ? (
+        <MethodStep
+          adding={adding}
+          flowLabel={flowLabel}
+          countryCode={countryCode}
+          error={error}
+          onAddress={() => go("address")}
+          onSiwe={() => go("siwe")}
+        />
+      ) : step === "address" ? (
+        <AddressStep
+          flowLabel={flowLabel}
+          value={addressInput}
+          touched={addressTouched}
+          assessment={assessment}
+          error={error}
+          onChange={(value) => {
+            setError(null);
+            setAddressInput(value);
+          }}
+          onBlur={() => setAddressTouched(true)}
+          onClear={() => {
+            setAddressInput("");
+            setAddressTouched(false);
+          }}
+          onPaste={pasteFromClipboard}
+          onNext={() => {
+            setError(null);
+            setConfirmOpen(true);
+          }}
+        />
+      ) : (
+        <SiweStep
+          flowLabel={flowLabel}
+          account={account}
+          boundAddress={boundAddress}
+          error={error}
+          isConnecting={isConnecting}
+          isSigning={isSigning}
+          onConnect={connectWallet}
+          onSign={signIn}
+          onFallback={() => go("address")}
+        />
+      )}
+
+      <BottomSheet open={confirmOpen} onClose={() => setConfirmOpen(false)} title="이 지갑을 추가할까요?">
+        {assessment.kind === "valid" ? (
+          <div className="flex flex-col gap-5">
+            <div>
+              <h2 className="text-xl font-bold tracking-tight text-zinc-900">이 지갑을 추가할까요?</h2>
+              <p className="mt-1.5 text-sm leading-[21px] text-zinc-500">추가하면 바로 거래를 불러오기 시작해요.</p>
+            </div>
+            <dl className="rounded-2xl bg-zinc-50">
+              <div className="border-b border-zinc-100 px-4 py-3.5">
+                <dt className="text-xs font-semibold text-zinc-500">주소</dt>
+                <dd className="mt-1.5 break-all font-mono text-[13px] leading-[19px] text-zinc-900">{assessment.address}</dd>
+              </div>
+              <div className="flex items-center justify-between px-4 py-3.5">
+                <dt className="text-xs font-semibold text-zinc-500">조회 체인</dt>
+                <dd className="flex items-center gap-2 text-[13px] text-zinc-700">
+                  <span className="flex" aria-hidden="true">
+                    {EVM_CHAIN_IDS.map((chainId) => (
+                      <span key={chainId} className="-ml-1 flex rounded-full ring-2 ring-zinc-50 first:ml-0">
+                        <ChainIcon chainId={chainId} size={20} />
+                      </span>
+                    ))}
+                  </span>
+                  EVM {EVM_CHAIN_IDS.length}곳
+                </dd>
+              </div>
+            </dl>
+            <div className="flex gap-2.5 rounded-[14px] bg-amber-50 px-3.5 py-3">
+              <Info aria-hidden="true" className="mt-0.5 size-[18px] shrink-0 text-amber-600" />
+              <p className="text-[13px] leading-[19px] text-amber-900">
+                서명하지 않으므로 <strong className="font-bold">미검증</strong>으로 표시돼요. 거래 조회·계산은 똑같이 되고, 증빙 자료로 쓰려면 나중에 지갑
+                화면에서 소유 증명을 할 수 있어요.
+              </p>
+            </div>
+            {error && <InlineAlert tone="error">{error}</InlineAlert>}
+            <button type="button" className={CTA_CLASS} disabled={isRegistering} onClick={registerAddress}>
+              {isRegistering ? "주소 등록 중..." : "추가하고 거래 불러오기"}
+            </button>
+          </div>
+        ) : null}
+      </BottomSheet>
+    </main>
+  );
+}
+
+function StepHeading({
+  eyebrow,
+  title,
+  body,
+  trailing,
+}: {
+  eyebrow: string;
+  title: string;
+  body?: string | null;
+  trailing?: React.ReactNode;
+}) {
+  return (
+    <header className="mt-5 px-5">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold text-primary-500">{eyebrow}</p>
+        {trailing}
+      </div>
+      <h1 className="mt-3 whitespace-pre-line text-[26px] font-bold leading-[34px] tracking-tight text-zinc-900">{title}</h1>
+      {body ? <p className="mt-3 text-[15px] leading-[23px] text-zinc-600">{body}</p> : null}
+    </header>
+  );
+}
+
+function InlineAlert({ tone, children }: { tone: "error" | "info"; children: React.ReactNode }) {
+  const Icon = tone === "error" ? AlertCircle : Info;
+  return (
+    <p role="alert" className={`flex items-start gap-2 px-1 text-[13px] leading-[19px] ${tone === "error" ? "text-red-600" : "text-amber-700"}`}>
+      <Icon aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+      <span>{children}</span>
+    </p>
+  );
+}
+
+function MethodStep({
+  adding,
+  flowLabel,
+  countryCode,
+  error,
+  onAddress,
+  onSiwe,
+}: {
+  adding: boolean;
+  flowLabel: string;
+  countryCode: string | null;
+  error: string | null;
+  onAddress: () => void;
+  onSiwe: () => void;
+}) {
+  return (
+    <>
+      <StepHeading
+        eyebrow={`${flowLabel} 1/3`}
+        title={adding ? "지갑을 어떻게\n추가할까요?" : "지갑을 어떻게\n연결할까요?"}
+        body={
+          (adding ? "지갑을 하나 더 등록하면 그 거래도 함께 불러와요. 로그인은 유지되고 이미 등록한 지갑도 그대로 남아요. " : "") +
+          "어느 쪽이든 거래 내역은 똑같이 불러와요. 차이는 소유 증명 여부만이에요." +
+          (countryCode ? ` 거주국 ${countryCode} 클레임이 확인된 상태예요.` : "")
+        }
+        trailing={<MockProvenanceChip />}
+      />
+
+      <div className="mt-7 flex flex-col gap-3 px-5">
+        <MethodRow
+          icon={<ClipboardPaste aria-hidden="true" className="size-[22px]" />}
+          iconClass="bg-primary-50 text-primary-500"
+          title="주소로 추가"
+          badge={<span className="rounded-full bg-primary-100 px-1.5 py-0.5 text-[11px] font-bold text-primary-600">추천</span>}
+          description="하드웨어·모바일·예전 지갑까지 주소만 있으면 돼요"
+          onClick={onAddress}
+        />
+        <MethodRow
+          icon={<KeyRound aria-hidden="true" className="size-[22px]" />}
+          iconClass="bg-zinc-100 text-zinc-700"
+          title="브라우저 지갑으로 연결"
+          description="MetaMask 등에서 서명해 소유까지 한 번에 증명해요"
+          onClick={onSiwe}
+        />
+        {/* 거래소 연동은 아직 파이프라인이 없다. 되는 척하는 입력을 두지 않고 준비 중임만 알린다. */}
+        <div data-surface="exchange-coming-soon" aria-disabled="true" className="rounded-2xl bg-white p-4 shadow-card">
+          <div className="flex items-center gap-3.5 opacity-60">
+            <span className="flex size-11 shrink-0 items-center justify-center rounded-[14px] bg-zinc-100 text-zinc-500">
+              <Building2 aria-hidden="true" className="size-[22px]" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5">
+                <p className="text-base font-bold text-zinc-900">거래소 계정 연동</p>
+                <span className="rounded-full bg-zinc-100 px-1.5 py-0.5 text-[11px] font-bold text-zinc-500">곧 지원</span>
+              </div>
+              <p className="mt-0.5 text-[13px] leading-[19px] text-zinc-500">지갑 밖 거래소 거래도 함께 보는 기능은 준비 중이에요</p>
+            </div>
+          </div>
+          <ul aria-label="지원 예정 거래소" className="mt-3 flex flex-wrap gap-1.5">
+            {EXCHANGES.map((exchange) => (
+              <li key={exchange.id} className="rounded-full bg-zinc-50 px-2.5 py-1 text-xs font-medium text-zinc-400">
+                {exchange.name}
+              </li>
+            ))}
+          </ul>
+        </div>
+        {error && <InlineAlert tone="error">{error}</InlineAlert>}
+      </div>
+
+      <p className="mt-5 flex items-start gap-2.5 px-5 text-xs leading-[18px] text-zinc-400">
+        <ShieldCheck aria-hidden="true" className="mt-px size-4 shrink-0" />
+        공개 주소만 사용해요. 개인키를 묻거나 자산을 옮기는 일은 절대 없어요.
+      </p>
+    </>
+  );
+}
+
+function MethodRow({
+  icon,
+  iconClass,
+  title,
+  badge,
+  description,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  iconClass: string;
+  title: string;
+  badge?: React.ReactNode;
+  description: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex min-h-[76px] w-full items-center gap-3.5 rounded-2xl bg-white p-4 text-left shadow-card transition-colors active:bg-zinc-50"
+    >
+      <span className={`flex size-11 shrink-0 items-center justify-center rounded-[14px] ${iconClass}`}>{icon}</span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-1.5">
+          <span className="text-base font-bold text-zinc-900">{title}</span>
+          {badge}
+        </span>
+        <span className="mt-0.5 block text-[13px] leading-[19px] text-zinc-500">{description}</span>
+      </span>
+      <ChevronRight aria-hidden="true" className="size-5 shrink-0 text-zinc-400" />
+    </button>
+  );
+}
+
+function AddressStep({
+  flowLabel,
+  value,
+  touched,
+  assessment,
+  error,
+  onChange,
+  onBlur,
+  onClear,
+  onPaste,
+  onNext,
+}: {
+  flowLabel: string;
+  value: string;
+  touched: boolean;
+  assessment: WalletAddressAssessment;
+  error: string | null;
+  onChange: (value: string) => void;
+  onBlur: () => void;
+  onClear: () => void;
+  onPaste: () => void;
+  onNext: () => void;
+}) {
+  const valid = assessment.kind === "valid";
+  // 타이핑 중인 미완성 입력은 포커스가 떠난 뒤에만 형식 오류로 말한다.
+  const showFormat = assessment.kind === "format" || (assessment.kind === "typing" && touched);
+  const problem = assessment.kind === "checksum" || assessment.kind === "duplicate" || assessment.kind === "ens" || showFormat;
+  const borderClass = problem ? "border-red-400" : valid ? "border-primary-500" : "border-zinc-200 focus-within:border-primary-500";
+
+  return (
+    <>
+      <StepHeading
+        eyebrow={`${flowLabel} 2/3`}
+        title={"지갑 주소를\n붙여넣어 주세요"}
+        body={assessment.kind === "empty" ? "0x로 시작하는 42자리 EVM 주소예요. 어느 체인에 있는 지갑이든 한 번만 붙여넣으면 돼요." : null}
+      />
+
+      <div className="mt-6 flex flex-col gap-3 px-5">
+        <label htmlFor="watch-address" className="sr-only">
+          지갑 주소
+        </label>
+        <div className={`flex min-h-14 items-center gap-2.5 rounded-[14px] border-[1.5px] bg-white px-3.5 py-3 ${borderClass}`}>
           <input
             id="watch-address"
-            className="mt-2 w-full rounded-xl border border-zinc-200 px-3 py-3 font-mono text-sm text-zinc-900"
+            className="min-w-0 flex-1 bg-transparent font-mono text-sm leading-5 text-zinc-900 outline-none placeholder:text-zinc-400"
             autoComplete="off"
+            autoFocus
             spellCheck={false}
             placeholder="0x…"
-            value={addressInput}
-            onChange={(event) => setAddressInput(event.target.value)}
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            onBlur={onBlur}
           />
-          <p className="mt-3 text-sm leading-6 text-zinc-600">
-            주소만으로 거래 내역을 불러옵니다. 서명하지 않으므로 소유는 증명되지 않고 <strong className="font-semibold">미검증</strong>으로 표시됩니다.
-          </p>
-          <button
-            className="mt-4 w-full rounded-xl bg-primary-500 py-3.5 font-semibold text-white disabled:opacity-50"
-            disabled={isRegistering || addressInput.trim().length === 0}
-            onClick={registerAddress}
-            type="button"
-          >
-            {isRegistering ? "주소 등록 중..." : "이 주소로 계속"}
-          </button>
+          {value.length > 0 ? (
+            <button
+              type="button"
+              aria-label="입력 지우기"
+              onClick={onClear}
+              className="flex size-[22px] shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-500"
+            >
+              <X aria-hidden="true" className="size-3" />
+            </button>
+          ) : null}
         </div>
-      ) : account ? (
-        <>
-          <p className="mt-4 break-all font-mono text-xs text-zinc-600">{account.address}</p>
-          <p className="mt-1 flex items-center gap-1.5 text-sm text-zinc-500">
-            <ChainIcon chainId={account.chainId} />
-            {chainLabel(account.chainId)}
+
+        {assessment.kind === "checksum" ? (
+          <InlineAlert tone="error">주소의 체크섬이 맞지 않아요. 한 글자라도 잘못 붙여넣지 않았는지 확인해 주세요.</InlineAlert>
+        ) : showFormat ? (
+          <InlineAlert tone="error">0x로 시작하는 42자리 주소를 입력해 주세요.</InlineAlert>
+        ) : assessment.kind === "ens" ? (
+          <InlineAlert tone="info">ENS 이름은 아직 지원하지 않아요. 0x 주소로 붙여넣어 주세요.</InlineAlert>
+        ) : assessment.kind === "duplicate" ? (
+          <InlineAlert tone="info">
+            이미 등록된 지갑이에요.{" "}
+            <Link href="/wallets" className="font-semibold text-primary-600 underline-offset-2 hover:underline">
+              지갑 목록에서 보기
+            </Link>
+          </InlineAlert>
+        ) : null}
+        {error && <InlineAlert tone="error">{error}</InlineAlert>}
+
+        {valid ? (
+          <div className="flex items-center gap-2 rounded-[14px] bg-primary-50 px-3.5 py-3">
+            <Check aria-hidden="true" className="size-[18px] shrink-0 text-primary-500" strokeWidth={2.5} />
+            <div>
+              <p className="text-sm font-bold text-primary-600">EVM 주소를 확인했어요</p>
+              <p className="text-xs leading-[17px] text-zinc-700">체크섬 일치 · 처음 등록하는 주소</p>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={onPaste}
+              className="inline-flex h-9 items-center gap-1.5 rounded-full bg-primary-50 px-3 text-[13px] font-semibold text-primary-600"
+            >
+              <ClipboardPaste aria-hidden="true" className="size-[15px]" />
+              클립보드에서 붙여넣기
+            </button>
+          </div>
+        )}
+      </div>
+
+      {valid ? (
+        <section className="mt-6 px-5" aria-label="조회할 체인">
+          <p className="text-[13px] font-semibold text-zinc-500">이 체인들에서 거래를 찾아볼게요</p>
+          <ul className="mt-3 flex flex-wrap gap-2">
+            {EVM_CHAIN_IDS.map((chainId) => (
+              <li
+                key={chainId}
+                className="inline-flex h-[34px] items-center gap-1.5 rounded-full bg-white pl-2 pr-3 text-[13px] font-semibold text-zinc-700 ring-1 ring-inset ring-zinc-200"
+              >
+                <ChainIcon chainId={chainId} size={20} />
+                {chainLabel(chainId)}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 text-xs leading-[18px] text-zinc-400">
+            EVM 주소는 체인이 달라도 같아서 따로 고르지 않아도 돼요. 거래가 없는 체인은 결과에서 자동으로 빠져요.
           </p>
-          <p className="mt-4 text-sm leading-6 text-zinc-600">
-            서명은 지갑 소유 확인에만 쓰이며 자산을 옮기지 않습니다.
-          </p>
-          <button className="mt-4 w-full rounded-xl bg-primary-500 py-3.5 font-semibold text-white disabled:opacity-50" disabled={isSigning} onClick={signIn} type="button">
-            {isSigning ? "지갑에서 서명 대기 중..." : "SIWE 서명으로 계속"}
-          </button>
-        </>
+        </section>
       ) : (
-        <button className="mt-5 w-full rounded-xl bg-primary-500 py-3.5 font-semibold text-white disabled:opacity-50" disabled={isConnecting} onClick={connectWallet} type="button">
-          {isConnecting ? "지갑 응답 대기 중..." : "지갑 연결하기"}
-        </button>
+        <section className="mt-7 px-5">
+          <p className="text-[13px] font-semibold text-zinc-500">어디서 주소를 찾나요?</p>
+          <ul className="mt-2.5 flex flex-col gap-1.5 text-[13px] leading-[19px] text-zinc-600">
+            <li className="flex gap-2">
+              <span className="text-zinc-400">·</span>MetaMask · Rabby: 상단 계정 이름을 누르면 복사돼요
+            </li>
+            <li className="flex gap-2">
+              <span className="text-zinc-400">·</span>Ledger · Trezor: 앱의 계정 화면에서 “Receive” 주소
+            </li>
+            <li className="flex gap-2">
+              <span className="text-zinc-400">·</span>거래소 출금 내역의 “받는 주소”도 그 지갑의 주소예요
+            </li>
+          </ul>
+        </section>
       )}
 
-      {error && (
-        <p role="alert" className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">
-          {error}
-        </p>
-      )}
-    </Card>
+      <div className="mt-auto px-5 pt-6">
+        <button type="button" className={CTA_CLASS} disabled={!valid} onClick={onNext}>
+          다음
+        </button>
+      </div>
+    </>
+  );
+}
+
+function SiweStep({
+  flowLabel,
+  account,
+  boundAddress,
+  error,
+  isConnecting,
+  isSigning,
+  onConnect,
+  onSign,
+  onFallback,
+}: {
+  flowLabel: string;
+  account: WalletAccount | null;
+  boundAddress: string | null;
+  error: string | null;
+  isConnecting: boolean;
+  isSigning: boolean;
+  onConnect: () => void;
+  onSign: () => void;
+  onFallback: () => void;
+}) {
+  const duplicate = account !== null && isSameAddress(account.address, boundAddress);
+  const timeline: Array<{ label: string; state: "done" | "active" | "pending"; note?: string }> = [
+    { label: "지갑 연결 승인", state: account ? "done" : "active", note: account ? "완료" : isConnecting ? "지갑 응답 대기 중…" : undefined },
+    { label: "메시지 서명", state: account ? "active" : "pending", note: isSigning ? "지갑 앱에서 대기 중…" : undefined },
+    { label: "거래 불러오기", state: "pending" },
+  ];
+
+  return (
+    <>
+      <StepHeading
+        eyebrow={`${flowLabel} 2/3`}
+        title={account ? "지갑 앱에서 서명을\n승인해 주세요" : "브라우저 지갑을\n연결해 주세요"}
+        body="서명은 이 지갑이 내 것임을 확인하는 용도예요. 가스비가 들지 않고 자산이 움직이지도 않아요."
+      />
+
+      <div className="mt-7 flex flex-col gap-3 px-5">
+        {account ? (
+          <div className="flex items-center gap-3 rounded-card bg-white p-5 shadow-card">
+            <span className="flex size-11 shrink-0 items-center justify-center rounded-[14px] bg-zinc-900 text-white">
+              <KeyRound aria-hidden="true" className="size-5" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="flex items-center gap-1.5 text-[15px] font-bold text-zinc-900">
+                브라우저 지갑
+                <span className="flex items-center gap-1 text-xs font-medium text-zinc-500">
+                  <ChainIcon chainId={account.chainId} />
+                  {chainLabel(account.chainId)}
+                </span>
+              </p>
+              {/* 주소는 줄여 쓰지 않는다 — 서명 직전에는 어느 계정인지 끝자리까지 대조할 수 있어야 한다. */}
+              <p className="mt-1 break-all font-mono text-xs text-zinc-500">{account.address}</p>
+            </div>
+          </div>
+        ) : null}
+
+        <ol className="mt-1 flex flex-col">
+          {timeline.map((item, index) => (
+            <li key={item.label} className="flex items-start gap-3.5">
+              <span className="flex flex-col items-center">
+                <span
+                  className={`flex size-6 items-center justify-center rounded-full ${
+                    item.state === "done" ? "bg-primary-500 text-white" : item.state === "active" ? "border-2 border-primary-500" : "border-2 border-zinc-200"
+                  }`}
+                >
+                  {item.state === "done" ? <Check aria-hidden="true" className="size-3.5" strokeWidth={3} /> : null}
+                  {item.state === "active" ? <span className="size-2 rounded-full bg-primary-500" /> : null}
+                </span>
+                {index < timeline.length - 1 ? <span aria-hidden="true" className="h-7 w-0.5 bg-zinc-200" /> : null}
+              </span>
+              <span className="pt-0.5">
+                <span className={`block text-[15px] font-semibold ${item.state === "pending" ? "text-zinc-400" : "text-zinc-900"}`}>{item.label}</span>
+                {item.note ? (
+                  <span className={`block text-[13px] ${item.state === "done" ? "text-primary-500" : "text-zinc-500"}`}>{item.note}</span>
+                ) : null}
+              </span>
+            </li>
+          ))}
+        </ol>
+
+        {duplicate ? (
+          <InlineAlert tone="info">이미 등록된 지갑이에요. 지갑 확장 프로그램에서 다른 계정으로 바꾼 뒤 다시 시도해 주세요.</InlineAlert>
+        ) : null}
+        {error && <InlineAlert tone="error">{error}</InlineAlert>}
+
+        <div className="flex gap-2.5 rounded-[14px] bg-zinc-100 px-3.5 py-3">
+          <Info aria-hidden="true" className="mt-0.5 size-[18px] shrink-0 text-zinc-600" />
+          <p className="text-[13px] leading-[19px] text-zinc-700">
+            서명창이 뜨지 않으면 지갑 확장 프로그램 아이콘을 눌러 보세요. 서명 요청은 만료되면 다시 시도할 수 있어요.
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-auto flex flex-col gap-2.5 px-5 pt-6">
+        {account ? (
+          <button type="button" className={CTA_CLASS} disabled={isSigning || duplicate} onClick={onSign}>
+            {isSigning ? "지갑에서 서명 대기 중…" : "서명하고 추가"}
+          </button>
+        ) : (
+          <button type="button" className={CTA_CLASS} disabled={isConnecting} onClick={onConnect}>
+            {isConnecting ? "지갑 응답 대기 중…" : "지갑 연결하기"}
+          </button>
+        )}
+        <button type="button" onClick={onFallback} className="flex h-11 items-center justify-center text-[15px] font-semibold text-primary-500">
+          대신 주소만 붙여넣기
+        </button>
+      </div>
+    </>
   );
 }

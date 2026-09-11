@@ -3,6 +3,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Fragment, useState } from "react";
 import { BottomSheet } from "@/components/ui/bottom-sheet";
+import { useImportTracker } from "@/components/wallet/import-tracker-provider";
 import { ExchangeLinkSummary } from "@/components/dashboard/exchange-link-summary";
 import { FlowChart } from "@/components/dashboard/flow-chart";
 import { PeriodPicker } from "@/components/dashboard/period-picker";
@@ -32,7 +33,7 @@ import { useJudgments } from "@/lib/queries/judgments";
 import { assetFlow, effectiveClassification, needsReview, reviewReason } from "@/lib/review";
 import type { AssetFlow } from "@/lib/review";
 import { counterpartyLabel, knownContractName } from "@/lib/contracts";
-import { pairSwapLegs } from "@/lib/swap-pair";
+import { pairBridgeLegs, pairSwapLegs } from "@/lib/swap-pair";
 import { div, isNegative, isPositive, isZero, mul, round, sum } from "@/lib/tax/decimal";
 import { taxYearFor } from "@/lib/tax/engine";
 import { estimateConfidence, estimateHeadline, hasConfidenceSignal } from "@/lib/tax/estimate-summary";
@@ -349,12 +350,13 @@ function EventDetails({
           </dd>
         </div>
         {/* 상대 주소. 알려진 컨트랙트(Aave·Lido 등)면 이름으로 부르고 축약 주소를 병기한다 —
-            이름은 mock 레지스트리(lib/contracts.ts)가 결정하며, 모르는 주소는 지어내지 않고 축약만 보인다. */}
+            이름은 BE가 준 counterparty_label(브릿지·애그리게이터 레지스트리)이 먼저, 없으면 mock 레지스트리(lib/contracts.ts),
+            모르는 주소는 지어내지 않고 축약만 보인다. */}
         <div>
           <dt className="text-zinc-500">상대</dt>
           <dd className="mt-1 font-medium text-zinc-900">
-            {counterpartyLabel(event.counterparty)}
-            {knownContractName(event.counterparty)
+            {counterpartyLabel(event.counterparty, event.counterparty_label ?? null)}
+            {knownContractName(event.counterparty, event.counterparty_label ?? null)
               ? <span className="ml-1 font-mono text-xs font-normal text-zinc-400">({shortHash(event.counterparty)})</span>
               : null}
           </dd>
@@ -673,8 +675,9 @@ function ValueOverrideEditor({
  *
  * 분류(classification)를 그대로 쓰되, 스왑·브릿지는 별도로 부른다:
  * - income_kind가 있으면 그 수익 종류(스테이킹 보상 등)
- * - EXCHANGE → "스왑"
- * - INTERNAL_TRANSFER → 도착 체인이 있으면(크로스체인) "브릿지", 아니면 "이동"
+ * - EXCHANGE → 도착 체인이 있으면(자산이 바뀌는 크로스체인 브릿지, 예: Mayan) "브릿지 스왑",
+ *   아니면 같은 체인 스왑 "스왑"
+ * - INTERNAL_TRANSFER → 도착 체인이 있으면(같은 자산 크로스체인 이동) "브릿지", 아니면 "이동"
  * - 그 밖(RECEIVE·SEND·UNKNOWN) → 분류 라벨(수신·송금·미분류)
  *
  * 판정 도장(취득·양도 등)은 이제 목록이 아니라 거래 상세에서만 말한다.
@@ -682,7 +685,7 @@ function ValueOverrideEditor({
 function transactionTypeLabel(event: NormalizedEvent): string {
   if (event.income_kind) return INCOME_KIND_LABEL[event.income_kind];
   const classification = effectiveClassification(event);
-  if (classification === "EXCHANGE") return "스왑";
+  if (classification === "EXCHANGE") return event.bridge_dest_chain_id !== null ? "브릿지 스왑" : "스왑";
   if (classification === "INTERNAL_TRANSFER") return event.bridge_dest_chain_id !== null ? "브릿지" : "이동";
   return CLASSIFICATION_LABEL[classification];
 }
@@ -733,12 +736,24 @@ function ChainBadgeGlyph({ chainId, size = 18 }: { chainId: number; size?: numbe
 function TransactionLogo({ event, swapInLeg }: { event: NormalizedEvent; swapInLeg?: NormalizedEvent | null }) {
   // 스왑 페어(같은 tx의 IN 다리)가 있으면 실제 받은 자산의 마크를 겹쳐 그린다 — 표시 힌트보다 원장이 우선.
   if (swapInLeg) {
+    // 자산이 바뀌는 브릿지(브릿지 스왑)는 체인도 둘이다 — 같은 자산 브릿지와 같은 방식으로
+    // 출발·도착 체인 배지를 나란히 얹어, 체인 이름을 텍스트로 쓰지 않아도 어디서 어디로 건넜는지 보이게 한다.
+    const destChainId = event.bridge_dest_chain_id;
     return (
       <span className="relative block h-10 w-10 shrink-0" aria-hidden="true">
         <SplitAssetLogo left={event} right={swapInLeg} size={40} />
-        <span className="absolute -bottom-1 -right-1">
-          <ChainBadgeGlyph chainId={event.chain_id} size={18} />
-        </span>
+        {destChainId !== null ? (
+          <span className="absolute -bottom-1 -right-2 flex items-center">
+            <ChainBadgeGlyph chainId={event.chain_id} size={16} />
+            <span className="-ml-1.5">
+              <ChainBadgeGlyph chainId={destChainId} size={16} />
+            </span>
+          </span>
+        ) : (
+          <span className="absolute -bottom-1 -right-1">
+            <ChainBadgeGlyph chainId={event.chain_id} size={18} />
+          </span>
+        )}
       </span>
     );
   }
@@ -797,6 +812,7 @@ function EventRow({
   isDuplicate,
   hideBalances,
   swapInLeg,
+  isFirstNew,
 }: {
   record: EventRecord;
   onSelect: () => void;
@@ -810,6 +826,8 @@ function EventRow({
   hideBalances?: boolean;
   /** 스왑의 받은(IN) 다리 — 같은 tx_hash 페어. 있으면 이 행이 두 다리를 한 줄로 말한다. */
   swapInLeg?: NormalizedEvent | null;
+  /** 이번 불러오기로 들어온 **첫** 거래인가. 완료 알림의 "보러 가기"가 찾아올 자리다. */
+  isFirstNew?: boolean;
 }) {
   const { event } = record;
   // 손익·수익률은 상세와 같은 판정 손익 행에서만 나온다 — 보류·중복·제외 때는 rows가 비어 자연히 null이 된다.
@@ -820,15 +838,16 @@ function EventRow({
     // 카드는 이벤트 id로 식별한다. 금액 라벨은 유효 분류에 따라 부호가 뒤집히므로(재분류 후 +0.01 → -0.01)
     // 그걸 식별자로 쓰면 "방금 고친 카드"를 다시 찾지 못한다.
     // 한 줄 레이아웃 — 왼쪽: 로고(체인은 코너 배지)·거래 타입·티커 / 오른쪽: 손익·수익률.
-    <button data-event-id={event.id} type="button" className="flex items-center gap-3 rounded-card border border-zinc-200 bg-white px-4 py-3 text-left shadow-card active:bg-zinc-50" onClick={onSelect}>
+    <button data-event-id={event.id} data-new-event={isFirstNew ? "true" : undefined} type="button" className="flex items-center gap-3 rounded-card border border-zinc-200 bg-white px-4 py-3 text-left shadow-card active:bg-zinc-50" onClick={onSelect}>
       {/* 왼쪽 로고 클러스터. 체인 이름은 텍스트로 쓰지 않고 로고만 코너 배지로 얹는다.
           스왑은 두 자산 로고, 브릿지는 두 체인 배지로 그린다. */}
       <TransactionLogo event={event} swapInLeg={swapInLeg} />
       <div className="flex min-w-0 flex-grow flex-col gap-1">
         <TransactionTypeBadge event={event} />
         {/* 티커 줄. e2e·테스트가 이 속성으로 행을 집으므로 레이아웃이 바뀌어도 유지한다.
-            스왑 페어는 "−보낸 수량 → +받은 수량"(얼마를 얼마만큼), 브릿지는 "수량 · 출발 → 도착",
-            NFT는 개체 번호 없이 티커만, 그 밖은 부호 붙은 수량과 티커를 함께 보인다. */}
+            스왑 페어는 "−보낸 수량 → +받은 수량"(얼마를 얼마만큼), 같은 자산 브릿지는 부호 없는 수량과 티커,
+            NFT는 개체 번호 없이 티커만, 그 밖은 부호 붙은 수량과 티커를 함께 보인다. 체인은 브릿지도 포함해
+            텍스트로 쓰지 않는다 — 출발·도착은 왼쪽 로고의 체인 배지 두 개가 말하고, 스크린리더용 sr-only만 남긴다. */}
         <span data-event-label className="mt-0.5 block truncate text-[0.8125rem] text-zinc-500">
           {swapInLeg ? (
             <>
@@ -839,15 +858,18 @@ function EventRow({
           ) : event.swap_to_symbol !== null
             ? `${assetTicker(event)} → ${event.swap_to_symbol}`
             : event.bridge_dest_chain_id !== null
-              ? `${hideBalances ? "•••••" : formatSignedTokenAmount(event)} ${assetTicker(event)} · ${chainLabel(event.chain_id)} → ${chainLabel(event.bridge_dest_chain_id)}`
+              ? `${hideBalances ? "•••••" : formatSignedTokenAmount(event)} ${assetTicker(event)}`
               : event.token_id !== null
                 ? assetTicker(event)
                 : `${hideBalances ? "•••••" : formatSignedTokenAmount(event)} ${assetTicker(event)}`}
         </span>
         {/* 체인은 시각적으로 코너 로고 배지로만 보이므로(체인 이름 텍스트 제거), 스크린리더에는
-            체인명을 sr-only로 남겨 어느 체인의 자산인지 잃지 않게 한다. 브릿지는 티커 줄이 두 체인을
-            이미 텍스트로 읽어주므로 중복을 피해 생략한다. */}
-        {event.bridge_dest_chain_id === null ? <span className="sr-only">{chainLabel(event.chain_id)}</span> : null}
+            체인명을 sr-only로 남겨 어느 체인의 자산인지 잃지 않게 한다. 브릿지는 출발·도착을 함께 읽어준다. */}
+        <span className="sr-only">
+          {event.bridge_dest_chain_id === null
+            ? chainLabel(event.chain_id)
+            : `${chainLabel(event.chain_id)} → ${chainLabel(event.bridge_dest_chain_id)}`}
+        </span>
       </div>
       {/* 오른쪽 칸은 방향과 무관하게 같은 뜻을 가진다.
           1줄: **거래 당시 평가액**(이벤트 통화 그대로). 수량 줄의 −/+는 지갑 기준 방향이고, 이 줄은 그 수량의 가치라
@@ -891,6 +913,12 @@ function EventRow({
 
 export function DashboardView({ countryCode }: { countryCode?: string }) {
   const queryClient = useQueryClient();
+  // 불러오기 상태를 구독한다. 프로바이더가 없으면 "진행 중인 불러오기 없음"으로 읽히므로
+  // 이 화면만 따로 렌더해도 그대로 돈다 — 원장은 불러오기와 독립적으로 존재하는 화면이다.
+  // 마커를 언제 걷을지는 이 화면이 정하지 않는다. 원장을 **떠나는 순간**이 그 경계이고,
+  // 그 사실은 컴포넌트 수명이 아니라 경로 변화에만 있어 트래커가 쥔다 —
+  // effect 정리에 두면 StrictMode의 마운트 → 정리 → 마운트가 도착하자마자 마커를 지운다.
+  const importTracker = useImportTracker();
   // 잔액 가리기. 서버는 저장소를 모르므로 첫 렌더는 항상 꺼짐이고, 마운트 후 저장값으로 복원한다.
   const [hideBalances, setHideBalances] = useHideBalances();
   const [tab, setTab] = useState<Tab>("all");
@@ -996,10 +1024,26 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
   // IN 다리는 받은 자산·수량을 공급하며 별도 행으로 렌더하지 않는다. 중복 레코드는 페어링에서 뺀다
   // (중복은 그 자체가 확인 필요 신호라 숨기면 안 된다). 계산은 그대로 두 건이다(엔진 무변경).
   const swapPairing = pairSwapLegs(annotated.filter((item) => !item.isDuplicate).map((item) => item.record.event));
+  // 브릿지 두 다리(출발 OUT + 도착 IN, bridge_group_id로 연결)도 같은 이유로 한 행으로 묶는다 —
+  // 도착 leg를 별도 행으로 두면 크로스체인 이동 1건이 거래 2건("브릿지" + "이동")처럼 보인다.
+  // 같은 자산 이동은 대표(OUT) 행이 이미 bridge_dest_chain_id로 도착 체인을 그리므로 도착 leg는
+  // 숨기기만 한다. 자산이 바뀌는 브릿지(출발 EXCHANGE)는 스왑과 같은 모양이라 아래 swapInLeg
+  // 스타일 렌더(받은 자산·수량)를 그대로 재사용한다.
+  const bridgePairing = pairBridgeLegs(annotated.filter((item) => !item.isDuplicate).map((item) => item.record.event));
+  // 페어링된 도착 leg 중 "자산이 바뀌는 브릿지"만 골라낸다 — 같은 자산 이동은 이미 도착 체인을
+  // 텍스트로 보여주고 있어 swapInLeg 스타일(받은 자산 로고·수량)을 더하면 정보가 겹친다.
+  const bridgeSwapInLegFor = (out: NormalizedEvent): NormalizedEvent | null => {
+    if (effectiveClassification(out) !== "EXCHANGE") return null;
+    return bridgePairing.inLegByOutId.get(out.id) ?? null;
+  };
   // 고른 기간 밖의 거래는 목록에서도 빠진다 — 그래프만 좁아지고 목록이 그대로면
   // 한 화면이 두 기간을 동시에 말한다. 시각을 모르는 건은 어느 기간에도 놓을 수 없어
   // 연도 칩과 같은 규칙으로 빠진다(그 사실은 아래 기간 고지가 말한다).
-  const pairedItems = annotated.filter((item) => item.isDuplicate || !swapPairing.pairedInIds.has(item.record.event.id));
+  const pairedItems = annotated.filter(
+    (item) =>
+      item.isDuplicate ||
+      (!swapPairing.pairedInIds.has(item.record.event.id) && !bridgePairing.pairedInIds.has(item.record.event.id)),
+  );
   const listItems = pairedItems.filter(
     (item) => !periodNarrowed || inPeriodWindow(item.record.event.block_timestamp, periodWindow!),
   );
@@ -1013,7 +1057,13 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
   // IN 다리를 함께 검사하지 않으면 그 확인 필요가 목록에서도 큐에서도 사라진다.
   const reviewItems = listItems.filter((item) => {
     const inLeg = swapPairing.inLegByOutId.get(item.record.event.id);
-    return needsReview(item.record.event) || (inLeg != null && needsReview(inLeg)) || item.isDuplicate;
+    const bridgeInLeg = bridgePairing.inLegByOutId.get(item.record.event.id);
+    return (
+      needsReview(item.record.event) ||
+      (inLeg != null && needsReview(inLeg)) ||
+      (bridgeInLeg != null && needsReview(bridgeInLeg)) ||
+      item.isDuplicate
+    );
   });
   const tabItems = tab === "review" ? reviewItems : listItems;
   // 판정을 못 불러오면 그룹 필터를 유지할 근거가 없다. 조용히 빈 목록을 보이면 사용자가 원인을 모른다.
@@ -1062,6 +1112,19 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
       matchesGroup(item, activeGroup) &&
       matchesYear(item, activeYear),
   );
+  // 이번 불러오기로 들어온 거래. 트래커가 시작 시점 원장과 끝난 뒤 원장을 비교해 낸 id들이며,
+  // 날짜 묶음마다 몇 건인지 세어 머리글 옆에 붙인다 — 목록은 최신순이라 새 거래가 어느 날짜에
+  // 꽂혔는지 말해 주지 않으면 사용자가 찾을 수 없다.
+  // 배열째 매 행 훑지 않는 이유: 첫 지갑은 새 거래가 수백·수천 건이라 행마다 선형 탐색이면 렌더가 제곱으로 는다.
+  const newEventIdSet = new Set(importTracker.state.newEventIds ?? []);
+  const newEventCountByDay = new Map<string, number>();
+  let firstNewEventId: string | null = null;
+  for (const { record } of displayedItems) {
+    if (!newEventIdSet.has(record.event.id)) continue;
+    if (firstNewEventId === null) firstNewEventId = record.event.id;
+    const day = isoDay(record.event.block_timestamp) ?? "";
+    newEventCountByDay.set(day, (newEventCountByDay.get(day) ?? 0) + 1);
+  }
   // 칩 건수는 **지금 눌렀을 때 남을 카드 수**다. 그래서 자기 자신을 뺀 나머지 필터를 적용한 뒤 센다.
   // 전체 목록 기준으로 세면 다른 필터가 걸린 상태에서 칩 건수와 카드 수가 어긋난다.
   const groupCounts = new Map<JudgmentGroup | "excluded", number>();
@@ -1198,6 +1261,8 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
                 : `확인 필요 항목 ${summaryFresh.data.pendingReviewCount}건 · 과세 여부는 아직 판단하지 않았습니다`
               : (freshNotice(summaryFresh.state, "요약") ?? undefined)
           }
+          // 불러오는 중이면 이 숫자는 아직 새 지갑을 모른다. 말하지 않으면 사용자는 건수가 틀렸다고 읽는다.
+          note={importTracker.state.status === "running" ? "새 지갑 거래는 불러온 뒤 반영돼요" : undefined}
         />
         {/* 신뢰도 칩(P1-9) — 세금 화면 "흔들리는 지점"과 같은 estimate에서 파생한 건수를 헤드라인 옆에 압축한다.
             문구·건수는 하드코딩하지 않는다. 흔들릴 게 없으면(정상) 칩을 달지 않는다 — 없는 문제를 만들지 않기 위해서다.
@@ -1406,11 +1471,18 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
             return (
               <Fragment key={`${record.event.id}#${occurrence}`}>
                 {day === previousDay ? null : (
-                  <h3 className="mt-2 text-sm font-semibold text-zinc-500 first:mt-0">
-                    {day ? formatDate(record.event.block_timestamp) : "날짜 미상"}
+                  <h3 className="mt-2 flex flex-wrap items-center gap-2 text-sm font-semibold text-zinc-500 first:mt-0">
+                    <span>{day ? formatDate(record.event.block_timestamp) : "날짜 미상"}</span>
+                    {/* 방금 들어온 거래가 어느 날짜에 꽂혔는지 말한다. 없으면 배지도 없다 — 없는 사실을 만들지 않는다. */}
+                    {(newEventCountByDay.get(day ?? "") ?? 0) > 0 ? (
+                      <span className="rounded-full bg-primary-50 px-2 py-0.5 text-[11px] font-bold text-primary-600">
+                        새로 들어온 거래 {newEventCountByDay.get(day ?? "")}
+                      </span>
+                    ) : null}
                   </h3>
                 )}
                 <EventRow
+                  isFirstNew={record.event.id === firstNewEventId}
                   record={record}
                   onSelect={() => setSelectedKey({ eventId: record.event.id, occurrence })}
                   rows={isDuplicate || judgmentsPending ? [] : judgments.rowsOf(record.event.id)}
@@ -1419,7 +1491,7 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
                   inPeriod={judgmentsPending ? null : judgments.inPeriod(record.event.block_timestamp)}
                   isDuplicate={isDuplicate}
                   hideBalances={hideBalances}
-                  swapInLeg={isDuplicate ? null : swapPairing.inLegByOutId.get(record.event.id) ?? null}
+                  swapInLeg={isDuplicate ? null : swapPairing.inLegByOutId.get(record.event.id) ?? bridgeSwapInLegFor(record.event)}
                 />
               </Fragment>
             );
@@ -1461,7 +1533,7 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
           countryCode={countryCode ?? "KR"}
           taxYear={taxYear}
           taxYearGrounded={referencePeriod !== null && !eventsStale}
-          swapInLeg={selected.isDuplicate ? null : swapPairing.inLegByOutId.get(selected.record.event.id) ?? null}
+          swapInLeg={selected.isDuplicate ? null : swapPairing.inLegByOutId.get(selected.record.event.id) ?? bridgeSwapInLegFor(selected.record.event)}
         />
       ) : null}
     </main>

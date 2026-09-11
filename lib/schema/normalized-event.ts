@@ -83,6 +83,11 @@ export const normalizedEventSchema = z
     decimals: z.number().int().nonnegative(),
     raw_amount: decimalString,
     counterparty: z.string().min(1),
+    /**
+     * 상대 주소의 표시 이름. BE가 자기 레지스트리(브릿지·애그리게이터 컨트랙트)에서 확인한 주소에만 붙인다.
+     * 화면은 이 값을 먼저 쓰고, 없으면 FE mock 레지스트리(lib/contracts.ts), 그것도 없으면 축약 주소다 — 지어내지 않는다.
+     */
+    counterparty_label: z.string().min(1).nullable().optional(),
     gas_fee_native: decimalString,
     // 수신 값이라 모르는 분류는 UNKNOWN으로 강등한다(위 incomingClassificationSchema 주석 참고).
     classification: incomingClassificationSchema,

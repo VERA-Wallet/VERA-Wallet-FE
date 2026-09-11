@@ -5,6 +5,7 @@ import { useState } from "react";
 import { WagmiProvider } from "wagmi";
 import { wagmiConfig } from "@/lib/wallet/wagmi-config";
 import { TaxYearProvider } from "@/lib/tax/tax-year-context";
+import { ImportTrackerProvider } from "@/components/wallet/import-tracker-provider";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   // 기본값(staleTime 0·포커스 재조회)이면 탭을 오가거나 창을 클릭할 때마다 이벤트 13페이지·요약·세금 추정을 전부 다시 받는다.
@@ -22,7 +23,16 @@ export function Providers({ children }: { children: React.ReactNode }) {
         SIWE로 등록된 별도 바인딩이라, 확장 프로그램에서 계정을 옮기는 것은 등록된 지갑을 무효화하지 않는다.
         화면의 거래도 활성 계정이 아니라 등록된 지갑 전체에서 오므로 계정 전환이 데이터를 오해하게 만들지도 않는다.
       */}
-      <QueryClientProvider client={queryClient}><TaxYearProvider>{children}</TaxYearProvider></QueryClientProvider>
+      {/*
+        불러오기 폴링은 화면이 아니라 껍데기가 쥔다. 모달이 쥐고 있던 동안에는 "백그라운드에서 계속"이
+        폴링을 끊어, 완료 시점에만 할 수 있는 캐시 무효화가 영영 일어나지 않았다.
+        QueryClient 안쪽에 둬야 완료 순간 원장·요약·세금 캐시를 직접 무효화할 수 있다.
+      */}
+      <QueryClientProvider client={queryClient}>
+        <ImportTrackerProvider>
+          <TaxYearProvider>{children}</TaxYearProvider>
+        </ImportTrackerProvider>
+      </QueryClientProvider>
     </WagmiProvider>
   );
 }

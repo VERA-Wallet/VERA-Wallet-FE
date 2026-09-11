@@ -1,8 +1,10 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { QueryClient } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ImportProgressGate } from "@/components/dashboard/import-progress-gate";
+import { renderWithImportTracker } from "@/tests/support/import-tracker";
+import { IMPORT_JOB_STORAGE_KEY } from "@/lib/wallet/import-tracker";
 import { ImportProgressModal } from "@/components/wallet/import-progress-modal";
 import { demoDefiPositions, demoNftHoldings, demoWalletChains, demoWalletHoldings, walletChains } from "@/lib/wallet/holdings";
 import { chainLabel } from "@/lib/format";
@@ -31,7 +33,7 @@ import { IMPORT_POLL_INTERVAL_MS } from "@/lib/wallet/import-sync";
  */
 
 const replace = vi.fn();
-vi.mock("next/navigation", () => ({ useRouter: () => ({ replace }) }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ replace }), usePathname: () => "/dashboard" }));
 
 const ADDRESS = "0x71C7656EC7ab88b098defB751B7401B5f6d8976F";
 
@@ -257,7 +259,8 @@ describe("불러오기 모달", () => {
     expect(onBackground).toHaveBeenCalledOnce();
     // "취소"라고 쓰면 동기화가 멈춘다는 뜻이 되는데, 실제로 멈출 수단이 없다.
     expect(screen.queryByRole("button", { name: /취소/ })).toBeNull();
-    expect(screen.getByText("창을 닫아도 불러오기는 계속됩니다.")).toBeTruthy();
+    // 닫은 뒤 결과를 어디서 보는지까지 말한다 — "계속된다"만으로는 사용자가 다시 찾아올 길을 모른다.
+    expect(screen.getByText("창을 닫아도 불러오기는 계속돼요. 끝나면 화면 위에 알려드릴게요.")).toBeTruthy();
   });
 
   it("Esc는 모달을 닫되 취소가 아니라 백그라운드로 보낸다", () => {
@@ -290,7 +293,7 @@ describe("불러오기 모달", () => {
     renderModal({ phase: "done", stepIndex: IMPORT_STEPS.length, elapsedMs: 7_000, scannedChainCount: 3 });
     expect(screen.getByRole("dialog", { name: "거래를 불러왔습니다" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "백그라운드에서 계속" })).toBeNull();
-    expect(screen.queryByText("창을 닫아도 불러오기는 계속됩니다.")).toBeNull();
+    expect(screen.queryByText(/창을 닫아도 불러오기는 계속돼요/)).toBeNull();
     expect(screen.getByText("대시보드로 이동합니다.")).toBeTruthy();
   });
 
@@ -309,11 +312,12 @@ describe("불러오기 모달", () => {
 });
 
 describe("불러오기 게이트", () => {
-  // 게이트는 완료 시 원장·요약·추정 쿼리를 무효화한다 — QueryClient 안에서 렌더해야 한다.
+  // 폴링·완료 판정·캐시 무효화는 앱 껍데기의 트래커가 한다 — 게이트는 그 구독자라 트래커 안에서 렌더해야 한다.
   let queryClient: QueryClient;
   function renderGate() {
-    queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    return render(<QueryClientProvider client={queryClient}><ImportProgressGate walletAddress={ADDRESS} /></QueryClientProvider>);
+    const rendered = renderWithImportTracker(<ImportProgressGate walletAddress={ADDRESS} />);
+    queryClient = rendered.queryClient;
+    return rendered;
   }
   // BE 동기화 결과 계약 미러: 지원 체인 전체를 항상 포함하는 체인별 수집 건수.
   const syncResult = {
@@ -366,9 +370,12 @@ describe("불러오기 게이트", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.stubGlobal("fetch", doneAfterOnePoll());
+    // 진행 중이던 작업은 새로고침을 넘어 이어받는다. 지우지 않으면 앞 케이스의 작업을 다음 케이스가 물려받는다.
+    window.sessionStorage.removeItem(IMPORT_JOB_STORAGE_KEY);
   });
 
   afterEach(() => {
+    window.sessionStorage.removeItem(IMPORT_JOB_STORAGE_KEY);
     vi.unstubAllGlobals();
     vi.useRealTimers();
   });
@@ -431,7 +438,9 @@ describe("불러오기 게이트", () => {
     expect(screen.getByRole("dialog", { name: "거래를 다 불러오지 못했습니다" })).toBeTruthy();
   });
 
-  it("백그라운드로 보내면 폴링을 멈춘다 — 사라진 모달이 계속 BE를 두드리지 않는다", async () => {
+  it("백그라운드로 보내도 폴링은 계속된다 — 모달을 닫는 것은 취소가 아니다", async () => {
+    // 이 한 줄이 이번 설계의 이유다. 모달이 폴링을 쥐고 있던 때에는 창을 닫는 순간 폴링이 끊겨
+    // 완료 시점의 캐시 무효화가 영영 일어나지 않았고, BE는 새 거래를 넣었는데 화면은 옛 원장을 보였다.
     const fetchMock = jobFetch([{ status: "running" }]);
     vi.stubGlobal("fetch", fetchMock);
     renderGate();
@@ -442,7 +451,22 @@ describe("불러오기 게이트", () => {
       fireEvent.click(screen.getByRole("button", { name: "백그라운드에서 계속" }));
     });
     await poll(3);
-    expect(fetchMock.mock.calls.length).toBe(before);
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(before);
+  });
+
+  it("모달을 닫아도 완료되면 원장·요약·세금 추정 캐시를 무효화한다", async () => {
+    renderGate();
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    await act(async () => {});
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: "백그라운드에서 계속" }));
+    });
+    await poll(2);
+    const keys = invalidate.mock.calls.map(([filters]) => JSON.stringify(filters?.queryKey));
+    // 모달이 사라진 뒤 끝난 불러오기도 화면을 갱신해야 한다 — 사용자는 닫은 것이지 취소한 것이 아니다.
+    expect(keys).toContain(JSON.stringify(["events", "list"]));
+    expect(keys).toContain(JSON.stringify(["events", "summary"]));
+    expect(keys).toContain(JSON.stringify(["tax", "estimate"]));
   });
 
   it("응답이 오기 전에는 타이머가 끝나도 완료를 말하지 않는다", async () => {

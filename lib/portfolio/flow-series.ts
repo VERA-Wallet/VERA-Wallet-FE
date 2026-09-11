@@ -171,6 +171,58 @@ export type FlowGeometry = {
 const px = (value: number) => Math.round(value * 100) / 100;
 
 /**
+ * 점들을 지나는 부드러운 곡선(모노톤 큐빅 보간, Fritsch–Carlson).
+ *
+ * 일반 스플라인은 급한 꺾임 앞뒤에서 실제 값보다 위아래로 튀어 오른다 — 금액 선에서 그 튐은
+ * "없던 잔액"을 그리는 일이다. 모노톤 보간은 이웃 두 점 사이에서 값이 그 둘을 벗어나지 않으므로
+ * 곡선을 짚어 읽어도 거짓 봉우리가 없다. 베지어는 아핀 변환에 닫혀 있어 viewBox를 가로로
+ * 늘려도 모양이 깨지지 않는다.
+ */
+export function smoothPath(points: { x: number; y: number }[]): string {
+  if (points.length === 0) return "";
+  if (points.length === 1) return `M${points[0].x} ${points[0].y}`;
+  const n = points.length;
+  const dx: number[] = [];
+  const slope: number[] = [];
+  for (let i = 0; i < n - 1; i += 1) {
+    const run = points[i + 1].x - points[i].x;
+    dx.push(run);
+    slope.push(run === 0 ? 0 : (points[i + 1].y - points[i].y) / run);
+  }
+  // 각 점의 접선 기울기. 방향이 바뀌는 점(봉우리·골)은 0으로 두어 그 너머로 넘치지 않게 한다.
+  const tangent: number[] = [slope[0]];
+  for (let i = 1; i < n - 1; i += 1) {
+    tangent.push(slope[i - 1] * slope[i] <= 0 ? 0 : (slope[i - 1] + slope[i]) / 2);
+  }
+  tangent.push(slope[n - 2]);
+  for (let i = 0; i < n - 1; i += 1) {
+    if (slope[i] === 0) {
+      tangent[i] = 0;
+      tangent[i + 1] = 0;
+      continue;
+    }
+    const a = tangent[i] / slope[i];
+    const b = tangent[i + 1] / slope[i];
+    const magnitude = a * a + b * b;
+    if (magnitude > 9) {
+      const scale = 3 / Math.sqrt(magnitude);
+      tangent[i] = scale * a * slope[i];
+      tangent[i + 1] = scale * b * slope[i];
+    }
+  }
+  const parts = [`M${points[0].x} ${points[0].y}`];
+  for (let i = 0; i < n - 1; i += 1) {
+    const third = dx[i] / 3;
+    const c1x = px(points[i].x + third);
+    const c1y = px(points[i].y + tangent[i] * third);
+    const c2x = px(points[i + 1].x - third);
+    const c2y = px(points[i + 1].y - tangent[i + 1] * third);
+    parts.push(`C${c1x} ${c1y} ${c2x} ${c2y} ${points[i + 1].x} ${points[i + 1].y}`);
+  }
+  return parts.join(" ");
+}
+
+/**
  * 점 열을 SVG 경로로 바꾼다. 점이 둘 미만이면 선이 성립하지 않으므로 null이고,
  * 화면은 그때 선을 그리는 대신 "점이 하나뿐"이라고 말한다.
  */
@@ -187,7 +239,7 @@ export function flowGeometry(plot: FlowPlotPoint[], width: number, height: numbe
   const duration = plot[plot.length - 1].atMs - firstMs;
   const x = (atMs: number) => (duration === 0 ? width / 2 : ((atMs - firstMs) / duration) * width);
   const coordinates = plot.map((point) => ({ x: px(x(point.atMs)), y: px(y(Number(point.value))) }));
-  const line = coordinates.map((point, index) => `${index === 0 ? "M" : "L"}${point.x} ${point.y}`).join(" ");
+  const line = smoothPath(coordinates);
   const end = coordinates[coordinates.length - 1];
   const area = `${line} L${end.x} ${height} L${coordinates[0].x} ${height} Z`;
   const zeroY = span > 0 && minValue <= 0 && maxValue >= 0 ? px(y(0)) : null;
