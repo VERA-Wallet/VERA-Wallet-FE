@@ -1,13 +1,15 @@
 import { chainLabel } from "@/lib/format";
+import type { HoldingCostStatus, HoldingPriceStatus, PortfolioHoldingDTO } from "@/lib/http/dto";
 
 /**
  * 지갑 홈이 그리는 보유 자산 한 줄.
  *
- * 가격은 **데모 예시 시세(USD)** 다 — 실시간 시세 피드가 아니다(목/데모 모드). 실 BE가 붙으면
- * 이 소스를 잔액+시세 API로 교체하면 되고, 화면 계약(수량·단가·평가액)은 그대로 쓸 수 있다.
+ * 소스는 `/api/portfolio/holdings`(mock 모드면 데모 지갑, ON 모드면 BE 실잔액 + DexScreener 시세 + 원장 원가)다.
+ * 시세·원가는 **없을 수 있다** — 시세 조회 실패, 원장이 모르는 자산, 환율 장애. 그때 값은 0이 아니라 null이고
+ * 화면은 그 사실을 말한다. 아래 산술은 null을 건너뛰되 무엇을 건너뛰었는지 셈한다.
  */
 export interface Holding {
-  key: string; // `${chainId}:${symbol}`
+  key: string; // `${chainId}:${contract ?? symbol}` — 네이티브 코인은 체인마다 하나라 심볼로 충분하다
   symbol: string;
   name: string;
   chainId: number;
@@ -17,11 +19,129 @@ export interface Holding {
   contract: string | null;
   isNft: boolean;
   amount: string; // 사람이 읽는 수량(십진 문자열)
-  priceUsd: string; // 단가(USD, 십진 문자열)
-  valueUsd: string; // 평가액 = amount × priceUsd (USD, 십진 문자열)
-  // 취득 평가액(USD, 십진 문자열) — **데모 예시 mock**이다. 실시간 원가 추적이 아니다.
-  // 실 BE가 붙으면 원장 취득가로 교체한다. 화면은 이 값으로 평가손익·수익률을 **표시만** 한다.
-  costUsd: string;
+  priceUsd: string | null; // 단가(USD, 십진 문자열). 시세가 없으면 null.
+  valueUsd: string | null; // 평가액 = amount × priceUsd (USD). 시세가 없으면 null.
+  priceStatus: HoldingPriceStatus;
+  // 취득원가(USD, 십진 문자열). 원장의 이동평균 원가를 환산한 값이며 세무 엔진이 아니라 **표시 산술**의 입력이다.
+  // 원장이 자산을 모르거나 환율이 없으면 null — costStatus가 이유를 말한다.
+  costUsd: string | null;
+  costStatus: HoldingCostStatus;
+  /** 표시용 정식 자산 키. 같은 키의 다른 체인 행을 화면이 하나로 합친다. null이면 합치지 않는다. */
+  canonicalAssetId: string | null;
+}
+
+/** API 계약(`PortfolioHoldingDTO`) → 화면 행. 키·체인 이름만 덧붙이고 값은 그대로 잇는다. 평가액 내림차순(시세 없는 행은 뒤). */
+export function holdingsFromDto(items: readonly PortfolioHoldingDTO[]): Holding[] {
+  return items
+    .map((item) => ({
+      key: `${item.chainId}:${item.contract ?? item.symbol}`,
+      symbol: item.symbol,
+      name: item.name,
+      chainId: item.chainId,
+      chainName: chainLabel(item.chainId),
+      contract: item.contract,
+      isNft: false,
+      amount: item.amount,
+      priceUsd: item.priceUsd,
+      valueUsd: item.valueUsd,
+      priceStatus: item.priceStatus,
+      costUsd: item.costUsd,
+      costStatus: item.costStatus,
+      canonicalAssetId: item.canonicalAssetId,
+    }))
+    .sort(byValueDesc);
+}
+
+/**
+ * 같은 정식 자산의 체인별 행을 하나로 합친 묶음. 합치지 않는 행도 멤버 하나짜리 묶음이다.
+ *
+ * - 수량·평가액은 합. 시세 없는 멤버는 평가액에서 빠지고 `unpricedCount`에 센다(0으로 더하지 않는다).
+ *   멤버 전부 시세가 없으면 평가액은 null이다.
+ * - 원가는 **모든 멤버가 ready**일 때만 합해서 낸다. 한 체인이라도 partial이면 묶음도 partial이다 —
+ *   반쪽 원가로 합산 손익을 내면 부풀려진다. 원가 상태의 우선순위: partial > fx_unavailable > unknown.
+ * - 세금·원장은 체인별 그대로다. 이 묶음은 화면이 그리는 단위일 뿐이다.
+ */
+export interface HoldingGroup {
+  key: string;
+  symbol: string;
+  name: string;
+  canonicalAssetId: string | null;
+  /** 평가액 내림차순 정렬된 체인별 행. 로고는 첫 멤버로 그린다. */
+  members: Holding[];
+  chainIds: number[];
+  amount: string;
+  priceUsd: string | null;
+  valueUsd: string | null;
+  unpricedCount: number;
+  costUsd: string | null;
+  costStatus: HoldingCostStatus;
+}
+
+export function groupHoldings(holdings: readonly Holding[]): HoldingGroup[] {
+  const byKey = new Map<string, Holding[]>();
+  for (const holding of holdings) {
+    const key = holding.canonicalAssetId === null ? `row:${holding.key}` : `asset:${holding.canonicalAssetId}`;
+    const bucket = byKey.get(key) ?? [];
+    bucket.push(holding);
+    byKey.set(key, bucket);
+  }
+  const groups: HoldingGroup[] = [];
+  for (const [key, bucket] of byKey) {
+    const members = [...bucket].sort(byValueDesc);
+    const first = members[0];
+    let amount = "0";
+    let valueUsd: string | null = null;
+    let unpricedCount = 0;
+    let costUsd: string | null = "0";
+    let costStatus: HoldingCostStatus = "ready";
+    for (const member of members) {
+      amount = addDecimal(amount, member.amount);
+      if (member.valueUsd === null) unpricedCount += 1;
+      else valueUsd = addDecimal(valueUsd ?? "0", member.valueUsd);
+      if (member.costStatus === "ready" && member.costUsd !== null) {
+        if (costUsd !== null) costUsd = addDecimal(costUsd, member.costUsd);
+      } else {
+        costUsd = null;
+        costStatus = worseCostStatus(costStatus, member.costStatus);
+      }
+    }
+    if (costStatus === "ready" && costUsd === null) costStatus = "unknown";
+    groups.push({
+      key,
+      symbol: first.symbol,
+      name: first.name,
+      canonicalAssetId: first.canonicalAssetId,
+      members,
+      chainIds: [...new Set(members.map((member) => member.chainId))],
+      amount,
+      priceUsd: members.find((member) => member.priceUsd !== null)?.priceUsd ?? null,
+      valueUsd,
+      unpricedCount,
+      costUsd,
+      costStatus,
+    });
+  }
+  return groups.sort(byValueDesc);
+}
+
+const COST_STATUS_RANK: Record<HoldingCostStatus, number> = { ready: 0, unknown: 1, fx_unavailable: 2, partial: 3 };
+function worseCostStatus(a: HoldingCostStatus, b: HoldingCostStatus): HoldingCostStatus {
+  return COST_STATUS_RANK[b] > COST_STATUS_RANK[a] ? b : a;
+}
+
+/** 묶음의 평가손익. 멤버 전부 시세가 있고 원가가 ready일 때만 — 아니면 null. */
+export function groupGainUsd(group: HoldingGroup): string | null {
+  if (group.valueUsd === null || group.unpricedCount > 0 || group.costUsd === null || group.costStatus !== "ready") return null;
+  return subtractDecimal(group.valueUsd, group.costUsd);
+}
+
+function byValueDesc(left: { valueUsd: string | null; key: string }, right: { valueUsd: string | null; key: string }): number {
+  if (left.valueUsd !== null && right.valueUsd !== null) {
+    const byValue = compareDecimal(right.valueUsd, left.valueUsd);
+    if (byValue !== 0) return byValue;
+  } else if (left.valueUsd !== null) return -1;
+  else if (right.valueUsd !== null) return 1;
+  return left.key < right.key ? -1 : left.key > right.key ? 1 : 0;
 }
 
 // ── 십진 문자열 산술 ─────────────────────────────────────────────────────────
@@ -91,24 +211,50 @@ export function returnPercent(costUsd: string, gainUsd: string): string | null {
   return fromScaledInt(roundedDiv(gain * BigInt(10000), absCost), 2);
 }
 
-/** 보유 자산 한 줄의 평가손익(평가액 − 취득원가, USD). */
-export function holdingGainUsd(holding: Holding): string {
+/**
+ * 손익을 낼 수 있는 행인가. 시세와 원가가 있고 원가가 잔액 **전량**을 덮어야 한다 —
+ * 원장이 잔액의 절반만 알면(partial) 그 원가로 낸 손익은 부풀려진 숫자라 내지 않는다.
+ */
+export function hasGainBasis(holding: Holding): holding is Holding & { valueUsd: string; costUsd: string } {
+  return holding.valueUsd !== null && holding.costUsd !== null && holding.costStatus === "ready";
+}
+
+/** 보유 자산 한 줄의 평가손익(평가액 − 취득원가, USD). 근거가 없으면 null — 0이 아니다. */
+export function holdingGainUsd(holding: Holding): string | null {
+  if (!hasGainBasis(holding)) return null;
   return subtractDecimal(holding.valueUsd, holding.costUsd);
 }
 
-/** 토큰 보유 묶음의 평가액·취득원가·평가손익·수익률(표시용 합산). */
+/**
+ * 토큰 보유 묶음의 평가액·취득원가·평가손익·수익률(표시용 합산).
+ * 손익은 근거가 있는 행(`hasGainBasis`)만 더한다. 나머지는 `excluded`에 세어 화면이 "n개 제외"를 말하게 한다.
+ * 원가가 있는 행이 하나도 없으면 손익은 0이 아니라 null이다.
+ */
 export interface HoldingsGainSummary {
   valueUsd: string;
-  costUsd: string;
-  gainUsd: string;
+  costUsd: string | null;
+  gainUsd: string | null;
   returnPercent: string | null;
+  /** 시세·원가가 없거나 원가가 잔액 일부만 덮어 손익 합산에서 빠진 행 수. */
+  excluded: number;
 }
 
 export function holdingsGainSummary(holdings: Holding[]): HoldingsGainSummary {
-  const valueUsd = holdings.reduce((total, holding) => addDecimal(total, holding.valueUsd), "0");
-  const costUsd = holdings.reduce((total, holding) => addDecimal(total, holding.costUsd), "0");
-  const gainUsd = subtractDecimal(valueUsd, costUsd);
-  return { valueUsd, costUsd, gainUsd, returnPercent: returnPercent(costUsd, gainUsd) };
+  const valueUsd = totalValueUsd(holdings);
+  let costUsd: string | null = null;
+  let gainValue = "0";
+  let excluded = 0;
+  for (const holding of holdings) {
+    if (!hasGainBasis(holding)) {
+      excluded += 1;
+      continue;
+    }
+    costUsd = addDecimal(costUsd ?? "0", holding.costUsd);
+    gainValue = addDecimal(gainValue, holding.valueUsd);
+  }
+  if (costUsd === null) return { valueUsd, costUsd: null, gainUsd: null, returnPercent: null, excluded };
+  const gainUsd = subtractDecimal(gainValue, costUsd);
+  return { valueUsd, costUsd, gainUsd, returnPercent: returnPercent(costUsd, gainUsd), excluded };
 }
 
 /** 십진 문자열 비교(a<b:-1, a>b:1, 같음:0). */
@@ -119,19 +265,26 @@ export function compareDecimal(a: string, b: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
-/** 보유 자산 전체 평가액 합(USD). */
+/** 보유 자산 전체 평가액 합(USD). 시세 없는 행은 0이 아니라 **빠진다** — 호출자가 `unpricedCount`로 그 사실을 말한다. */
 export function totalValueUsd(holdings: Holding[]): string {
-  return holdings.reduce((total, holding) => addDecimal(total, holding.valueUsd), "0");
+  return holdings.reduce((total, holding) => (holding.valueUsd === null ? total : addDecimal(total, holding.valueUsd)), "0");
+}
+
+/** 시세가 없어 총액에서 빠진 행 수. */
+export function unpricedCount(holdings: Holding[]): number {
+  return holdings.filter((holding) => holding.valueUsd === null).length;
 }
 
 // ── 데모 보유 자산 ───────────────────────────────────────────────────────────
-// 이 앱은 목/데모 모드다. 지갑 홈은 ETH·USDT·USDC 세 자산을 데모 시세와 함께 보여준다.
+// OFF(mock) 모드의 데모 지갑. `MockHoldingsProvider`가 이 표를 API 계약으로 감싸 돌려주고, BE MOCK_MODE의
+// 데모 지갑도 같은 자산·수량이라 두 모드가 같은 화면을 그린다. ON 모드에서는 쓰이지 않는다.
 // costUsd는 데모용 mock 취득 평가액(USD)이다. 실시간 원가 추적이 아니라, 평가손익·수익률을 화면이
 // **표시만** 하도록 그럴듯한 값을 담는다: ETH는 이익, USDT는 소폭 손실, USDC는 소폭 이익.
-const DEMO_TOKENS: ReadonlyArray<{ symbol: string; name: string; chainId: number; contract: string | null; amount: string; priceUsd: string; costUsd: string }> = [
-  { symbol: "ETH", name: "Ethereum", chainId: 1, contract: null, amount: "0.75", priceUsd: "3200.00", costUsd: "1800.00" },
-  { symbol: "USDT", name: "Tether USD", chainId: 137, contract: "0xc2132d05d31c914a87c6611c10748aecb2540811", amount: "850", priceUsd: "1.00", costUsd: "900.00" },
-  { symbol: "USDC", name: "USD Coin", chainId: 8453, contract: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913", amount: "500", priceUsd: "1.00", costUsd: "480.00" },
+export const DEMO_TOKENS: ReadonlyArray<{ symbol: string; name: string; chainId: number; contract: string | null; decimals: number; amount: string; priceUsd: string; costUsd: string }> = [
+  { symbol: "ETH", name: "Ethereum", chainId: 1, contract: null, decimals: 18, amount: "0.75", priceUsd: "3200.00", costUsd: "1800.00" },
+  // USDT (PoS) on Polygon — BE spam-filter CONTRACT_ALLOWLIST와 같은 캐노니컬 주소.
+  { symbol: "USDT", name: "Tether USD", chainId: 137, contract: "0xc2132d05d31c914a87c6611c10748aeb04b58e8f", decimals: 6, amount: "850", priceUsd: "1.00", costUsd: "900.00" },
+  { symbol: "USDC", name: "USD Coin", chainId: 8453, contract: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913", decimals: 6, amount: "500", priceUsd: "1.00", costUsd: "480.00" },
 ];
 
 /**
@@ -150,7 +303,10 @@ export function demoWalletHoldings(): Holding[] {
     amount: token.amount,
     priceUsd: token.priceUsd,
     valueUsd: multiplyDecimal(token.amount, token.priceUsd),
+    priceStatus: "priced" as const,
     costUsd: token.costUsd,
+    costStatus: "ready" as const,
+    canonicalAssetId: token.symbol.toLowerCase(),
   })).sort((left, right) => {
     const byValue = compareDecimal(right.valueUsd, left.valueUsd);
     if (byValue !== 0) return byValue;
@@ -245,10 +401,10 @@ export function demoDefiPositions(): DefiPosition[] {
   });
 }
 
-/** 토큰·NFT·디파이 평가액을 합친 포트폴리오 총액(USD). */
+/** 토큰·NFT·디파이 평가액을 합친 포트폴리오 총액(USD). 시세 없는 토큰은 빠진다(`unpricedCount`). */
 export function portfolioTotalUsd(tokens: Holding[], nfts: NftHolding[], defi: DefiPosition[]): string {
-  const all: Array<{ valueUsd: string }> = [...tokens, ...nfts, ...defi];
-  return all.reduce((total, item) => addDecimal(total, item.valueUsd), "0");
+  const rest: Array<{ valueUsd: string }> = [...nfts, ...defi];
+  return rest.reduce((total, item) => addDecimal(total, item.valueUsd), totalValueUsd(tokens));
 }
 
 // ── 보유 체인 ────────────────────────────────────────────────────────────────

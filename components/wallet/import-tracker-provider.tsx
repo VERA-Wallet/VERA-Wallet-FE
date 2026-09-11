@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { usePathname } from "next/navigation";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { eventQueryKey, eventSummaryQueryKey } from "@/lib/queries/events";
+import { holdingsQueryKey } from "@/lib/queries/holdings";
 import { IMPORT_TICK_MS } from "@/lib/wallet/import-progress";
 import {
   IDLE_IMPORT_TRACKER_STATE,
@@ -197,6 +198,8 @@ export function ImportTrackerProvider({ children }: { children: ReactNode }) {
           void queryClient.invalidateQueries({ queryKey: eventQueryKey, refetchType: "none" });
           void queryClient.invalidateQueries({ queryKey: eventSummaryQueryKey });
           void queryClient.invalidateQueries({ queryKey: ["tax", "estimate"] });
+          // 원장이 바뀌면 보유 자산의 취득원가도 바뀐다. 잔액 자체는 온체인 사실이라 그대로지만 costStatus가 partial → ready로 갈 수 있다.
+          void queryClient.invalidateQueries({ queryKey: holdingsQueryKey });
           void countNewEvents(generation);
         },
         (error: unknown) => {

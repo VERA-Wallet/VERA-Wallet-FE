@@ -69,7 +69,7 @@ describe("demoWalletHoldings", () => {
     // ETH 2400 > USDT 850 > USDC 500
     expect(values).toEqual(["2400", "850", "500"]);
     for (let index = 1; index < values.length; index += 1) {
-      expect(compareDecimal(values[index - 1], values[index])).toBeGreaterThanOrEqual(0);
+      expect(compareDecimal(values[index - 1]!, values[index]!)).toBeGreaterThanOrEqual(0);
     }
   });
 
@@ -81,11 +81,11 @@ describe("demoWalletHoldings", () => {
 
     expect(eth.costUsd).toBe("1800.00");
     expect(holdingGainUsd(eth)).toBe("600"); // 2,400 − 1,800, a gain
-    expect(returnPercent(eth.costUsd, holdingGainUsd(eth))).toBe("33.33");
+    expect(returnPercent(eth.costUsd!, holdingGainUsd(eth)!)).toBe("33.33");
 
     expect(usdt.costUsd).toBe("900.00");
     expect(holdingGainUsd(usdt)).toBe("-50"); // 850 − 900, a loss
-    expect(returnPercent(usdt.costUsd, holdingGainUsd(usdt))).toBe("-5.56");
+    expect(returnPercent(usdt.costUsd!, holdingGainUsd(usdt)!)).toBe("-5.56");
 
     expect(usdc.costUsd).toBe("480.00");
     expect(holdingGainUsd(usdc)).toBe("20");

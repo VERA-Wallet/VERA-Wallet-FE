@@ -92,7 +92,7 @@ function installSyntheticWallet(page: Page, initiallyConnected = true) {
 
 const mockModeOnly = isMockApiMode() ? test.describe.serial : test.describe.skip;
 
-mockModeOnly("wallet portfolio and 계정 screen live QA", () => {
+mockModeOnly("wallet list, portfolio and add-wallet live QA", () => {
   test("onboards a synthetic wallet, verifies portfolio/account surfaces, and records red-team evidence", async ({ page, browser }) => {
     await mkdir(artifactDirectory, { recursive: true });
 
@@ -191,22 +191,34 @@ mockModeOnly("wallet portfolio and 계정 screen live QA", () => {
       await expect(page).toHaveURL(/\/dashboard$/, { timeout: 15_000 });
       assertion("SIWE verification returns to dashboard", true, "url.pathname=/dashboard");
 
-      act({ type: "goto", url: "/wallets", target: "connected portfolio" });
+      act({ type: "goto", url: "/wallets", target: "connected wallet list" });
       await page.goto("/wallets");
+      // 지갑 탭은 등록한 지갑 목록이다. 행을 누르면 그 지갑의 포트폴리오(/wallets/[address])로 들어간다.
+      const walletRows = page.locator('[data-surface="wallet-row"]');
+      await expect(walletRows.first()).toBeVisible({ timeout: 20_000 });
+      const listRowText = await walletRows.first().innerText();
+      const listRowHref = await walletRows.first().getAttribute("href");
+      const listOk = (await walletRows.count()) >= 1 && listRowHref === `/wallets/${account.address.toLowerCase()}` && listRowText.includes("소유 증명됨");
+      await check("Connected /wallets lists the registered wallet with its verification badge and links to its portfolio", listOk, "[data-surface=wallet-row]", { listRowHref, listRowText });
+      recordCase(cases, "wallet-list", "Wallet tab lists registered wallets", "wallet-row linking to /wallets/<address> with 소유 증명됨 badge", { listRowHref, listRowText }, listOk);
+
+      act({ type: "click", selector: "[data-surface=wallet-row]" });
+      await walletRows.first().click();
       const portfolioHeader = page.locator('[data-surface="wallet-portfolio-header"]');
-      const addressButton = page.getByRole("button", { name: /계정 열기 ·/ });
-      await expect(portfolioHeader).toBeVisible();
+      const addressButton = page.getByRole("link", { name: "지갑 목록으로" });
+      // 보유 자산은 서버 조회 뒤에 그려진다(ON 모드는 BE 잔액 조회에 최대 15초). 로딩 화면을 지나도록 기다린다.
+      await expect(portfolioHeader).toBeVisible({ timeout: 20_000 });
       await expect(addressButton).toBeVisible();
-      const portfolioState = page.locator('[data-surface="holding-row"], [data-surface="wallet-portfolio-empty"]');
+      const portfolioState = page.locator('[data-surface="holding-row"], [data-surface="wallet-portfolio-filter-empty"]');
       await expect(portfolioState.first()).toBeVisible({ timeout: 15_000 });
       const portfolioText = await portfolioHeader.innerText();
       const holdingRows = page.locator('[data-surface="holding-row"]');
       const holdingTexts = await holdingRows.allInnerTexts();
-      const emptyStateVisible = await page.locator('[data-surface="wallet-portfolio-empty"]').isVisible().catch(() => false);
+      const emptyStateVisible = await page.locator('[data-surface="wallet-portfolio-filter-empty"]').isVisible().catch(() => false);
       const holdingsVisible = holdingTexts.length > 0;
       const portfolioRendered = await portfolioHeader.isVisible() && await addressButton.isVisible() && (holdingsVisible || emptyStateVisible);
       await check(
-        "Connected /wallets renders the portfolio with holdings or the documented empty state",
+        "Wallet detail renders the portfolio with holdings or the documented empty state",
         portfolioRendered,
         "[data-surface=wallet-portfolio-header]",
         { holdings: holdingTexts.length, emptyStateVisible },
@@ -214,9 +226,9 @@ mockModeOnly("wallet portfolio and 계정 screen live QA", () => {
       recordCase(
         cases,
         "connected-portfolio",
-        "Connected wallet opens the portfolio surface",
-        "portfolio header, account button, and holdings or empty state",
-        { headerVisible: await portfolioHeader.isVisible(), addressButtonVisible: await addressButton.isVisible(), holdings: holdingTexts.length, emptyStateVisible },
+        "Wallet row opens the portfolio surface",
+        "portfolio header, back link, and holdings or empty state",
+        { headerVisible: await portfolioHeader.isVisible(), backVisible: await addressButton.isVisible(), holdings: holdingTexts.length, emptyStateVisible },
         portfolioRendered,
       );
 
@@ -272,50 +284,20 @@ mockModeOnly("wallet portfolio and 계정 screen live QA", () => {
       act({ type: "click", selector: "role=tab[name='토큰']" });
       await page.getByRole("tab", { name: "토큰", exact: true }).click();
 
-      act({ type: "click", selector: "role=button[name=/계정 열기/]" });
+      act({ type: "click", selector: "role=link[name='지갑 목록으로']" });
       await addressButton.click();
-      const accountView = page.locator('[data-surface="account-view"]');
-      const backButton = page.getByRole("button", { name: "뒤로", exact: true });
-      const accountConnect = page.locator('[data-surface="account-connect"]');
-      await expect(accountView).toBeVisible();
-      await expect(page.getByRole("heading", { name: "계정", exact: true })).toBeVisible();
-      await expect(backButton).toBeVisible();
-      await expect(page.getByText(/로그인은 유지/)).toBeVisible();
-      const addWalletButton = accountConnect.getByRole("button", { name: "지갑 추가하기", exact: true });
-      const accountSurfacePassed =
-        (await accountView.isVisible()) &&
-        (await backButton.isVisible()) &&
-        (await accountConnect.isVisible()) &&
-        (await addWalletButton.isVisible());
-      await check(
-        "A3 계정 exposes a 지갑 추가하기 path that keeps the login (no fake account list)",
-        accountSurfacePassed,
-        "[data-surface=account-connect] button",
-        { accountConnectText: await accountConnect.innerText() },
-      );
-      recordCase(
-        cases,
-        "A3",
-        "계정 screen exposes an additive wallet registration path that keeps the login",
-        "button 지갑 추가하기 inside data-surface=account-connect",
-        { accountView: await accountView.isVisible(), backButton: await backButton.isVisible(), addWalletButton: await addWalletButton.isVisible() },
-        accountSurfacePassed,
-      );
+      await expect(page).toHaveURL(/\/wallets$/);
+      await expect(walletRows.first()).toBeVisible({ timeout: 20_000 });
+      const backPortfolioReturned = (await walletRows.count()) >= 1 && !(await portfolioHeader.isVisible().catch(() => false));
+      await check("A4 뒤로 returns to the wallet list", backPortfolioReturned, "url.pathname=/wallets");
+      recordCase(cases, "A4", "Back navigation from the wallet detail returns to the list", "wallet rows visible and portfolio header absent", { rows: await walletRows.count() }, backPortfolioReturned);
+      // A3: 지갑 추가 경로는 목록 아래에 있고 로그인을 끊지 않는다.
+      const addWalletLink = page.locator('[data-surface="wallets-add"]');
+      const accountSurfacePassed = await addWalletLink.isVisible() && (await addWalletLink.getAttribute("href")) === "/connect-wallet" && await page.getByText(/로그인은 유지/).isVisible();
+      await check("A3 the wallet list exposes a 지갑 추가하기 path that keeps the login (no fake account list)", accountSurfacePassed, "[data-surface=wallets-add]");
+      recordCase(cases, "A3", "Wallet list exposes an additive wallet registration path that keeps the login", "link 지갑 추가하기 → /connect-wallet", { visible: await addWalletLink.isVisible() }, accountSurfacePassed);
       act({ type: "screenshot", selector: "body", target: accountScreenshot });
       await page.screenshot({ path: accountScreenshot, fullPage: true, type: "jpeg", quality: 85 });
-
-      act({ type: "click", selector: "role=button[name='뒤로']" });
-      await backButton.click();
-      const backPortfolioReturned = await page.locator('[data-surface="wallet-portfolio-header"]').isVisible() && await page.getByRole("button", { name: /계정 열기 ·/ }).isVisible() && !(await accountView.isVisible().catch(() => false));
-      await check("A4 뒤로 returns to the connected portfolio", backPortfolioReturned, "url.pathname=/wallets");
-      recordCase(
-        cases,
-        "A4",
-        "Back navigation from 계정 returns to portfolio",
-        "portfolio account button visible and account-view absent",
-        { portfolioHeaderVisible: await page.locator('[data-surface="wallet-portfolio-header"]').isVisible(), accountViewVisible: await accountView.isVisible().catch(() => false) },
-        backPortfolioReturned,
-      );
 
       const forbiddenCalls = await page.evaluate(() => window.__walletPortfolioForbiddenCalls ?? []);
       const forbiddenCallsPassed = forbiddenCalls.length === 0;
@@ -329,12 +311,10 @@ mockModeOnly("wallet portfolio and 계정 screen live QA", () => {
         forbiddenCallsPassed,
       );
 
-      // 지갑 추가 핸드오프: 계정 화면의 추가 버튼은 세션을 끊지 않는다. DID 로그인은 그대로 살아 있고
+      // 지갑 추가 핸드오프: 목록의 추가 버튼은 세션을 끊지 않는다. DID 로그인은 그대로 살아 있고
       // /connect-wallet이 추가 등록 모드로 열려야 한다 — /login으로 튀면 로그인이 풀린 것이므로 실패다.
-      act({ type: "click", selector: "role=button[name=/계정 열기/]", target: "reopen account to add a wallet" });
-      await page.getByRole("button", { name: /계정 열기 ·/ }).click();
-      act({ type: "click", selector: "role=button[name='지갑 추가하기']" });
-      await accountConnect.getByRole("button", { name: "지갑 추가하기", exact: true }).click();
+      act({ type: "click", selector: "[data-surface=wallets-add]", target: "add a wallet from the list" });
+      await page.locator('[data-surface="wallets-add"]').click();
       await expect(page).toHaveURL(/\/connect-wallet$/, { timeout: 15_000 });
       const addWalletHeadingVisible = await page.getByRole("heading", { name: "지갑을 어떻게 추가할까요?", exact: true }).isVisible();
       const addWalletPath = new URL(page.url()).pathname;

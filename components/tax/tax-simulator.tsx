@@ -1,5 +1,6 @@
 "use client";
 
+import { summarizeEventIds } from "@/lib/tax/limitations";
 import Link from "next/link";
 import { useState } from "react";
 import { MockProvenanceChip } from "@/components/ui/mock-provenance-chip";
@@ -642,11 +643,11 @@ export function TaxSimulator({
                     className="rounded-card border border-zinc-200 bg-white p-3 shadow-card"
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${LIMITATION_STYLE[limitation.kind]}`}>
+                      <span className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${LIMITATION_STYLE[limitation.kind]}`}>
                         {LIMITATION_LABEL[limitation.kind]}
                       </span>
                       {limitation.eventIds.length > 0 ? (
-                        <span className="shrink-0 text-xs text-zinc-400">{limitation.eventIds.join(", ")}</span>
+                        <span className="min-w-0 break-all text-xs text-zinc-400">{summarizeEventIds(limitation.eventIds)}</span>
                       ) : null}
 
                     </div>

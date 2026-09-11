@@ -1,4 +1,5 @@
 import type { ReactElement } from "react";
+import { TOKEN_MARK_DATA_URI } from "@/lib/assets/token-mark-data";
 
 /**
  * 토큰 표식.
@@ -45,12 +46,20 @@ const TOKEN_MARK: Record<string, ReactElement> = {
 
 /** 인라인 마크가 있는 티커인가. 없으면 호출부는 대체 마크(심볼 이니셜 등)로 그린다. */
 export function hasTokenMark(symbol: string): boolean {
-  return symbol.toUpperCase() in TOKEN_MARK;
+  const key = symbol.toUpperCase();
+  return key in TOKEN_MARK || key in TOKEN_MARK_DATA_URI;
 }
 
 export function TokenIcon({ symbol, size = 40 }: { symbol: string; size?: number }) {
-  const mark = TOKEN_MARK[symbol.toUpperCase()];
-  if (!mark) return null;
+  const key = symbol.toUpperCase();
+  const mark = TOKEN_MARK[key];
+  if (!mark) {
+    // JSX 벡터가 없는 티커는 인라인 데이터 URI(벡터 또는 48px 래스터)로 그린다. 둥근 클리핑으로 원형 마크와 모양을 맞춘다.
+    const dataUri = TOKEN_MARK_DATA_URI[key];
+    if (!dataUri) return null;
+    // eslint-disable-next-line @next/next/no-img-element -- 데이터 URI 인라인이라 next/image 최적화 대상이 아니다.
+    return <img aria-hidden="true" data-token-icon={key} src={dataUri} width={size} height={size} alt="" className="shrink-0 rounded-full" style={{ width: size, height: size }} />;
+  }
 
   return (
     <svg aria-hidden="true" data-token-icon={symbol.toUpperCase()} className="shrink-0" width={size} height={size} viewBox="0 0 32 32">

@@ -11,7 +11,8 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:integration": "vitest run --config vitest.integration.config.ts",
-    "test:proxy-shadow": "vitest run --config vitest.proxy-shadow.config.ts"
+    "test:proxy-shadow": "vitest run --config vitest.proxy-shadow.config.ts",
+    "test:e2e:aside": "bash tests/e2e-aside/run.sh"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.4",
