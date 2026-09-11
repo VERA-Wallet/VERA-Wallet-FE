@@ -122,3 +122,19 @@ export function limitationOf(message: string, eventIds: string[]): Limitation {
 export function sortLimitations(rows: Limitation[]): Limitation[] {
   return [...rows].sort((a, b) => LIMITATION_ORDER.indexOf(a.kind) - LIMITATION_ORDER.indexOf(b.kind));
 }
+
+/** 화면에 나열할 이벤트 ID 최대 개수. 그 뒤는 "외 N건"으로 접는다. */
+const EVENT_ID_PREVIEW_COUNT = 2;
+
+/**
+ * 한계 행의 이벤트 ID를 화면용 한 줄로 줄인다.
+ *
+ * 전부 나열하면 안 된다 — 한 항목이 수천 건일 때 한 줄이 수십만 자가 되어 화면 폭을 터뜨린다.
+ * (2026-09-11 룰셋 비교 화면에서 scrollWidth 2,843,588px 관측.) 근거 추적은 거래 탭 필터가 맡는다.
+ */
+export function summarizeEventIds(eventIds: string[]): string {
+  if (eventIds.length === 0) return "";
+  const head = eventIds.slice(0, EVENT_ID_PREVIEW_COUNT).join(", ");
+  const rest = eventIds.length - EVENT_ID_PREVIEW_COUNT;
+  return rest > 0 ? `${head} 외 ${rest}건` : head;
+}
