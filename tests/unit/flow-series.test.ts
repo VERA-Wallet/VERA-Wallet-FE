@@ -172,11 +172,28 @@ describe("선 좌표", () => {
 
   it("점마다 좌표를 하나씩 만들고 면은 바닥에서 닫는다", () => {
     const geometry = flowGeometry(plot, 600, 180)!;
-    expect(geometry.line.match(/[ML]/g)).toHaveLength(2);
+    // 시작점 M 하나와 점 사이 구간마다 곡선 C 하나. 직선 L은 더 이상 없다.
+    expect(geometry.line.match(/[MC]/g)).toHaveLength(2);
+    expect(geometry.line).not.toContain("L");
     expect(geometry.line.startsWith("M0 ")).toBe(true);
     expect(geometry.end.x).toBe(600);
     expect(geometry.area.endsWith("Z")).toBe(true);
     expect(geometry.area).toContain("L600 180");
+  });
+
+  it("봉우리에서 곡선이 실제 값보다 위로 튀지 않는다", () => {
+    // 급등 뒤 급락. 일반 스플라인이면 봉우리 앞뒤 제어점이 봉우리보다 높게 올라가 없던 잔액을 그린다.
+    const spike = [
+      { atMs: plot[0].atMs, value: "0" },
+      { atMs: plot[0].atMs + 1_000, value: "1000" },
+      { atMs: plot[0].atMs + 2_000, value: "0" },
+    ];
+    const geometry = flowGeometry(spike, 600, 180)!;
+    const peakY = geometry.marks[1].y;
+    const ys = [...geometry.line.matchAll(/C([\d.]+) ([\d.]+) ([\d.]+) ([\d.]+)/g)].flatMap((m) => [Number(m[2]), Number(m[4])]);
+    expect(ys.length).toBe(4);
+    // SVG는 y가 작을수록 위. 제어점이 봉우리보다 위(작은 y)로 가면 안 된다.
+    for (const y of ys) expect(y).toBeGreaterThanOrEqual(peakY);
   });
 
   it("값 범위가 0을 지날 때만 0선을 둔다", () => {

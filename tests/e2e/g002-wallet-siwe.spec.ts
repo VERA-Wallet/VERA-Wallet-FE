@@ -151,21 +151,21 @@ offModeOnly("G002 synthetic wallet SIWE red team", () => {
     act({ type: "click", selector: "role=link[name='데이터 불러오기']" });
     await page.getByRole("link", { name: "데이터 불러오기" }).click();
     await expect(page).toHaveURL(/\/connect-wallet$/);
-    // 기본 탭은 주소 입력이다. 이 스펙은 SIWE 계약을 검증하므로 소유 증명 탭으로 옮긴다.
-    act({ type: "click", selector: "role=tab[name='소유 증명']" });
-    await page.getByRole("tab", { name: "소유 증명" }).click();
+    // 기본 경로는 주소 입력이다. 이 스펙은 SIWE 계약을 검증하므로 브라우저 지갑 행을 고른다.
+    act({ type: "click", selector: "role=button[name='브라우저 지갑으로 연결']" });
+    await page.getByRole("button", { name: /브라우저 지갑으로 연결/ }).click();
     act({ type: "click", selector: "role=button[name='지갑 연결하기']" });
     await page.getByRole("button", { name: "지갑 연결하기" }).click();
     await page.waitForTimeout(750);
     const connected = await page.getByText(account.address).isVisible().catch(() => false);
     const onDashboard = /\/dashboard$/.test(new URL(page.url()).pathname);
     if (connected) {
-      act({ type: "click", selector: "role=button[name='SIWE 서명으로 계속']" });
-      await page.getByRole("button", { name: "SIWE 서명으로 계속" }).click();
+      act({ type: "click", selector: "role=button[name='서명하고 추가']" });
+      await page.getByRole("button", { name: "서명하고 추가" }).click();
       await page.waitForURL(/\/(?:dashboard|login)$/);
     }
     const completedWalletFlow = /\/dashboard$/.test(new URL(page.url()).pathname);
-    assertion("Synthetic wallet SIWE journey reached dashboard", completedWalletFlow, "role=button[name='SIWE 서명으로 계속']");
+    assertion("Synthetic wallet SIWE journey reached dashboard", completedWalletFlow, "role=button[name='서명하고 추가']");
     act({ type: "screenshot", selector: "body", target: walletScreenshot });
     await page.screenshot({ path: walletScreenshot, fullPage: true, type: "jpeg", quality: 85 });
     record(cases, "wallet-connect-and-siwe", "Synthetic provider connects, signs SIWE, and reaches dashboard", "/dashboard", { connected, onDashboard, finalUrl: page.url() }, completedWalletFlow);

@@ -83,8 +83,8 @@ test.describe.serial("G001 contract red team", () => {
     const didResponse = await request.post("/api/auth/did/present", { data: { country: "KR" } });
     // FE mock과 BE 모두 201을 준다(NestJS @Post 기본 성공 코드). 어댑터는 response.ok로 판정하므로 둘 다 정상이다.
     record(cases, "auth-did-present", "DID claim issues a DID-stage session", "2xx", didResponse.status(), didResponse.ok());
-    // 기본 탭은 주소 입력이다 — 서명 없이 등록하는 경로가 먼저 보여야 한다.
-    await checkPage("/connect-wallet", "지갑을 연결하세요", "이 주소로 계속");
+    // 첫 화면은 방법 선택이다 — 서명 없이 등록하는 "주소로 추가"가 추천으로 먼저 보여야 한다.
+    await checkPage("/connect-wallet", "지갑을 어떻게", "주소로 추가");
 
     // 완료 세션(dev 전용 test-login)에서 대시보드·내보내기를 검증한다.
     await bootstrapSession(page, { privateKey: "0x4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d" });

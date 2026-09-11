@@ -179,15 +179,15 @@ mockModeOnly("wallet portfolio and 계정 screen live QA", () => {
       act({ type: "click", selector: "role=link[name='데이터 불러오기']" });
       await page.getByRole("link", { name: "데이터 불러오기", exact: true }).click();
       await expect(page).toHaveURL(/\/connect-wallet$/);
-      // 기본 탭은 주소 입력이다. 이 시나리오는 SIWE 소유 증명 경로를 검증하므로 탭을 옮긴다.
-      act({ type: "click", selector: "role=tab[name='소유 증명']" });
-      await page.getByRole("tab", { name: "소유 증명", exact: true }).click();
+      // 기본 경로는 주소 입력이다. 이 시나리오는 SIWE 소유 증명 경로를 검증하므로 브라우저 지갑 행을 고른다.
+      act({ type: "click", selector: "role=button[name='브라우저 지갑으로 연결']" });
+      await page.getByRole("button", { name: /브라우저 지갑으로 연결/ }).click();
       act({ type: "click", selector: "role=button[name='지갑 연결하기']" });
       await page.getByRole("button", { name: "지갑 연결하기", exact: true }).click();
       await expect(page.getByText(account.address, { exact: true })).toBeVisible({ timeout: 15_000 });
       assertion("Synthetic EIP-1193 provider exposes the connected account", true, `text=${account.address}`);
-      act({ type: "click", selector: "role=button[name='SIWE 서명으로 계속']" });
-      await page.getByRole("button", { name: "SIWE 서명으로 계속", exact: true }).click();
+      act({ type: "click", selector: "role=button[name='서명하고 추가']" });
+      await page.getByRole("button", { name: "서명하고 추가", exact: true }).click();
       await expect(page).toHaveURL(/\/dashboard$/, { timeout: 15_000 });
       assertion("SIWE verification returns to dashboard", true, "url.pathname=/dashboard");
 
@@ -336,20 +336,20 @@ mockModeOnly("wallet portfolio and 계정 screen live QA", () => {
       act({ type: "click", selector: "role=button[name='지갑 추가하기']" });
       await accountConnect.getByRole("button", { name: "지갑 추가하기", exact: true }).click();
       await expect(page).toHaveURL(/\/connect-wallet$/, { timeout: 15_000 });
-      const addWalletHeadingVisible = await page.getByRole("heading", { name: "지갑을 추가하세요", exact: true }).isVisible();
+      const addWalletHeadingVisible = await page.getByRole("heading", { name: "지갑을 어떻게 추가할까요?", exact: true }).isVisible();
       const addWalletPath = new URL(page.url()).pathname;
       const addHandoffPassed = addWalletPath === "/connect-wallet" && addWalletHeadingVisible;
       await check(
         "Adding a wallet keeps the session and opens /connect-wallet in add mode",
         addHandoffPassed,
-        "url.pathname=/connect-wallet + heading 지갑을 추가하세요",
+        "url.pathname=/connect-wallet + heading 지갑을 어떻게 추가할까요?",
         { path: addWalletPath, addWalletHeadingVisible },
       );
       recordCase(
         cases,
         "add-wallet-handoff",
         "지갑 추가하기 keeps the DID session and opens the additive registration screen",
-        { path: "/connect-wallet", heading: "지갑을 추가하세요" },
+        { path: "/connect-wallet", heading: "지갑을 어떻게 추가할까요?" },
         { path: addWalletPath, heading: addWalletHeadingVisible },
         addHandoffPassed,
       );

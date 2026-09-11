@@ -24,11 +24,15 @@ const KNOWN_CONTRACTS: Record<string, string> = {
 };
 
 /** 알려진 컨트랙트면 이름, 아니면 null. 표시 분기("이름 (축약)" vs "축약만")가 이걸로 갈린다. */
-export function knownContractName(address: string): string | null {
-  return KNOWN_CONTRACTS[address.toLowerCase()] ?? null;
+/**
+ * `serverLabel`은 BE가 이벤트에 실어 준 이름(`counterparty_label`) — 브릿지·애그리게이터 레지스트리로 체인까지
+ * 확인한 주소에만 붙는다. 서버가 아는 이름이 FE mock 매핑보다 우선한다.
+ */
+export function knownContractName(address: string, serverLabel: string | null = null): string | null {
+  return serverLabel ?? KNOWN_CONTRACTS[address.toLowerCase()] ?? null;
 }
 
 /** 상대 표시 라벨 — 알려진 컨트랙트면 이름, 모르면 축약 주소(지어내지 않는다). */
-export function counterpartyLabel(address: string): string {
-  return knownContractName(address) ?? shortHash(address);
+export function counterpartyLabel(address: string, serverLabel: string | null = null): string {
+  return knownContractName(address, serverLabel) ?? shortHash(address);
 }

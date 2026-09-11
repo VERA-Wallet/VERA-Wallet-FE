@@ -17,3 +17,18 @@ describe("알려진 컨트랙트 레지스트리", () => {
     expect(counterpartyLabel(unknown)).toBe(shortHash(unknown));
   });
 });
+
+
+describe("서버가 준 상대 이름(counterparty_label)", () => {
+  it("서버 라벨이 있으면 FE mock 매핑보다 우선한다", () => {
+    const relay = "0x4cd00e387622c35bddb9b4c962c136462338bc31";
+    expect(knownContractName(relay)).toBeNull();
+    expect(knownContractName(relay, "Relay: Depository")).toBe("Relay: Depository");
+    expect(counterpartyLabel(relay, "Relay: Depository")).toBe("Relay: Depository");
+    // mock 매핑에도 있는 주소에 서버 라벨이 오면 서버 쪽을 쓴다 — 체인까지 보고 확인한 값이다.
+    expect(knownContractName("0x09aea4b2242abc8bb4bb78d537a67a245a7bec64", "Across: SpokePool")).toBe("Across: SpokePool");
+  });
+  it("서버 라벨이 null이면 종전 동작 그대로다", () => {
+    expect(counterpartyLabel("0x87870bca3f3fd6335c3f4ce8392d69350b4fa4e2", null)).toBe("Aave");
+  });
+});

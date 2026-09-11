@@ -21,10 +21,24 @@
   --color-dispose-soft: #ffedd5;
   --color-neutral-event: #2563eb;
   --color-neutral-event-soft: #dbeafe;
+  /*
+    진척을 모를 때 쓰는 왕복 막대. 0%에 멈춘 막대는 "아무 일도 일어나지 않는다"로 읽히고,
+    지어낸 진행률은 끝나지 않은 조회를 끝났다고 말한다 — 둘 다 피하려면 진행률 없이 살아 있다는 사실만 말해야 한다.
+  */
+  --animate-import-sweep: import-sweep 1.4s ease-in-out infinite;
   --radius-card: 1.25rem;
   --radius-sheet: 1.5rem;
   --shadow-card: 0 4px 16px rgb(24 24 27 / 0.06);
   --shadow-sheet: 0 -12px 32px rgb(24 24 27 / 0.14);
+}
+
+@keyframes import-sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
 }
 
 :root {

@@ -29,9 +29,9 @@ describe("wallet connection SIWE flow", () => {
     const nonce = { nonce: "noncefromserver123", domain: "wallet.example", uri: "https://wallet.example/login", chainId: 8453, issuedAt: "2026-07-30T00:00:00.000Z", expiresAtMs: 1785373200000 };
     vi.mocked(auth.requestNonce).mockResolvedValue(nonce);
     render(<ConnectWalletFlow walletPort={port} authClient={auth} />);
-    // 기본 탭은 주소 입력이다. 서명 경로는 소유 증명 탭으로 옮겨야 나온다.
-    fireEvent.click(screen.getByRole("tab", { name: "소유 증명" }));
-    fireEvent.click(screen.getByRole("button", { name: "SIWE 서명으로 계속" }));
+    // 기본 경로는 주소 입력이다. 서명 경로는 방법 선택에서 브라우저 지갑 행을 골라야 나온다.
+    fireEvent.click(screen.getByRole("button", { name: /브라우저 지갑으로 연결/ }));
+    fireEvent.click(screen.getByRole("button", { name: "서명하고 추가" }));
     await waitFor(() => expect(port.signMessage).toHaveBeenCalled());
     const message = vi.mocked(port.signMessage).mock.calls[0][0];
     expect(message).toContain("wallet.example wants you to sign in");
@@ -51,8 +51,13 @@ describe("wallet connection SIWE flow", () => {
     vi.mocked(auth.registerWatchWallet).mockResolvedValue({ walletAddress: "0x71C7656EC7ab88b098defB751B7401B5f6d8976F" });
     render(<ConnectWalletFlow walletPort={walletPort()} authClient={auth} />);
 
+    fireEvent.click(screen.getByRole("button", { name: /주소로 추가/ }));
     fireEvent.change(screen.getByLabelText("지갑 주소"), { target: { value: "0x71c7656ec7ab88b098defb751b7401b5f6d8976f" } });
-    fireEvent.click(screen.getByRole("button", { name: "이 주소로 계속" }));
+    // 유효한 주소가 들어오면 조회 체인이 읽기 전용으로 보이고, "다음"이 확인 시트를 연다.
+    expect(screen.getByText("EVM 주소를 확인했어요")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "다음" }));
+    expect(screen.getByRole("dialog", { name: "이 지갑을 추가할까요?" })).toHaveTextContent("0x71C7656EC7ab88b098defB751B7401B5f6d8976F");
+    fireEvent.click(screen.getByRole("button", { name: "추가하고 거래 불러오기" }));
 
     await waitFor(() => expect(auth.registerWatchWallet).toHaveBeenCalledWith({ address: "0x71C7656EC7ab88b098defB751B7401B5f6d8976F" }));
     expect(auth.verify).not.toHaveBeenCalled();
@@ -63,11 +68,13 @@ describe("wallet connection SIWE flow", () => {
     const auth = authClient();
     render(<ConnectWalletFlow walletPort={walletPort()} authClient={auth} />);
 
+    fireEvent.click(screen.getByRole("button", { name: /주소로 추가/ }));
     // 마지막 글자만 대소문자를 뒤집은 값 — 형식은 맞지만 EIP-55 체크섬이 깨진다.
     fireEvent.change(screen.getByLabelText("지갑 주소"), { target: { value: "0x71C7656EC7ab88b098defB751B7401B5f6d8976f" } });
-    fireEvent.click(screen.getByRole("button", { name: "이 주소로 계속" }));
 
+    // 오류는 버튼을 누르기 전에 입력창 아래에 바로 보이고, 다음 단계는 잠긴다.
     expect(await screen.findByRole("alert")).toHaveTextContent("체크섬");
+    expect(screen.getByRole("button", { name: "다음" })).toBeDisabled();
     expect(auth.registerWatchWallet).not.toHaveBeenCalled();
   });
 
@@ -75,10 +82,11 @@ describe("wallet connection SIWE flow", () => {
     const auth = authClient();
     render(<ConnectWalletFlow walletPort={walletPort()} authClient={auth} boundAddress="0x71C7656EC7ab88b098defB751B7401B5f6d8976F" />);
 
+    fireEvent.click(screen.getByRole("button", { name: /주소로 추가/ }));
     fireEvent.change(screen.getByLabelText("지갑 주소"), { target: { value: "0x71c7656ec7ab88b098defb751b7401b5f6d8976f" } });
-    fireEvent.click(screen.getByRole("button", { name: "이 주소로 계속" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("이미 등록된 지갑입니다");
+    expect(await screen.findByRole("alert")).toHaveTextContent("이미 등록된 지갑이에요");
+    expect(screen.getByRole("button", { name: "다음" })).toBeDisabled();
     expect(auth.registerWatchWallet).not.toHaveBeenCalled();
   });
 
@@ -89,10 +97,12 @@ describe("wallet connection SIWE flow", () => {
     const auth = authClient();
     render(<ConnectWalletFlow walletPort={port} authClient={auth} boundAddress="0x71C7656EC7ab88b098defB751B7401B5f6d8976F" />);
 
-    fireEvent.click(screen.getByRole("tab", { name: "소유 증명" }));
-    fireEvent.click(screen.getByRole("button", { name: "SIWE 서명으로 계속" }));
+    fireEvent.click(screen.getByRole("button", { name: /브라우저 지갑으로 연결/ }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("이미 등록된 지갑입니다");
+    // 서명 버튼이 잠기고 이유가 먼저 보인다 — 서명창을 띄운 뒤에 거절하지 않는다.
+    expect(await screen.findByRole("alert")).toHaveTextContent("이미 등록된 지갑이에요");
+    expect(screen.getByRole("button", { name: "서명하고 추가" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "서명하고 추가" }));
     expect(auth.requestNonce).not.toHaveBeenCalled();
     expect(port.signMessage).not.toHaveBeenCalled();
   });
@@ -103,9 +113,9 @@ describe("wallet connection SIWE flow", () => {
     vi.mocked(auth.requestNonce).mockResolvedValue({ nonce: "nonce12345", domain: "wallet.example", uri: "https://wallet.example", chainId: 8453, issuedAt: "2026-07-30T00:00:00.000Z", expiresAtMs: 1785373200000 });
     vi.mocked(auth.verify).mockRejectedValue(new AuthClientError(400, "challenge_mismatch", "Challenge does not match signed message."));
     render(<ConnectWalletFlow walletPort={port} authClient={auth} />);
-    // 기본 탭은 주소 입력이다. 서명 경로는 소유 증명 탭으로 옮겨야 나온다.
-    fireEvent.click(screen.getByRole("tab", { name: "소유 증명" }));
-    fireEvent.click(screen.getByRole("button", { name: "SIWE 서명으로 계속" }));
+    // 기본 경로는 주소 입력이다. 서명 경로는 방법 선택에서 브라우저 지갑 행을 골라야 나온다.
+    fireEvent.click(screen.getByRole("button", { name: /브라우저 지갑으로 연결/ }));
+    fireEvent.click(screen.getByRole("button", { name: "서명하고 추가" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("인증 요청 불일치");
   });
 });

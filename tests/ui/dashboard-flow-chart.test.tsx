@@ -59,9 +59,9 @@ describe("내역 화면의 지갑 이력 그래프", () => {
     render(<FlowChart events={wallet} state="ready" />);
 
     expect(screen.getByTestId("flow-total").textContent).toBe("₩800,000");
-    // 선이 실제로 그려졌는가 — 점 수만큼 좌표가 있어야 한다.
+    // 선이 실제로 그려졌는가 — 시작점 M 하나와 점 사이 곡선 구간(C)이 점 수만큼 있어야 한다.
     const line = screen.getByTestId("flow-line").getAttribute("d") ?? "";
-    expect(line.match(/[ML]/g)).toHaveLength(3);
+    expect(line.match(/[MC]/g)).toHaveLength(3);
     expect(chart().textContent).not.toMatch(/세금|부담|과세/);
   });
 
