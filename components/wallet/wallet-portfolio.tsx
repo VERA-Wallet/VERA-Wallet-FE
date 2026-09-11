@@ -2,6 +2,8 @@
 
 import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
+import type { Provenance } from "@/lib/http/envelope";
+import { MockProvenanceChip } from "@/components/ui/mock-provenance-chip";
 import { AssetLogo } from "@/components/ui/asset-logo";
 import { ChainIcon } from "@/components/ui/chain-icon";
 import { WalletMark } from "@/components/wallet/wallet-mark";
@@ -12,6 +14,7 @@ import {
   holdingsGainSummary,
   portfolioTotalUsd,
   returnPercent,
+  unpricedCount,
   type DefiPosition,
   type Holding,
   type NftHolding,
@@ -21,6 +24,23 @@ import {
 type Tab = "token" | "nft" | "defi";
 
 const PALETTE = ["#4F46E5", "#0891B2", "#059669", "#D97706", "#DB2777", "#7C3AED", "#2563EB", "#DC2626"];
+
+/** 조회가 불완전한 사실을 문장으로. 비어 있으면 "전부 읽었다"는 뜻이다. */
+function coverageNotesOf(coverage: { skippedChainIds: number[]; truncatedChainIds: number[]; unresolvedCount: number; droppedCount: number } | undefined): string[] {
+  if (!coverage) return [];
+  const notes: string[] = [];
+  if (coverage.skippedChainIds.length > 0) notes.push(`${coverage.skippedChainIds.map(chainLabel).join(", ")} 잔액을 읽지 못했습니다. 그 네트워크 자산은 표시되지 않습니다.`);
+  if (coverage.truncatedChainIds.length > 0) notes.push(`${coverage.truncatedChainIds.map(chainLabel).join(", ")}의 토큰이 너무 많아 일부만 표시합니다.`);
+  if (coverage.unresolvedCount > 0) notes.push(`토큰 ${coverage.unresolvedCount}개의 정보를 조회하지 못해 표시하지 않습니다.`);
+  if (coverage.droppedCount > 0) notes.push(`형식이 맞지 않아 자산 ${coverage.droppedCount}개를 표시하지 못했습니다.`);
+  return notes;
+}
+
+function formatAsOf(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return date.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+}
 
 /** 시드에서 결정론적으로 고른 목록 구분색. 브랜드 색이라고 주장하지 않는다. */
 function seededColor(seed: string, offset: number): string {
@@ -33,12 +53,20 @@ function initials(text: string): string {
   return text.replace(/[^A-Za-z0-9]/g, "").slice(0, 3).toUpperCase() || "?";
 }
 
+const COST_STATUS_LABEL: Record<Holding["costStatus"], string> = {
+  ready: "",
+  partial: "원가 일부만 확인",
+  unknown: "원가 미확인",
+  fx_unavailable: "환율 조회 실패",
+};
+
 /**
  * 평가손익·수익률 한 조각. 상승은 브랜드 receive(녹색), 하락은 dispose(적색) 토큰을 쓰고,
- * 색만으로 구분하지 못하는 사용자를 위해 부호(`+`/`−`)를 늘 함께 둔다. 손익은 mock 취득원가로
- * 계산한 **표시 산술**이다(세무 엔진이 아니다).
+ * 색만으로 구분하지 못하는 사용자를 위해 부호(`+`/`−`)를 늘 함께 둔다. 손익은 원장 취득원가로
+ * 계산한 **표시 산술**이다(세무 엔진이 아니다). 시세나 원가가 없으면 숫자 대신 이유를 쓴다 — 0으로 그리지 않는다.
  */
-function GainInline({ gainUsd, costUsd }: { gainUsd: string; costUsd: string }): React.JSX.Element {
+function GainInline({ gainUsd, costUsd, reason }: { gainUsd: string | null; costUsd: string | null; reason?: string }): React.JSX.Element {
+  if (gainUsd === null || costUsd === null) return <span className="text-zinc-400">{reason || "손익 미확인"}</span>;
   const direction = compareDecimal(gainUsd, "0");
   const tone = direction > 0 ? "text-receive" : direction < 0 ? "text-dispose" : "text-zinc-500";
   const percent = returnPercent(costUsd, gainUsd);
@@ -94,7 +122,11 @@ function TokenRow({ holding }: { holding: Holding }) {
       <div className="shrink-0 text-right">
         <p className="font-semibold tabular-nums text-zinc-900">{formatFiat(holding.valueUsd, "USD")}</p>
         <p className="mt-0.5 text-xs font-medium">
-          <GainInline gainUsd={holdingGainUsd(holding)} costUsd={holding.costUsd} />
+          <GainInline
+            gainUsd={holdingGainUsd(holding)}
+            costUsd={holding.costUsd}
+            reason={holding.valueUsd === null ? "시세 미확인" : COST_STATUS_LABEL[holding.costStatus] || undefined}
+          />
         </p>
         <p className="mt-0.5 text-xs tabular-nums text-zinc-400">
           {holding.amount} {holding.symbol}
@@ -106,8 +138,9 @@ function TokenRow({ holding }: { holding: Holding }) {
 
 /**
  * 토큰 탭 상단 요약. 보이는 토큰들의 전체 평가액·평가손익·수익률을 한눈에 보인다.
- * NFT·디파이는 mock 취득원가가 없어 이 요약은 **토큰 보유분**만 집계한다 —
+ * NFT·디파이는 취득원가가 없어 이 요약은 **토큰 보유분**만 집계한다 —
  * 상단 큰 총액(portfolioTotalUsd)과 뜻이 갈리지 않도록 무엇을 집계했는지 라벨로 밝힌다.
+ * 시세·원가가 없는 행은 손익에서 빠지고, 몇 건이 빠졌는지 함께 말한다.
  */
 function TokenHoldingsSummary({ holdings }: { holdings: Holding[] }): React.JSX.Element {
   const summary = holdingsGainSummary(holdings);
@@ -117,7 +150,8 @@ function TokenHoldingsSummary({ holdings }: { holdings: Holding[] }): React.JSX.
       <p className="mt-1 text-2xl font-bold tabular-nums text-zinc-900">{formatFiat(summary.valueUsd, "USD")}</p>
       <p className="mt-1 text-sm font-semibold">
         <span className="text-zinc-500">평가손익 </span>
-        <GainInline gainUsd={summary.gainUsd} costUsd={summary.costUsd} />
+        <GainInline gainUsd={summary.gainUsd} costUsd={summary.costUsd} reason="원가 확인된 자산 없음" />
+        {summary.excluded > 0 && summary.gainUsd !== null ? <span className="font-normal text-zinc-400"> · {summary.excluded}개 제외</span> : null}
       </p>
     </div>
   );
@@ -190,8 +224,9 @@ function DefiRow({ position }: { position: DefiPosition }) {
 
 /**
  * 연결된 지갑의 지갑 홈(코인베이스형). 이 앱의 데이터/제약에 맞춘다:
- * - 토큰(ETH·USDT·USDC)·NFT(대중 컬렉션)·디파이 포지션을 각각 탭으로 보여준다.
- * - 값은 **데모 예시 데이터(USD)** 다 — 실시간 시세·잔액이 아니다(화면에 명시). 로고/아트워크는 기억으로
+ * - 토큰·NFT(대중 컬렉션)·디파이 포지션을 각각 탭으로 보여준다.
+ * - 토큰은 `/api/portfolio/holdings`에서 온다. 출처가 mock이면 "데모 예시"라고 말하고, live면 조회 시각과
+ *   시세 출처를 말한다. NFT·디파이는 아직 데모 예시다(화면에 명시). 로고/아트워크는 기억으로
  *   그리지 않는다(토큰은 공개 벡터, NFT/프로토콜은 생성 플레이스홀더).
  * - 매수·스왑·전송·받기 액션과 광고 배너는 두지 않는다. 네트워크 배지는 자산 이미지 우하단에 얹는다.
  * - 각 탭은 평가액 내림차순으로 정렬된 상태로 들어온다.
@@ -202,6 +237,10 @@ export function WalletPortfolio({
   tokens,
   nfts,
   defi,
+  provenance,
+  asOf,
+  coverage,
+  freshness,
   onOpenAccount,
 }: {
   address: string;
@@ -210,13 +249,25 @@ export function WalletPortfolio({
   tokens: Holding[];
   nfts: NftHolding[];
   defi: DefiPosition[];
+  /** 토큰 보유분의 출처. mock이면 데모 예시라고 말한다. */
+  provenance: Provenance;
+  /** 토큰 조회 시각(ISO). live일 때 "언제 기준"인지 말한다. */
+  asOf: string | null;
+  /** 조회가 불완전하다는 사실들 — 화면이 "전부 보여준다"고 단정하지 않게 한다. */
+  coverage?: { skippedChainIds: number[]; truncatedChainIds: number[]; unresolvedCount: number; droppedCount: number };
+  /** 데이터가 있는 채로 다시 조회 중이거나 배경 재조회가 실패했을 때. 이전 값을 "지금 것"처럼 단정하지 않게 알린다. */
+  freshness?: "refreshing" | "stale";
   onOpenAccount: () => void;
 }): React.JSX.Element {
   const [tab, setTab] = useState<Tab>("token");
   const [network, setNetwork] = useState<number | "all">("all");
   const [copied, setCopied] = useState(false);
 
+  // live면 NFT·디파이는 아직 조회하지 않으므로(빈 목록으로 들어온다) 총액은 토큰뿐이다. mock이면 데모 지갑 전체를 더한다.
   const total = useMemo(() => portfolioTotalUsd(tokens, nfts, defi), [tokens, nfts, defi]);
+  const unpriced = useMemo(() => unpricedCount(tokens), [tokens]);
+  const coverageNotes = useMemo(() => coverageNotesOf(coverage), [coverage]);
+  const nftDefiSupported = provenance === "mock";
 
   const activeChainIds = useMemo(() => {
     const source = tab === "nft" ? nfts : tab === "defi" ? defi : tokens;
@@ -291,9 +342,29 @@ export function WalletPortfolio({
         <p data-surface="wallet-total" className="mt-5 text-4xl font-bold tracking-tight text-zinc-900">
           {formatFiat(total, "USD")}
         </p>
-        <p className="mt-1 text-xs text-zinc-400">
-          데모 예시 데이터(USD) 기준입니다 — 실시간 시세·잔액이 아닙니다.
-        </p>
+        {provenance === "mock" ? (
+          <p className="mt-1 flex items-center gap-2 text-xs text-zinc-400">
+            <MockProvenanceChip />
+            <span>데모 예시 데이터(USD) 기준입니다 — 실시간 시세·잔액이 아닙니다.</span>
+          </p>
+        ) : (
+          <p data-surface="wallet-total-note" className="mt-1 text-xs text-zinc-400">
+            토큰 평가액 — 온체인 잔액과 DexScreener 시세{asOf ? ` (${formatAsOf(asOf)} 기준)` : ""}. 취득원가는 오늘 환율로 USD 환산. NFT·디파이는 아직 조회하지 않습니다.
+            {unpriced > 0 ? ` 시세 없는 자산 ${unpriced}개는 총액에서 뺐습니다.` : ""}
+          </p>
+        )}
+        {freshness === "refreshing" ? (
+          <p data-surface="wallet-freshness" aria-live="polite" className="mt-1 text-xs text-zinc-500">보유 자산을 다시 확인하는 중입니다.</p>
+        ) : freshness === "stale" ? (
+          <p data-surface="wallet-freshness" aria-live="polite" className="mt-1 text-xs text-amber-700">최근 조회에 실패해 이전 결과를 보여주고 있습니다.</p>
+        ) : null}
+        {coverageNotes.length > 0 ? (
+          <ul data-surface="wallet-coverage" className="mt-2 space-y-0.5 text-xs text-amber-700">
+            {coverageNotes.map((note) => (
+              <li key={note}>{note}</li>
+            ))}
+          </ul>
+        ) : null}
       </header>
 
       <section className="mt-5">
@@ -339,13 +410,20 @@ export function WalletPortfolio({
           </label>
         </div>
 
-        {shownCount === 0 ? (
+        {tab !== "token" && !nftDefiSupported ? (
+          // 실지갑에서는 아직 NFT·디파이를 조회하지 않는다. "없다"고 하면 거짓이므로 "아직 안 본다"고 말한다.
+          <p data-surface="wallet-portfolio-unsupported" className="mt-6 text-center text-sm text-zinc-500">
+            {tab === "nft" ? "NFT 보유 조회는 준비 중입니다." : "디파이 포지션 조회는 준비 중입니다."}
+          </p>
+        ) : shownCount === 0 ? (
           <p data-surface="wallet-portfolio-filter-empty" className="mt-6 text-center text-sm text-zinc-500">
             {tab === "nft"
               ? "보유한 NFT가 없습니다."
               : tab === "defi"
                 ? "디파이 포지션이 없습니다."
-                : "선택한 조건에 해당하는 자산이 없습니다."}
+                : tokens.length === 0
+                  ? "이 지갑에서 잔액이 있는 토큰을 찾지 못했습니다."
+                  : "선택한 조건에 해당하는 자산이 없습니다."}
           </p>
         ) : tab === "nft" ? (
           <ul className="mt-3 grid grid-cols-2 gap-3">

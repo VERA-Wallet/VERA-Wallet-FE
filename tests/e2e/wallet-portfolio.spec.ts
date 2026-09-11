@@ -195,14 +195,15 @@ mockModeOnly("wallet portfolio and 계정 screen live QA", () => {
       await page.goto("/wallets");
       const portfolioHeader = page.locator('[data-surface="wallet-portfolio-header"]');
       const addressButton = page.getByRole("button", { name: /계정 열기 ·/ });
-      await expect(portfolioHeader).toBeVisible();
+      // 보유 자산은 서버 조회 뒤에 그려진다(ON 모드는 BE 잔액 조회에 최대 15초). 로딩 화면을 지나도록 기다린다.
+      await expect(portfolioHeader).toBeVisible({ timeout: 20_000 });
       await expect(addressButton).toBeVisible();
-      const portfolioState = page.locator('[data-surface="holding-row"], [data-surface="wallet-portfolio-empty"]');
+      const portfolioState = page.locator('[data-surface="holding-row"], [data-surface="wallet-portfolio-filter-empty"]');
       await expect(portfolioState.first()).toBeVisible({ timeout: 15_000 });
       const portfolioText = await portfolioHeader.innerText();
       const holdingRows = page.locator('[data-surface="holding-row"]');
       const holdingTexts = await holdingRows.allInnerTexts();
-      const emptyStateVisible = await page.locator('[data-surface="wallet-portfolio-empty"]').isVisible().catch(() => false);
+      const emptyStateVisible = await page.locator('[data-surface="wallet-portfolio-filter-empty"]').isVisible().catch(() => false);
       const holdingsVisible = holdingTexts.length > 0;
       const portfolioRendered = await portfolioHeader.isVisible() && await addressButton.isVisible() && (holdingsVisible || emptyStateVisible);
       await check(

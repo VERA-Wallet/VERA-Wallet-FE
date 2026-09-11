@@ -129,3 +129,82 @@ export const setValueOverrideRequestSchema: z.ZodType<SetValueOverrideRequestDTO
   value_override: valueOverrideInputSchema.nullable(),
   expectedVersion: z.number().int().positive(),
 });
+
+// ── 포트폴리오(보유 자산) ────────────────────────────────────────────────────
+
+export type HoldingPriceStatus = "priced" | "illiquid" | "no_market" | "unknown";
+/**
+ * 취득원가의 상태. 원가는 원장(인덱싱된 이벤트)의 이동평균이고 시세는 현재 스팟이라 출처가 다르다.
+ * - ready: 원장이 잔액 전량의 원가를 안다.
+ * - partial: 원장이 아는 수량(`trackedAmount`)이 잔액과 다르다 — 불러오기 중이거나 이벤트가 빠졌다.
+ * - unknown: 원장이 이 자산을 모른다.
+ * - fx_unavailable: 원가는 있는데(원장 통화) 환율 소스가 응답하지 않아 USD로 옮기지 못했다.
+ */
+export type HoldingCostStatus = "ready" | "partial" | "unknown" | "fx_unavailable";
+
+export type PortfolioHoldingDTO = {
+  chainId: number;
+  assetType: "NATIVE" | "ERC20";
+  /** 소문자 컨트랙트. 네이티브 코인은 null. */
+  contract: string | null;
+  symbol: string;
+  name: string;
+  decimals: number;
+  /** 사람이 읽는 수량(십진 문자열, 반올림 없음). */
+  amount: string;
+  priceUsd: string | null;
+  valueUsd: string | null;
+  priceStatus: HoldingPriceStatus;
+  /** USD로 환산한 취득원가. `costStatus`가 ready·partial일 때만 값이 있다. */
+  costUsd: string | null;
+  costStatus: HoldingCostStatus;
+  /** 원장이 원가를 아는 수량. `amount`와 다르면 partial. */
+  trackedAmount: string | null;
+};
+
+export type PortfolioHoldingsDTO = {
+  walletAddresses: string[];
+  holdings: PortfolioHoldingDTO[];
+  /** 읽지 못한 체인. 그 체인 자산은 없는 게 아니라 모르는 것이다. */
+  skippedChainIds: number[];
+  /** 토큰 목록이 상한에 걸려 일부를 생략한 체인. */
+  truncatedChainIds: number[];
+  /** 메타데이터 조회 실패로 빠진 토큰 수. 0보다 크면 목록이 불완전하다. */
+  unresolvedCount: number;
+  /** 형식이 맞지 않아 FE가 버린 행 수. 조용히 버리면 목록이 완전한 것처럼 보이면서 자산이 사라진다(이벤트 목록의 `dropped`와 같은 이유). */
+  droppedCount: number;
+  /** 시세가 있는 보유분의 USD 합. 시세 없는 자산은 0이 아니라 빠져 있다. */
+  totalValueUsd: string;
+  unpricedCount: number;
+  asOf: string;
+};
+
+const nullableDecimalString = decimalString.nullable();
+
+export const portfolioHoldingSchema: z.ZodType<PortfolioHoldingDTO> = z.object({
+  chainId: z.number().int(),
+  assetType: z.enum(["NATIVE", "ERC20"]),
+  contract: z.string().nullable(),
+  symbol: z.string().min(1),
+  name: z.string().min(1),
+  decimals: z.number().int().nonnegative(),
+  amount: decimalString,
+  priceUsd: nullableDecimalString,
+  valueUsd: nullableDecimalString,
+  priceStatus: z.enum(["priced", "illiquid", "no_market", "unknown"]),
+  costUsd: nullableDecimalString,
+  costStatus: z.enum(["ready", "partial", "unknown", "fx_unavailable"]),
+  trackedAmount: nullableDecimalString,
+});
+
+export const portfolioHoldingsSchema: z.ZodType<PortfolioHoldingsDTO> = z.object({
+  walletAddresses: z.array(z.string()),
+  holdings: z.array(portfolioHoldingSchema),
+  skippedChainIds: z.array(z.number().int()),
+  truncatedChainIds: z.array(z.number().int()),
+  unresolvedCount: z.number().int().nonnegative(),
+  droppedCount: z.number().int().nonnegative(),
+  totalValueUsd: decimalString,
+  unpricedCount: z.number().int().nonnegative(),
+  asOf: z.string(),
+});

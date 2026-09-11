@@ -15,6 +15,8 @@ import type { RuleSetRepository } from "@/lib/ports/ruleset-repository";
 import type { SummaryProvider } from "@/lib/ports/summary-provider";
 import type { TaxEnginePort } from "@/lib/ports/tax-engine";
 import type { SessionReader } from "@/lib/ports/session-reader";
+import type { HoldingsProvider } from "@/lib/ports/holdings-provider";
+import { MockHoldingsProvider } from "@/lib/mock/holdings";
 import { backendOrigin, isMockApiMode } from "@/lib/api-mode";
 
 // mock 저장소 수명주기(로컬/테스트 단일 프로세스 전용):
@@ -64,6 +66,18 @@ export const taxEngine: TaxEnginePort = new TaxEngineService(async () => {
   // BE 응답의 provenance를 그대로 잇는다. BE가 MOCK_MODE면 mock, 실어댑터면 live — 세금 화면의 배지는 이 값을 따른다.
   return readBeWalletEventsWithProvenance(await getSessionCookieHeaderForEventReader());
 }, fxRateProvider);
+
+/**
+ * 보유 자산 소스. 요청마다 만든다 — ON 경로는 그 요청의 세션 쿠키를 BE로 넘겨야 한다. 지갑 주소는 라우트가 이미 읽은 세션에서 받는다.
+ * ON에서 FE mock 데모를 그대로 쓰면 대시보드(BE 거래)와 지갑 홈(FE 데모 잔액)이 서로 다른 우주를 말한다.
+ * 원가 환산은 세금 계산과 같은 환율 **소스**를 쓴다. 단 날짜 기준은 다르다 — 세금은 거래일 환율, 여기는 오늘 환율(어댑터 주석 참고).
+ */
+export async function holdingsProviderFor(request: Request, walletAddress: string): Promise<HoldingsProvider> {
+  if (isMockApiMode()) return new MockHoldingsProvider([walletAddress]);
+  const { getSessionCookieHeaderForEventReader } = await import("@/lib/dal");
+  const { BeHttpHoldingsProvider } = await import("@/lib/adapters/http/holdings-provider.server");
+  return new BeHttpHoldingsProvider(await getSessionCookieHeaderForEventReader(request), fxRateProvider);
+}
 
 export const anchorProofProvider: AnchorProofProvider = {
   getProof: async (eventId) => {

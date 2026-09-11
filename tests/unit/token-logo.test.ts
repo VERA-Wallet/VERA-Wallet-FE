@@ -13,7 +13,7 @@ const asset = (over: Partial<Parameters<typeof resolveTokenMark>[0]>) => ({
 describe("resolveTokenMark", () => {
   it("등록된 체인의 캐노니컬 USDC/USDT 컨트랙트를 마크로 해석한다", () => {
     expect(resolveTokenMark(asset({ chain_id: 8453, asset_contract: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913" }))).toBe("USDC");
-    expect(resolveTokenMark(asset({ chain_id: 137, asset_contract: "0xc2132d05d31c914a87c6611c10748aecb2540811" }))).toBe("USDT");
+    expect(resolveTokenMark(asset({ chain_id: 137, asset_contract: "0xc2132d05d31c914a87c6611c10748aeb04b58e8f" }))).toBe("USDT");
   });
 
   it("컨트랙트 대소문자를 정규화한다", () => {

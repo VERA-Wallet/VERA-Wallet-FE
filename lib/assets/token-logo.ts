@@ -43,7 +43,7 @@ const ERC20_MARK: Record<string, TokenMarkKey> = {
   // USDT (Tether)
   "1:0xdac17f958d2ee523a2206206994597c13d831ec7": "USDT", // Ethereum
   "10:0x94b008aa00579c1307b0ef2c499ad98a8ce58e58": "USDT", // Optimism
-  "137:0xc2132d05d31c914a87c6611c10748aecb2540811": "USDT", // Polygon
+  "137:0xc2132d05d31c914a87c6611c10748aeb04b58e8f": "USDT", // Polygon
   "8453:0xfde4c96c8593536e31f229ea8f37b2ada2699bb2": "USDT", // Base
   "42161:0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9": "USDT", // Arbitrum
 };

@@ -7,7 +7,8 @@ const ACCESS_TOKEN_COOKIE_NAME = "vw_access_token";
 /**
  * BE가 소유하는 경로만 열거하는 positive allowlist.
  *
- * 여기 없는 경로(`/api/tax/*`, `/api/rulesets`, `/api/auth/test-login`)는 FE Route Handler가 그대로 처리한다.
+ * 여기 없는 경로(`/api/tax/*`, `/api/rulesets`, `/api/portfolio/*`, `/api/auth/test-login`)는 FE Route Handler가 그대로 처리한다.
+ * `/api/portfolio/holdings`는 ON 모드에서도 FE가 소유한다 — BE 응답의 KRW 원가를 환율로 USD 환산해야 하기 때문이다(`/api/tax/*`와 같은 이유).
  * "가릴 것을 빼는" negative 방식을 쓰지 않는 이유: 규칙을 하나 빠뜨리면 조용히 BE로 새어 나가고,
  * 번들된 path-to-regexp는 `?`로 시작하는 그룹(negative lookahead)을 거부한다.
  * VERAWALLET_MOCK_MODE=true면 backendOrigin()이 undefined를 돌려 프록시가 전면 OFF(FE mock 처리)한다.
