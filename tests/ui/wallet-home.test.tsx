@@ -275,14 +275,17 @@ describe("wallet home (portfolio of one registered wallet)", () => {
     expect(groups[0]).toHaveTextContent("2개 체인");
     expect(groups[0]).toHaveTextContent("US$2,720.00"); // 2,400 + 320
     expect(groups[0]).toHaveTextContent("0.85 ETH");
-    // 옵티미즘 쪽 원가가 없으니 묶음 손익은 내지 않는다 — 이더리움의 +240을 슬쩍 보여주지 않는다.
-    expect(groups[0]).toHaveTextContent("환율 조회 실패");
+    // 옵티미즘 쪽 원가가 없으니 묶음 손익은 내지 않는다 — 이더리움의 +240을 슬쩍 보여주지 않고, 원가 문구도 쓰지 않는다.
     expect(groups[0]).not.toHaveTextContent("+US$240.00");
+    expect(groups[0]).not.toHaveTextContent("원가");
+    expect(groups[0]).not.toHaveTextContent("환율");
     const rows = container.querySelectorAll('[data-surface="holding-row"]');
     expect(rows).toHaveLength(2);
     expect(rows[0]).toHaveTextContent("USDC");
-    expect(rows[0]).toHaveTextContent("원가 일부만 확인"); // partial: no gain figure
-    expect(rows[0]).not.toHaveTextContent("US$260.00");
+    expect(rows[0]).not.toHaveTextContent("US$260.00"); // partial: no gain figure, and no cost wording either
+    expect(rows[0]).not.toHaveTextContent("원가");
+    // 모든 행에 펼침 아이콘이 있다.
+    expect(rows[0].querySelector("button[aria-expanded]")).not.toBeNull();
     expect(rows[1]).toHaveTextContent("GHOST");
     expect(rows[1]).toHaveTextContent("시세 미확인");
     expect(rows[1]).not.toHaveTextContent("US$0.00");
@@ -294,7 +297,7 @@ describe("wallet home (portfolio of one registered wallet)", () => {
     expect(members[0]).toHaveTextContent("Ethereum");
     expect(members[0]).toHaveTextContent("US$2,400.00");
     expect(members[1]).toHaveTextContent("Optimism");
-    expect(members[1]).toHaveTextContent("환율 조회 실패");
+    expect(members[1]).not.toHaveTextContent("환율");
 
     // 손익 요약은 원가·시세가 다 있는 ETH 한 줄만 더하고, 3줄이 빠졌다고 말한다.
     const summary = container.querySelector('[data-surface="wallet-holdings-summary"]')!;

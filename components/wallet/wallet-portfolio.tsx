@@ -15,7 +15,6 @@ import {
   compareDecimal,
   groupGainUsd,
   groupHoldings,
-  holdingGainUsd,
   holdingsGainSummary,
   portfolioTotalUsd,
   returnPercent,
@@ -59,20 +58,14 @@ function initials(text: string): string {
   return text.replace(/[^A-Za-z0-9]/g, "").slice(0, 3).toUpperCase() || "?";
 }
 
-const COST_STATUS_LABEL: Record<Holding["costStatus"], string> = {
-  ready: "",
-  partial: "원가 일부만 확인",
-  unknown: "원가 미확인",
-  fx_unavailable: "환율 조회 실패",
-};
-
 /**
  * 평가손익·수익률 한 조각. 상승은 브랜드 receive(녹색), 하락은 dispose(적색) 토큰을 쓰고,
  * 색만으로 구분하지 못하는 사용자를 위해 부호(`+`/`−`)를 늘 함께 둔다. 손익은 원장 취득원가로
  * 계산한 **표시 산술**이다(세무 엔진이 아니다). 시세나 원가가 없으면 숫자 대신 이유를 쓴다 — 0으로 그리지 않는다.
  */
-function GainInline({ gainUsd, costUsd, reason }: { gainUsd: string | null; costUsd: string | null; reason?: string }): React.JSX.Element {
-  if (gainUsd === null || costUsd === null) return <span className="text-zinc-400">{reason || "손익 미확인"}</span>;
+function GainInline({ gainUsd, costUsd, reason }: { gainUsd: string | null; costUsd: string | null; reason?: string }): React.JSX.Element | null {
+  // 원가 확인 여부는 화면에 쓰지 않는다(2026-09-11 결정). 근거가 없으면 시세가 없다는 사실만 말하고, 그 외엔 비운다.
+  if (gainUsd === null || costUsd === null) return reason ? <span className="text-zinc-400">{reason}</span> : null;
   const direction = compareDecimal(gainUsd, "0");
   const tone = direction > 0 ? "text-receive" : direction < 0 ? "text-dispose" : "text-zinc-500";
   const percent = returnPercent(costUsd, gainUsd);
@@ -99,49 +92,6 @@ function BadgedAvatar({ chainId, ariaLabel, children }: { chainId: number; ariaL
   );
 }
 
-function TokenAvatar({ holding }: { holding: Holding }) {
-  return (
-    <BadgedAvatar chainId={holding.chainId} ariaLabel={`${holding.name} · ${holding.chainName}`}>
-      <AssetLogo
-        event={{
-          chain_id: holding.chainId,
-          asset_type: holding.contract === null ? "NATIVE" : "ERC20",
-          asset_contract: holding.contract,
-          asset_symbol: holding.symbol,
-          asset_icon_url: null,
-          token_id: null,
-        }}
-        size={40}
-      />
-    </BadgedAvatar>
-  );
-}
-
-function TokenRow({ holding }: { holding: Holding }) {
-  return (
-    <li data-surface="holding-row" className="flex items-center gap-3 py-3">
-      <TokenAvatar holding={holding} />
-      <div className="min-w-0 flex-1">
-        <p className="min-w-0 truncate font-semibold text-zinc-900">{holding.symbol}</p>
-        <p className="mt-0.5 truncate text-sm text-zinc-500">{formatFiat(holding.priceUsd, "USD")}</p>
-      </div>
-      <div className="shrink-0 text-right">
-        <p className="font-semibold tabular-nums text-zinc-900">{formatFiat(holding.valueUsd, "USD")}</p>
-        <p className="mt-0.5 text-xs font-medium">
-          <GainInline
-            gainUsd={holdingGainUsd(holding)}
-            costUsd={holding.costUsd}
-            reason={holding.valueUsd === null ? "시세 미확인" : COST_STATUS_LABEL[holding.costStatus] || undefined}
-          />
-        </p>
-        <p className="mt-0.5 text-xs tabular-nums text-zinc-400">
-          {holding.amount} {holding.symbol}
-        </p>
-      </div>
-    </li>
-  );
-}
-
 /**
  * 같은 정식 자산의 체인별 행을 합친 묶음 행. 멤버가 하나면 `TokenRow`와 같다.
  * 로고는 첫 멤버(평가액 최대)로 그리고, 체인 배지는 멤버 체인 전부를 겹쳐 보인다. 누르면 체인별 내역이 펼쳐진다.
@@ -149,16 +99,16 @@ function TokenRow({ holding }: { holding: Holding }) {
  */
 function GroupRow({ group }: { group: HoldingGroup }) {
   const [open, setOpen] = useState(false);
-  if (group.members.length === 1) return <TokenRow holding={group.members[0]} />;
   const first = group.members[0];
+  const multi = group.members.length > 1;
   const gain = groupGainUsd(group);
   const reason = group.valueUsd === null
     ? "시세 미확인"
     : group.unpricedCount > 0
       ? `${group.unpricedCount}개 체인 시세 미확인`
-      : COST_STATUS_LABEL[group.costStatus] || undefined;
+      : undefined;
   return (
-    <li data-surface="holding-group" data-chains={group.chainIds.join(",")}>
+    <li data-surface={multi ? "holding-group" : "holding-row"} data-chains={group.chainIds.join(",")}>
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
@@ -182,7 +132,7 @@ function GroupRow({ group }: { group: HoldingGroup }) {
         <div className="min-w-0 flex-1">
           <p className="min-w-0 truncate font-semibold text-zinc-900">
             {group.symbol}
-            <span className="ml-1.5 text-xs font-medium text-zinc-400">{group.chainIds.length}개 체인</span>
+            {multi ? <span className="ml-1.5 text-xs font-medium text-zinc-400">{group.chainIds.length}개 체인</span> : null}
           </p>
           <p className="mt-0.5 truncate text-sm text-zinc-500">{formatFiat(group.priceUsd, "USD")}</p>
         </div>
@@ -208,7 +158,6 @@ function GroupRow({ group }: { group: HoldingGroup }) {
               <span className="text-right">
                 <span className="block tabular-nums font-semibold text-zinc-900">{formatFiat(member.valueUsd, "USD")}</span>
                 <span className="block text-xs tabular-nums text-zinc-400">{member.amount} {member.symbol}</span>
-                {member.costStatus !== "ready" ? <span className="block text-xs text-zinc-400">{COST_STATUS_LABEL[member.costStatus]}</span> : null}
               </span>
             </li>
           ))}
@@ -232,7 +181,7 @@ function TokenHoldingsSummary({ holdings }: { holdings: Holding[] }): React.JSX.
       <p className="mt-1 text-2xl font-bold tabular-nums text-zinc-900">{formatFiat(summary.valueUsd, "USD")}</p>
       <p className="mt-1 text-sm font-semibold">
         <span className="text-zinc-500">평가손익 </span>
-        <GainInline gainUsd={summary.gainUsd} costUsd={summary.costUsd} reason="원가 확인된 자산 없음" />
+        <GainInline gainUsd={summary.gainUsd} costUsd={summary.costUsd} />
         {summary.excluded > 0 && summary.gainUsd !== null ? <span className="font-normal text-zinc-400"> · {summary.excluded}개 제외</span> : null}
       </p>
     </div>
