@@ -50,6 +50,7 @@ function toPortfolioHolding(holding: BeHoldingDTO, rates: { table: FxRateTable; 
     priceUsd: holding.priceUsd === null ? null : normalizeDecimal(holding.priceUsd),
     valueUsd: holding.valueUsd,
     priceStatus: holding.priceStatus,
+    canonicalAssetId: holding.canonicalAssetId ?? null,
   };
   const cost = holding.costBasis;
   if (cost === null) return { ...base, costUsd: null, costStatus: "unknown", trackedAmount: null };

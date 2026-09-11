@@ -13,6 +13,8 @@ import type { SessionWalletVerification } from "@/lib/ports/session-snapshot";
 import { chainLabel, formatFiat, shortHash } from "@/lib/format";
 import {
   compareDecimal,
+  groupGainUsd,
+  groupHoldings,
   holdingGainUsd,
   holdingsGainSummary,
   portfolioTotalUsd,
@@ -20,6 +22,7 @@ import {
   unpricedCount,
   type DefiPosition,
   type Holding,
+  type HoldingGroup,
   type NftHolding,
   type WalletChain,
 } from "@/lib/wallet/holdings";
@@ -135,6 +138,82 @@ function TokenRow({ holding }: { holding: Holding }) {
           {holding.amount} {holding.symbol}
         </p>
       </div>
+    </li>
+  );
+}
+
+/**
+ * 같은 정식 자산의 체인별 행을 합친 묶음 행. 멤버가 하나면 `TokenRow`와 같다.
+ * 로고는 첫 멤버(평가액 최대)로 그리고, 체인 배지는 멤버 체인 전부를 겹쳐 보인다. 누르면 체인별 내역이 펼쳐진다.
+ * 손익은 멤버 전부 시세가 있고 원가가 ready일 때만 — 한 체인이라도 부족하면 이유를 쓴다.
+ */
+function GroupRow({ group }: { group: HoldingGroup }) {
+  const [open, setOpen] = useState(false);
+  if (group.members.length === 1) return <TokenRow holding={group.members[0]} />;
+  const first = group.members[0];
+  const gain = groupGainUsd(group);
+  const reason = group.valueUsd === null
+    ? "시세 미확인"
+    : group.unpricedCount > 0
+      ? `${group.unpricedCount}개 체인 시세 미확인`
+      : COST_STATUS_LABEL[group.costStatus] || undefined;
+  return (
+    <li data-surface="holding-group" data-chains={group.chainIds.join(",")}>
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+        aria-label={`${group.symbol} 체인별 보기`}
+        className="flex w-full items-center gap-3 py-3 text-left"
+      >
+        <span className="relative inline-flex shrink-0" aria-hidden="true">
+          <AssetLogo
+            event={{ chain_id: first.chainId, asset_type: first.contract === null ? "NATIVE" : "ERC20", asset_contract: first.contract, asset_symbol: first.symbol, asset_icon_url: null, token_id: null }}
+            size={40}
+          />
+          <span className="absolute -bottom-1 -right-1 flex rounded-full bg-white ring-2 ring-white">
+            {group.chainIds.slice(0, 3).map((chainId, index) => (
+              <span key={chainId} className={`inline-flex rounded-full ring-2 ring-white ${index > 0 ? "-ml-1.5" : ""}`}>
+                <ChainIcon chainId={chainId} size={16} />
+              </span>
+            ))}
+          </span>
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="min-w-0 truncate font-semibold text-zinc-900">
+            {group.symbol}
+            <span className="ml-1.5 text-xs font-medium text-zinc-400">{group.chainIds.length}개 체인</span>
+          </p>
+          <p className="mt-0.5 truncate text-sm text-zinc-500">{formatFiat(group.priceUsd, "USD")}</p>
+        </div>
+        <div className="shrink-0 text-right">
+          <p className="font-semibold tabular-nums text-zinc-900">{formatFiat(group.valueUsd, "USD")}</p>
+          <p className="mt-0.5 text-xs font-medium">
+            <GainInline gainUsd={gain} costUsd={group.costUsd} reason={reason} />
+          </p>
+          <p className="mt-0.5 text-xs tabular-nums text-zinc-400">
+            {group.amount} {group.symbol}
+          </p>
+        </div>
+        <svg aria-hidden="true" width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={`shrink-0 text-zinc-400 transition-transform ${open ? "rotate-180" : ""}`}>
+          <path d="m6 9 6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {open ? (
+        <ul data-surface="holding-group-members" className="mb-2 ml-[52px] divide-y divide-zinc-100 rounded-xl bg-zinc-50 px-3">
+          {group.members.map((member) => (
+            <li key={member.key} data-surface="holding-group-member" className="flex items-center gap-2 py-2 text-sm">
+              <ChainIcon chainId={member.chainId} size={16} />
+              <span className="min-w-0 flex-1 truncate text-zinc-700">{member.chainName}</span>
+              <span className="text-right">
+                <span className="block tabular-nums font-semibold text-zinc-900">{formatFiat(member.valueUsd, "USD")}</span>
+                <span className="block text-xs tabular-nums text-zinc-400">{member.amount} {member.symbol}</span>
+                {member.costStatus !== "ready" ? <span className="block text-xs text-zinc-400">{COST_STATUS_LABEL[member.costStatus]}</span> : null}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </li>
   );
 }
@@ -279,6 +358,8 @@ export function WalletPortfolio({
   }, [tab, tokens, nfts, defi]);
 
   const shownTokens = useMemo(() => tokens.filter((item) => network === "all" || item.chainId === network), [tokens, network]);
+  // 모든 네트워크를 볼 때만 같은 자산을 체인 너머로 합친다. 네트워크를 고르면 그 체인의 행 그대로다.
+  const shownGroups = useMemo(() => (network === "all" ? groupHoldings(shownTokens) : shownTokens.map((holding) => groupHoldings([holding])[0])), [shownTokens, network]);
   const shownNfts = useMemo(() => nfts.filter((item) => network === "all" || item.chainId === network), [nfts, network]);
   const shownDefi = useMemo(() => defi.filter((item) => network === "all" || item.chainId === network), [defi, network]);
 
@@ -446,8 +527,8 @@ export function WalletPortfolio({
           <>
             <TokenHoldingsSummary holdings={shownTokens} />
             <ul className="mt-1 divide-y divide-zinc-100">
-              {shownTokens.map((holding) => (
-                <TokenRow key={holding.key} holding={holding} />
+              {shownGroups.map((group) => (
+                <GroupRow key={group.key} group={group} />
               ))}
             </ul>
           </>

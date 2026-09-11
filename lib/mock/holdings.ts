@@ -42,6 +42,7 @@ export class MockHoldingsProvider implements HoldingsProvider {
           costUsd: holding.costUsd,
           costStatus: "ready",
           trackedAmount: holding.amount,
+          canonicalAssetId: holding.symbol.toLowerCase(),
         })) : [],
         skippedChainIds: [],
         truncatedChainIds: [],

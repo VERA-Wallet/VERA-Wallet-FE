@@ -31,6 +31,8 @@ export const beHoldingSchema = z.object({
   valueUsd: decimalString.nullable(),
   priceStatus: z.enum(["priced", "illiquid", "no_market", "unknown"]),
   costBasis: beHoldingCostBasisSchema.nullable(),
+  // 선택인 이유: 이 필드가 없던 BE 배포에 붙어도 지갑이 비면 안 된다. 없으면 "묶지 않는다"(null)로 읽는다.
+  canonicalAssetId: z.string().min(1).nullable().optional(),
 });
 
 /**

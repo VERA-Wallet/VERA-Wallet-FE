@@ -160,6 +160,8 @@ export type PortfolioHoldingDTO = {
   costStatus: HoldingCostStatus;
   /** 원장이 원가를 아는 수량. `amount`와 다르면 partial. */
   trackedAmount: string | null;
+  /** 표시용 정식 자산 키(`eth`·`usdc`…). 다른 체인의 같은 발행처 토큰은 같은 키다. null이면 합치지 않는다. 심볼로 묶지 않는다. */
+  canonicalAssetId: string | null;
 };
 
 /** 지갑 하나의 요약. 지갑 탭의 행이 "이 지갑에 얼마가, 어느 체인에" 있는지를 이걸로 말한다. */
@@ -210,6 +212,7 @@ export const portfolioHoldingSchema: z.ZodType<PortfolioHoldingDTO> = z.object({
   costUsd: nullableDecimalString,
   costStatus: z.enum(["ready", "partial", "unknown", "fx_unavailable"]),
   trackedAmount: nullableDecimalString,
+  canonicalAssetId: z.string().min(1).nullable(),
 });
 
 export const walletSummarySchema: z.ZodType<WalletSummaryDTO> = z.object({

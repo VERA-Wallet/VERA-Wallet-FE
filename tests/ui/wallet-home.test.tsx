@@ -233,10 +233,10 @@ describe("wallet home (portfolio of one registered wallet)", () => {
       data: {
         walletAddresses: [WALLET],
         holdings: [
-          { chainId: 1, assetType: "NATIVE", contract: null, symbol: "ETH", name: "ETH", decimals: 18, amount: "0.75", priceUsd: "3200", valueUsd: "2400", priceStatus: "priced", costUsd: "2160", costStatus: "ready", trackedAmount: "0.75" },
-          { chainId: 8453, assetType: "ERC20", contract: "0xusdc", symbol: "USDC", name: "USD Coin", decimals: 6, amount: "500", priceUsd: "1", valueUsd: "500", priceStatus: "priced", costUsd: "240", costStatus: "partial", trackedAmount: "250" },
-          { chainId: 137, assetType: "ERC20", contract: "0xghost", symbol: "GHOST", name: "Ghost", decimals: 18, amount: "12", priceUsd: null, valueUsd: null, priceStatus: "unknown", costUsd: null, costStatus: "unknown", trackedAmount: null },
-          { chainId: 10, assetType: "NATIVE", contract: null, symbol: "ETH", name: "ETH", decimals: 18, amount: "0.1", priceUsd: "3200", valueUsd: "320", priceStatus: "priced", costUsd: null, costStatus: "fx_unavailable", trackedAmount: "0.1" },
+          { chainId: 1, assetType: "NATIVE", contract: null, symbol: "ETH", name: "ETH", decimals: 18, amount: "0.75", priceUsd: "3200", valueUsd: "2400", priceStatus: "priced", costUsd: "2160", costStatus: "ready", trackedAmount: "0.75", canonicalAssetId: "eth" },
+          { chainId: 8453, assetType: "ERC20", contract: "0xusdc", symbol: "USDC", name: "USD Coin", decimals: 6, amount: "500", priceUsd: "1", valueUsd: "500", priceStatus: "priced", costUsd: "240", costStatus: "partial", trackedAmount: "250", canonicalAssetId: "usdc" },
+          { chainId: 137, assetType: "ERC20", contract: "0xghost", symbol: "GHOST", name: "Ghost", decimals: 18, amount: "12", priceUsd: null, valueUsd: null, priceStatus: "unknown", costUsd: null, costStatus: "unknown", trackedAmount: null, canonicalAssetId: null },
+          { chainId: 10, assetType: "NATIVE", contract: null, symbol: "ETH", name: "ETH", decimals: 18, amount: "0.1", priceUsd: "3200", valueUsd: "320", priceStatus: "priced", costUsd: null, costStatus: "fx_unavailable", trackedAmount: "0.1", canonicalAssetId: "eth" },
         ],
         byWallet: [{ address: WALLET, verificationMethod: "watch_only", totalValueUsd: "3220", chainIds: [1, 10, 137, 8453], holdingsCount: 4, unpricedCount: 1 }],
         skippedChainIds: [42161],
@@ -267,16 +267,34 @@ describe("wallet home (portfolio of one registered wallet)", () => {
     // 체인 칩도 토큰이 실제로 놓인 체인만(1·8453·137·10) — 데모 NFT의 체인이 끼지 않는다.
     expect(screen.getByLabelText("네트워크 Ethereum, Optimism, Polygon, Base")).toBeInTheDocument(); // 자산 수 동률 → chainId 오름차순
 
+    // ETH는 이더리움·옵티미즘 두 체인이 하나의 묶음 행이다(정식 자산 키 eth). 나머지는 낱개 행.
+    const groups = container.querySelectorAll('[data-surface="holding-group"]');
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toHaveAttribute("data-chains", "1,10");
+    expect(groups[0]).toHaveTextContent("ETH");
+    expect(groups[0]).toHaveTextContent("2개 체인");
+    expect(groups[0]).toHaveTextContent("US$2,720.00"); // 2,400 + 320
+    expect(groups[0]).toHaveTextContent("0.85 ETH");
+    // 옵티미즘 쪽 원가가 없으니 묶음 손익은 내지 않는다 — 이더리움의 +240을 슬쩍 보여주지 않는다.
+    expect(groups[0]).toHaveTextContent("환율 조회 실패");
+    expect(groups[0]).not.toHaveTextContent("+US$240.00");
     const rows = container.querySelectorAll('[data-surface="holding-row"]');
-    expect(rows).toHaveLength(4);
-    expect(rows[0]).toHaveTextContent("+US$240.00"); // ETH 2,400 − 2,160
-    expect(rows[1]).toHaveTextContent("원가 일부만 확인"); // partial: no gain figure
-    expect(rows[1]).not.toHaveTextContent("US$260.00");
-    expect(rows[2]).toHaveTextContent("환율 조회 실패"); // OP ETH: value shown, cost not
-    expect(rows[2]).toHaveTextContent("US$320.00");
-    expect(rows[3]).toHaveTextContent("GHOST");
-    expect(rows[3]).toHaveTextContent("시세 미확인");
-    expect(rows[3]).not.toHaveTextContent("US$0.00");
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent("USDC");
+    expect(rows[0]).toHaveTextContent("원가 일부만 확인"); // partial: no gain figure
+    expect(rows[0]).not.toHaveTextContent("US$260.00");
+    expect(rows[1]).toHaveTextContent("GHOST");
+    expect(rows[1]).toHaveTextContent("시세 미확인");
+    expect(rows[1]).not.toHaveTextContent("US$0.00");
+    // 묶음을 펼치면 체인별 내역이 나온다.
+    const user0 = userEvent.setup();
+    await user0.click(screen.getByRole("button", { name: "ETH 체인별 보기" }));
+    const members = container.querySelectorAll('[data-surface="holding-group-member"]');
+    expect(members).toHaveLength(2);
+    expect(members[0]).toHaveTextContent("Ethereum");
+    expect(members[0]).toHaveTextContent("US$2,400.00");
+    expect(members[1]).toHaveTextContent("Optimism");
+    expect(members[1]).toHaveTextContent("환율 조회 실패");
 
     // 손익 요약은 원가·시세가 다 있는 ETH 한 줄만 더하고, 3줄이 빠졌다고 말한다.
     const summary = container.querySelector('[data-surface="wallet-holdings-summary"]')!;

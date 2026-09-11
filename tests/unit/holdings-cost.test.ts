@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { PortfolioHoldingDTO } from "@/lib/http/dto";
 import type { BeHoldingsDTO } from "@/lib/schema/be-portfolio-transport";
 import { coverageOf, costCurrenciesNeedingFx, normalizeDecimal, toPortfolioHoldings } from "@/lib/wallet/holdings-cost";
-import { holdingsFromDto, holdingsGainSummary, totalValueUsd, unpricedCount } from "@/lib/wallet/holdings";
+import { groupGainUsd, groupHoldings, holdingsFromDto, holdingsGainSummary, totalValueUsd, unpricedCount } from "@/lib/wallet/holdings";
 
 const USDC = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
@@ -12,6 +12,7 @@ function beHolding(overrides: Partial<BeHoldingsDTO["holdings"][number]> = {}): 
     chainId: 1, assetType: "NATIVE", contract: null, symbol: "ETH", name: "ETH", decimals: 18,
     rawAmount: "750000000000000000", amount: "0.75", priceUsd: "3200", valueUsd: "2400", priceStatus: "priced",
     costBasis: { currency: "KRW", totalCost: "3000000", avgCost: "4000000", trackedAmount: "0.75" },
+    canonicalAssetId: "eth",
     ...overrides,
   };
 }
@@ -89,7 +90,7 @@ describe("toPortfolioHoldings (BE 원가 KRW → FE 계약 USD)", () => {
 });
 
 function dto(overrides: Partial<PortfolioHoldingDTO> = {}): PortfolioHoldingDTO {
-  return { chainId: 1, assetType: "ERC20", contract: USDC, symbol: "USDC", name: "USD Coin", decimals: 6, amount: "500", priceUsd: "1", valueUsd: "500", priceStatus: "priced", costUsd: "480", costStatus: "ready", trackedAmount: "500", ...overrides };
+  return { chainId: 1, assetType: "ERC20", contract: USDC, symbol: "USDC", name: "USD Coin", decimals: 6, amount: "500", priceUsd: "1", valueUsd: "500", priceStatus: "priced", costUsd: "480", costStatus: "ready", trackedAmount: "500", canonicalAssetId: "usdc", ...overrides };
 }
 
 describe("holdingsFromDto + null-aware display math", () => {
@@ -128,5 +129,56 @@ describe("holdingsFromDto + null-aware display math", () => {
   it("reports null gain (not 0) when no row has a cost", () => {
     const rows = holdingsFromDto([dto({ costUsd: null, costStatus: "fx_unavailable" })]);
     expect(holdingsGainSummary(rows)).toEqual({ valueUsd: "500", costUsd: null, gainUsd: null, returnPercent: null, excluded: 1 });
+  });
+});
+
+describe("groupHoldings (같은 정식 자산의 체인별 행 합치기)", () => {
+  const eth = (chainId: number, over: Partial<PortfolioHoldingDTO> = {}) => dto({ chainId, assetType: "NATIVE", contract: null, symbol: "ETH", name: "ETH", decimals: 18, canonicalAssetId: "eth", ...over });
+
+  it("merges rows sharing a canonical id: amounts and values summed, chains listed, logo from the largest member", () => {
+    const groups = groupHoldings(holdingsFromDto([
+      eth(10, { amount: "0.1", valueUsd: "320", costUsd: "300", costStatus: "ready" }),
+      eth(1, { amount: "0.75", valueUsd: "2400", costUsd: "2160", costStatus: "ready" }),
+      dto(),
+    ]));
+    expect(groups.map((group) => [group.symbol, group.members.length, group.amount, group.valueUsd, group.chainIds])).toEqual([
+      ["ETH", 2, "0.85", "2720", [1, 10]],
+      ["USDC", 1, "500", "500", [1]],
+    ]);
+    expect(groups[0].members[0].chainId).toBe(1);
+    expect(groups[0]).toMatchObject({ costUsd: "2460", costStatus: "ready" });
+    expect(groupGainUsd(groups[0])).toBe("260");
+  });
+
+  it("never merges by symbol: rows without a canonical id stay separate even with the same symbol", () => {
+    const groups = groupHoldings(holdingsFromDto([
+      dto({ contract: "0x1", canonicalAssetId: null }),
+      dto({ contract: "0x2", canonicalAssetId: null }),
+    ]));
+    expect(groups).toHaveLength(2);
+    expect(groups.every((group) => group.members.length === 1)).toBe(true);
+  });
+
+  it("refuses a group gain when any member lacks price or full cost — one partial chain taints the whole group", () => {
+    const partial = groupHoldings(holdingsFromDto([
+      eth(1, { amount: "0.75", valueUsd: "2400", costUsd: "2160", costStatus: "ready" }),
+      eth(10, { amount: "0.1", valueUsd: "320", costUsd: "100", costStatus: "partial", trackedAmount: "0.05" }),
+    ]))[0];
+    expect(partial).toMatchObject({ valueUsd: "2720", costUsd: null, costStatus: "partial" });
+    expect(groupGainUsd(partial)).toBeNull();
+
+    const unpriced = groupHoldings(holdingsFromDto([
+      eth(1, { amount: "0.75", valueUsd: "2400", costUsd: "2160", costStatus: "ready" }),
+      eth(10, { amount: "0.1", priceUsd: null, valueUsd: null, priceStatus: "unknown", costUsd: "100", costStatus: "ready" }),
+    ]))[0];
+    // 시세 없는 멤버는 평가액에 0으로 더해지지 않고 unpricedCount에 센다.
+    expect(unpriced).toMatchObject({ valueUsd: "2400", unpricedCount: 1, amount: "0.85" });
+    expect(groupGainUsd(unpriced)).toBeNull();
+
+    const fx = groupHoldings(holdingsFromDto([
+      eth(1, { costUsd: "2160", costStatus: "ready" }),
+      eth(10, { costUsd: null, costStatus: "fx_unavailable" }),
+    ]))[0];
+    expect(fx.costStatus).toBe("fx_unavailable");
   });
 });

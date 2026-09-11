@@ -26,6 +26,8 @@ export interface Holding {
   // 원장이 자산을 모르거나 환율이 없으면 null — costStatus가 이유를 말한다.
   costUsd: string | null;
   costStatus: HoldingCostStatus;
+  /** 표시용 정식 자산 키. 같은 키의 다른 체인 행을 화면이 하나로 합친다. null이면 합치지 않는다. */
+  canonicalAssetId: string | null;
 }
 
 /** API 계약(`PortfolioHoldingDTO`) → 화면 행. 키·체인 이름만 덧붙이고 값은 그대로 잇는다. 평가액 내림차순(시세 없는 행은 뒤). */
@@ -45,8 +47,92 @@ export function holdingsFromDto(items: readonly PortfolioHoldingDTO[]): Holding[
       priceStatus: item.priceStatus,
       costUsd: item.costUsd,
       costStatus: item.costStatus,
+      canonicalAssetId: item.canonicalAssetId,
     }))
     .sort(byValueDesc);
+}
+
+/**
+ * 같은 정식 자산의 체인별 행을 하나로 합친 묶음. 합치지 않는 행도 멤버 하나짜리 묶음이다.
+ *
+ * - 수량·평가액은 합. 시세 없는 멤버는 평가액에서 빠지고 `unpricedCount`에 센다(0으로 더하지 않는다).
+ *   멤버 전부 시세가 없으면 평가액은 null이다.
+ * - 원가는 **모든 멤버가 ready**일 때만 합해서 낸다. 한 체인이라도 partial이면 묶음도 partial이다 —
+ *   반쪽 원가로 합산 손익을 내면 부풀려진다. 원가 상태의 우선순위: partial > fx_unavailable > unknown.
+ * - 세금·원장은 체인별 그대로다. 이 묶음은 화면이 그리는 단위일 뿐이다.
+ */
+export interface HoldingGroup {
+  key: string;
+  symbol: string;
+  name: string;
+  canonicalAssetId: string | null;
+  /** 평가액 내림차순 정렬된 체인별 행. 로고는 첫 멤버로 그린다. */
+  members: Holding[];
+  chainIds: number[];
+  amount: string;
+  priceUsd: string | null;
+  valueUsd: string | null;
+  unpricedCount: number;
+  costUsd: string | null;
+  costStatus: HoldingCostStatus;
+}
+
+export function groupHoldings(holdings: readonly Holding[]): HoldingGroup[] {
+  const byKey = new Map<string, Holding[]>();
+  for (const holding of holdings) {
+    const key = holding.canonicalAssetId === null ? `row:${holding.key}` : `asset:${holding.canonicalAssetId}`;
+    const bucket = byKey.get(key) ?? [];
+    bucket.push(holding);
+    byKey.set(key, bucket);
+  }
+  const groups: HoldingGroup[] = [];
+  for (const [key, bucket] of byKey) {
+    const members = [...bucket].sort(byValueDesc);
+    const first = members[0];
+    let amount = "0";
+    let valueUsd: string | null = null;
+    let unpricedCount = 0;
+    let costUsd: string | null = "0";
+    let costStatus: HoldingCostStatus = "ready";
+    for (const member of members) {
+      amount = addDecimal(amount, member.amount);
+      if (member.valueUsd === null) unpricedCount += 1;
+      else valueUsd = addDecimal(valueUsd ?? "0", member.valueUsd);
+      if (member.costStatus === "ready" && member.costUsd !== null) {
+        if (costUsd !== null) costUsd = addDecimal(costUsd, member.costUsd);
+      } else {
+        costUsd = null;
+        costStatus = worseCostStatus(costStatus, member.costStatus);
+      }
+    }
+    if (costStatus === "ready" && costUsd === null) costStatus = "unknown";
+    groups.push({
+      key,
+      symbol: first.symbol,
+      name: first.name,
+      canonicalAssetId: first.canonicalAssetId,
+      members,
+      chainIds: [...new Set(members.map((member) => member.chainId))],
+      amount,
+      priceUsd: members.find((member) => member.priceUsd !== null)?.priceUsd ?? null,
+      valueUsd,
+      unpricedCount,
+      costUsd,
+      costStatus,
+    });
+  }
+  return groups.sort(byValueDesc);
+}
+
+const COST_STATUS_RANK: Record<HoldingCostStatus, number> = { ready: 0, unknown: 1, fx_unavailable: 2, partial: 3 };
+function worseCostStatus(a: HoldingCostStatus, b: HoldingCostStatus): HoldingCostStatus {
+  return COST_STATUS_RANK[b] > COST_STATUS_RANK[a] ? b : a;
+}
+
+/** 묶음의 평가손익. 멤버 전부 시세가 있고 원가가 ready일 때만 — 아니면 null. */
+export function groupGainUsd(group: HoldingGroup): string | null {
+  if (group.valueUsd === null || group.unpricedCount > 0 || group.costUsd === null || group.costStatus !== "ready") return null;
+  return subtractDecimal(group.valueUsd, group.costUsd);
 }
 
 function byValueDesc(left: { valueUsd: string | null; key: string }, right: { valueUsd: string | null; key: string }): number {
@@ -220,6 +306,7 @@ export function demoWalletHoldings(): Holding[] {
     priceStatus: "priced" as const,
     costUsd: token.costUsd,
     costStatus: "ready" as const,
+    canonicalAssetId: token.symbol.toLowerCase(),
   })).sort((left, right) => {
     const byValue = compareDecimal(right.valueUsd, left.valueUsd);
     if (byValue !== 0) return byValue;
