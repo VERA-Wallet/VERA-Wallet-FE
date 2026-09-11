@@ -32,11 +32,12 @@ export class BeHttpHoldingsProvider implements HoldingsProvider {
     private readonly today: () => string = () => new Date().toISOString(),
   ) {}
 
-  async getHoldings(): Promise<{ data: PortfolioHoldingsDTO; provenance: Provenance }> {
+  async getHoldings(address?: string): Promise<{ data: PortfolioHoldingsDTO; provenance: Provenance }> {
+    const path = address === undefined ? "/api/portfolio/holdings" : `/api/portfolio/holdings?${new URLSearchParams({ address })}`;
     let response: Response;
     try {
       // BE는 체인 5개를 병렬로 읽고 자산마다 시세를 조회한다. 이벤트 목록(5초)보다 여유를 둔다.
-      response = await beFetch("/api/portfolio/holdings", { cookieHeader: this.cookieHeader, timeoutMs: 15_000 });
+      response = await beFetch(path, { cookieHeader: this.cookieHeader, timeoutMs: 15_000 });
     } catch (error) {
       const isTimeout = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
       throw new SessionInfrastructureError(isTimeout ? "timeout" : "network", "BE 잔액 조회에 실패했다.");

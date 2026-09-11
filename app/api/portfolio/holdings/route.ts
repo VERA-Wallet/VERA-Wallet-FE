@@ -17,10 +17,13 @@ export async function GET(request: Request) {
   if (session instanceof Response) return session;
   if (!session) return unauthorizedResponse();
   if (session.walletAddress === null) return walletNotBoundResponse();
+  // `?address=`는 지갑 상세(그 지갑 하나). BE와 같은 형식 검사를 여기서 먼저 해 오타가 BE까지 가지 않게 한다.
+  const address = new URL(request.url).searchParams.get("address") ?? undefined;
+  if (address !== undefined && !/^0x[0-9a-fA-F]{40}$/.test(address)) return Response.json(error("invalid_request", "address must be a 0x-prefixed 40-hex EVM address."), { status: 400 });
 
   try {
-    const provider = await holdingsProviderFor(request, session.walletAddress);
-    const { data, provenance } = await provider.getHoldings();
+    const provider = await holdingsProviderFor(request, session.walletAddress, session.walletVerification ?? null);
+    const { data, provenance } = await provider.getHoldings(address);
     return Response.json(success(data, provenance));
   } catch (cause) {
     // BE가 상태 코드로 거절한 조회(401 세션·404 미바인딩·429 한도·503 전 체인 조회 실패)는 코드와 상태를 그대로 전한다.

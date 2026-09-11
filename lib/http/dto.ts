@@ -162,8 +162,23 @@ export type PortfolioHoldingDTO = {
   trackedAmount: string | null;
 };
 
+/** 지갑 하나의 요약. 지갑 탭의 행이 "이 지갑에 얼마가, 어느 체인에" 있는지를 이걸로 말한다. */
+export type WalletSummaryDTO = {
+  /** 소문자 주소. */
+  address: string;
+  verificationMethod: string;
+  /** 시세 있는 보유분 USD 합. 시세 없는 자산은 0이 아니라 빠져 있고 `unpricedCount`에 센다. */
+  totalValueUsd: string;
+  /** 잔액이 실제로 있는 체인(스팸·더스트 제외 후). */
+  chainIds: number[];
+  holdingsCount: number;
+  unpricedCount: number;
+};
+
 export type PortfolioHoldingsDTO = {
   walletAddresses: string[];
+  /** 지갑별 요약. 주소 하나로 조회하면 그 지갑 하나다. */
+  byWallet: WalletSummaryDTO[];
   holdings: PortfolioHoldingDTO[];
   /** 읽지 못한 체인. 그 체인 자산은 없는 게 아니라 모르는 것이다. */
   skippedChainIds: number[];
@@ -197,8 +212,18 @@ export const portfolioHoldingSchema: z.ZodType<PortfolioHoldingDTO> = z.object({
   trackedAmount: nullableDecimalString,
 });
 
+export const walletSummarySchema: z.ZodType<WalletSummaryDTO> = z.object({
+  address: z.string().min(1),
+  verificationMethod: z.string().min(1),
+  totalValueUsd: decimalString,
+  chainIds: z.array(z.number().int()),
+  holdingsCount: z.number().int().nonnegative(),
+  unpricedCount: z.number().int().nonnegative(),
+});
+
 export const portfolioHoldingsSchema: z.ZodType<PortfolioHoldingsDTO> = z.object({
   walletAddresses: z.array(z.string()),
+  byWallet: z.array(walletSummarySchema),
   holdings: z.array(portfolioHoldingSchema),
   skippedChainIds: z.array(z.number().int()),
   truncatedChainIds: z.array(z.number().int()),
@@ -207,4 +232,23 @@ export const portfolioHoldingsSchema: z.ZodType<PortfolioHoldingsDTO> = z.object
   totalValueUsd: decimalString,
   unpricedCount: z.number().int().nonnegative(),
   asOf: z.string(),
+});
+
+// ── 등록한 지갑 목록 ─────────────────────────────────────────────────────────
+
+/** 등록한 지갑 하나. 잔액과 분리된, 저장소가 아는 사실이다 — 잔액 서버가 죽어도 목록은 그려진다. */
+export type RegisteredWalletDTO = {
+  walletAddress: string;
+  verificationMethod: "siwe" | "watch_only";
+  boundAt: string;
+};
+
+export type RegisteredWalletsDTO = { wallets: RegisteredWalletDTO[] };
+
+export const registeredWalletsSchema: z.ZodType<RegisteredWalletsDTO> = z.object({
+  wallets: z.array(z.object({
+    walletAddress: z.string().regex(/^0x[0-9a-fA-F]{40}$/),
+    verificationMethod: z.enum(["siwe", "watch_only"]),
+    boundAt: z.string(),
+  })),
 });

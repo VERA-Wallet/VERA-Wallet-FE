@@ -5,6 +5,7 @@ import type { PortfolioHoldingsDTO } from "@/lib/http/dto";
 
 const dto: PortfolioHoldingsDTO = {
   walletAddresses: ["0xabc"],
+  byWallet: [],
   holdings: [{ chainId: 1, assetType: "NATIVE", contract: null, symbol: "ETH", name: "ETH", decimals: 18, amount: "0.75", priceUsd: "3200", valueUsd: "2400", priceStatus: "priced", costUsd: "2160", costStatus: "ready", trackedAmount: "0.75" }],
   skippedChainIds: [], truncatedChainIds: [], unresolvedCount: 0, droppedCount: 0, totalValueUsd: "2400", unpricedCount: 0, asOf: "2026-09-11T05:00:00.000Z",
 };

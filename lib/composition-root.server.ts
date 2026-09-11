@@ -72,8 +72,8 @@ export const taxEngine: TaxEnginePort = new TaxEngineService(async () => {
  * ON에서 FE mock 데모를 그대로 쓰면 대시보드(BE 거래)와 지갑 홈(FE 데모 잔액)이 서로 다른 우주를 말한다.
  * 원가 환산은 세금 계산과 같은 환율 **소스**를 쓴다. 단 날짜 기준은 다르다 — 세금은 거래일 환율, 여기는 오늘 환율(어댑터 주석 참고).
  */
-export async function holdingsProviderFor(request: Request, walletAddress: string): Promise<HoldingsProvider> {
-  if (isMockApiMode()) return new MockHoldingsProvider([walletAddress]);
+export async function holdingsProviderFor(request: Request, walletAddress: string, walletVerification: "siwe" | "watch_only" | null = null): Promise<HoldingsProvider> {
+  if (isMockApiMode()) return new MockHoldingsProvider([walletAddress], walletVerification ?? "siwe");
   const { getSessionCookieHeaderForEventReader } = await import("@/lib/dal");
   const { BeHttpHoldingsProvider } = await import("@/lib/adapters/http/holdings-provider.server");
   return new BeHttpHoldingsProvider(await getSessionCookieHeaderForEventReader(request), fxRateProvider);

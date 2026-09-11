@@ -26,6 +26,7 @@ export const COST_COVERAGE_TOLERANCE = "0.005";
 export function toPortfolioHoldings(be: BeHoldingsDTO, rates: { table: FxRateTable; day: string } | null, droppedCount = 0): PortfolioHoldingsDTO {
   return {
     walletAddresses: be.walletAddresses,
+    byWallet: be.byWallet,
     holdings: be.holdings.map((holding) => toPortfolioHolding(holding, rates)),
     skippedChainIds: be.skippedChainIds,
     truncatedChainIds: be.truncatedChainIds,

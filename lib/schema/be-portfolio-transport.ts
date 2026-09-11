@@ -37,8 +37,18 @@ export const beHoldingSchema = z.object({
  * 행은 개별 파싱한다. `z.array(beHoldingSchema)`면 행 하나의 형식 오류가 응답 전체를 502로 만들어 ETH·USDC까지 사라진다.
  * 어댑터가 행마다 safeParse해 맞는 행만 남기고 버린 수를 `droppedCount`로 알린다.
  */
+export const beWalletSummarySchema = z.object({
+  address: z.string().min(1),
+  verificationMethod: z.string().min(1),
+  totalValueUsd: decimalString,
+  chainIds: z.array(z.number().int()),
+  holdingsCount: z.number().int().nonnegative(),
+  unpricedCount: z.number().int().nonnegative(),
+});
+
 export const beHoldingsSchema = z.object({
   walletAddresses: z.array(z.string()),
+  byWallet: z.array(beWalletSummarySchema),
   holdings: z.array(z.unknown()),
   skippedChainIds: z.array(z.number().int()),
   truncatedChainIds: z.array(z.number().int()),

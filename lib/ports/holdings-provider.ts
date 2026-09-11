@@ -9,7 +9,8 @@ import type { Provenance } from "@/lib/http/envelope";
  * 이벤트 목록처럼 BE의 meta.provenance를 그대로 잇는다(BE가 MOCK_MODE면 mock).
  */
 export interface HoldingsProvider {
-  getHoldings(): Promise<{ data: PortfolioHoldingsDTO; provenance: Provenance }>;
+  /** `address`를 주면 그 지갑 하나(지갑 상세), 없으면 등록한 지갑 전부 합산(지갑 목록의 총액·지갑별 요약). */
+  getHoldings(address?: string): Promise<{ data: PortfolioHoldingsDTO; provenance: Provenance }>;
 }
 
 /** BE 잔액 조회가 상태 코드로 거절됐다(401·404·503…). status와 code를 보존해 라우트가 그대로 전한다. */

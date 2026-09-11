@@ -1,12 +1,12 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PortfolioHoldingsDTO } from "@/lib/http/dto";
 import type { Provenance } from "@/lib/http/envelope";
 
 const nav = vi.hoisted(() => ({ push: vi.fn() }));
-const ports = vi.hoisted(() => ({ getHoldings: vi.fn() }));
+const ports = vi.hoisted(() => ({ getHoldings: vi.fn(), getWallets: vi.fn() }));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: nav.push, replace: vi.fn(), refresh: vi.fn() }),
@@ -14,6 +14,7 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/composition-root.client", () => ({
   authClient: { requestNonce: vi.fn(), verify: vi.fn(), presentDid: vi.fn(), logout: vi.fn(), getSession: vi.fn() },
   holdingsProvider: { getHoldings: ports.getHoldings },
+  walletsProvider: { getWallets: ports.getWallets },
 }));
 
 import { authClient } from "@/lib/composition-root.client";
@@ -25,16 +26,17 @@ import { WalletsView } from "@/components/wallet/wallets-view";
 const WALLET = "0x1111111111111111111111111111111111111111";
 
 /** OFF 모드 서버가 돌려주는 것과 같은 데모 지갑. 화면은 API 계약만 본다. */
-const demoHoldings = () => new MockHoldingsProvider([WALLET], () => new Date("2026-09-11T05:00:00.000Z")).getHoldings();
+const demoHoldings = () => new MockHoldingsProvider([WALLET], "siwe", () => new Date("2026-09-11T05:00:00.000Z")).getHoldings();
+const registered = () => Promise.resolve({ wallets: [{ walletAddress: WALLET, verificationMethod: "siwe" as const, boundAt: "2026-09-11T00:00:00.000Z" }] });
 
 function renderWithQuery(ui: React.ReactElement) {
   return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{ui}</QueryClientProvider>);
 }
 
-/** 보유 자산이 로드된 뒤의 화면. 조회 중 상태를 지나 토큰 행이 그려질 때까지 기다린다. */
+/** 보유 자산이 로드된 뒤의 화면. 뒤로가기 링크는 조회 중에도 있으므로, 로드된 포트폴리오에만 있는 주소 복사 버튼을 기다린다. */
 async function renderConnected() {
   const result = renderWithQuery(<WalletHome walletAddress={WALLET} />);
-  await screen.findByRole("button", { name: /계정 열기/ });
+  await screen.findByRole("button", { name: "주소 복사" });
   return result;
 }
 
@@ -43,9 +45,11 @@ beforeEach(() => {
   vi.mocked(authClient.logout).mockReset();
   ports.getHoldings.mockReset();
   ports.getHoldings.mockImplementation(demoHoldings);
+  ports.getWallets.mockReset();
+  ports.getWallets.mockImplementation(registered);
 });
 
-describe("wallet home (portfolio + account)", () => {
+describe("wallet home (portfolio of one registered wallet)", () => {
   it("renders ETH/USDT/USDC with price, amount, and value, sorted by value descending", async () => {
     const { container } = await renderConnected();
 
@@ -144,32 +148,21 @@ describe("wallet home (portfolio + account)", () => {
     expect(rows[0]).toHaveTextContent("USDT");
   });
 
-  it("opens the 계정 screen from the account button, then returns via 뒤로", async () => {
-    const user = userEvent.setup();
+  it("heads with a back link to the wallet list and the wallet's registration badge from the list source", async () => {
     await renderConnected();
-
-    await user.click(screen.getByRole("button", { name: /계정 열기/ }));
-    expect(screen.getByRole("heading", { name: "계정" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "뒤로" })).toBeInTheDocument();
-    expect(screen.getByText(/로그인은 유지/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "지갑 추가하기" })).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "뒤로" }));
-    expect(screen.getByRole("button", { name: /계정 열기/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "지갑 목록으로" })).toHaveAttribute("href", "/wallets");
+    expect(screen.getByText("브라우저 지갑")).toBeInTheDocument();
+    expect(screen.getByText("소유 증명됨")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /계정 열기/ })).toBeNull();
+    expect(authClient.logout).not.toHaveBeenCalled();
   });
 
-  // 지갑 추가는 로그인과 별개다. DID 세션은 살아 있어야 하고 이미 등록한 지갑도 남아야 하므로,
-  // 여기서 로그아웃하거나 /login으로 보내면 요구사항이 깨진 것이다. 두 조건을 함께 못박는다.
-  it("adding a wallet routes to /connect-wallet without ending the session", async () => {
-    const user = userEvent.setup();
-    await renderConnected();
-
-    await user.click(screen.getByRole("button", { name: /계정 열기/ }));
-    await user.click(screen.getByRole("button", { name: "지갑 추가하기" }));
-
-    await waitFor(() => expect(nav.push).toHaveBeenCalledWith("/connect-wallet"));
-    expect(authClient.logout).not.toHaveBeenCalled();
-    expect(nav.push).not.toHaveBeenCalledWith("/login");
+  it("shows the 404 view for an address the account has not registered, without calling it an empty wallet", async () => {
+    const other = "0x2222222222222222222222222222222222222222";
+    renderWithQuery(<WalletHome walletAddress={other} />);
+    expect(await screen.findByText("등록하지 않은 지갑입니다")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "지갑 목록" })).toHaveAttribute("href", "/wallets");
+    expect(screen.queryByText(/보유한 토큰/)).toBeNull();
   });
 
   it("labels the token section as demo data with the mock chip when the provenance is mock", async () => {
@@ -185,7 +178,7 @@ describe("wallet home (portfolio + account)", () => {
     expect(container.querySelector('[data-surface="wallet-portfolio-loading"]')).not.toBeNull();
     expect(container.querySelectorAll('[data-surface="holding-row"]')).toHaveLength(0);
     resolve(await demoHoldings());
-    expect(await screen.findByRole("button", { name: /계정 열기/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "주소 복사" })).toBeInTheDocument();
     expect(container.querySelectorAll('[data-surface="holding-row"]')).toHaveLength(3);
   });
 
@@ -199,7 +192,7 @@ describe("wallet home (portfolio + account)", () => {
     expect(screen.getByText("잠시 후 다시 시도해 주세요.")).toBeInTheDocument();
     expect(container.querySelectorAll('[data-surface="holding-row"]')).toHaveLength(0);
     await user.click(screen.getByRole("button", { name: "다시 시도" }));
-    expect(await screen.findByRole("button", { name: /계정 열기/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "주소 복사" })).toBeInTheDocument();
   });
 
   it("maps a 401 to a re-login path instead of an endless retry, and a 404 to '지갑 없음'", async () => {
@@ -225,7 +218,7 @@ describe("wallet home (portfolio + account)", () => {
   it("keeps the last portfolio on a background refetch failure and says it is stale, instead of blanking it", async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<QueryClientProvider client={client}><WalletHome walletAddress={WALLET} /></QueryClientProvider>);
-    await screen.findByRole("button", { name: /계정 열기/ });
+    await screen.findByRole("button", { name: "주소 복사" });
     ports.getHoldings.mockRejectedValueOnce(new Error("offline"));
     await client.refetchQueries();
     expect(await screen.findByText("최근 조회에 실패해 이전 결과를 보여주고 있습니다.")).toBeInTheDocument();
@@ -243,6 +236,7 @@ describe("wallet home (portfolio + account)", () => {
           { chainId: 137, assetType: "ERC20", contract: "0xghost", symbol: "GHOST", name: "Ghost", decimals: 18, amount: "12", priceUsd: null, valueUsd: null, priceStatus: "unknown", costUsd: null, costStatus: "unknown", trackedAmount: null },
           { chainId: 10, assetType: "NATIVE", contract: null, symbol: "ETH", name: "ETH", decimals: 18, amount: "0.1", priceUsd: "3200", valueUsd: "320", priceStatus: "priced", costUsd: null, costStatus: "fx_unavailable", trackedAmount: "0.1" },
         ],
+        byWallet: [{ address: WALLET, verificationMethod: "watch_only", totalValueUsd: "3220", chainIds: [1, 10, 137, 8453], holdingsCount: 4, unpricedCount: 1 }],
         skippedChainIds: [42161],
         truncatedChainIds: [],
         unresolvedCount: 2,

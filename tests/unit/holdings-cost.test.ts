@@ -17,7 +17,7 @@ function beHolding(overrides: Partial<BeHoldingsDTO["holdings"][number]> = {}): 
 }
 
 function be(holdings: BeHoldingsDTO["holdings"]): BeHoldingsDTO {
-  return { walletAddresses: ["0xabc"], holdings, skippedChainIds: [], truncatedChainIds: [], unresolvedCount: 0, totalValueUsd: "2400", unpricedCount: 0, asOf: "2026-09-11T05:00:00.000Z" };
+  return { walletAddresses: ["0xabc"], byWallet: [], holdings, skippedChainIds: [], truncatedChainIds: [], unresolvedCount: 0, totalValueUsd: "2400", unpricedCount: 0, asOf: "2026-09-11T05:00:00.000Z" };
 }
 
 const krwToUsd = { table: new Map([["2026-09-11", "0.00072"]]), day: "2026-09-11" };

@@ -10,8 +10,9 @@ export class HttpHoldingsProvider implements HoldingsProvider {
   // 전역 fetch를 인스턴스 프로퍼티로 저장하면 브라우저에서 this 바인딩이 깨져 Illegal invocation이 된다 — 래퍼로 바인딩한다.
   constructor(private readonly fetcher: typeof fetch = (...args) => fetch(...args)) {}
 
-  async getHoldings(): Promise<{ data: PortfolioHoldingsDTO; provenance: Provenance }> {
-    const response = await decodeResponse(await this.fetcher("/api/portfolio/holdings"), portfolioHoldingsSchema);
+  async getHoldings(address?: string): Promise<{ data: PortfolioHoldingsDTO; provenance: Provenance }> {
+    const path = address === undefined ? "/api/portfolio/holdings" : `/api/portfolio/holdings?${new URLSearchParams({ address })}`;
+    const response = await decodeResponse(await this.fetcher(path), portfolioHoldingsSchema);
     if ("data" in response && "meta" in response) return { data: response.data, provenance: response.meta.provenance };
     throw new HoldingsFetchError(response.error.code, response.error.message);
   }

@@ -31,6 +31,7 @@ function envelope(body: unknown, status: number): Response {
 
 const beData = {
   walletAddresses: ["0xabc"],
+  byWallet: [{ address: "0xabc", verificationMethod: "siwe", totalValueUsd: "2400", chainIds: [1, 8453], holdingsCount: 2, unpricedCount: 1 }],
   holdings: [
     { chainId: 1, assetType: "NATIVE", contract: null, symbol: "ETH", name: "ETH", decimals: 18, rawAmount: "1", amount: "0.75", priceUsd: "3200", valueUsd: "2400", priceStatus: "priced", costBasis: { currency: "KRW", totalCost: "3000000", avgCost: "4000000", trackedAmount: "0.75" } },
     { chainId: 8453, assetType: "ERC20", contract: "0xusdc", symbol: "USDC", name: "USD Coin", decimals: 6, rawAmount: "1", amount: "500", priceUsd: null, valueUsd: null, priceStatus: "unknown", costBasis: null },
@@ -52,6 +53,13 @@ describe("BeHttpHoldingsProvider boundary", () => {
     const [url, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("https://be.example/api/portfolio/holdings");
     expect(new Headers(init.headers).get("cookie")).toBe(cookie);
+  });
+
+  it("scopes the BE read to one wallet with ?address= and passes byWallet through", async () => {
+    const fetcher = mockFetch(ok("live"));
+    const result = await new BeHttpHoldingsProvider(cookie, new FixedFxRateProvider(), today).getHoldings("0xABC");
+    expect((fetcher.mock.calls[0] as unknown as [string])[0]).toBe("https://be.example/api/portfolio/holdings?address=0xABC");
+    expect(result.data.byWallet).toEqual(beData.byWallet);
   });
 
   it("keeps balances and prices when the FX source is down, marking cost fx_unavailable instead of failing", async () => {

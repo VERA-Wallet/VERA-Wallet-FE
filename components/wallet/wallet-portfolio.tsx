@@ -6,7 +6,10 @@ import type { Provenance } from "@/lib/http/envelope";
 import { MockProvenanceChip } from "@/components/ui/mock-provenance-chip";
 import { AssetLogo } from "@/components/ui/asset-logo";
 import { ChainIcon } from "@/components/ui/chain-icon";
+import Link from "next/link";
 import { WalletMark } from "@/components/wallet/wallet-mark";
+import { WalletVerificationBadge, walletLabel } from "@/components/wallet/wallet-verification-badge";
+import type { SessionWalletVerification } from "@/lib/ports/session-snapshot";
 import { chainLabel, formatFiat, shortHash } from "@/lib/format";
 import {
   compareDecimal,
@@ -241,7 +244,7 @@ export function WalletPortfolio({
   asOf,
   coverage,
   freshness,
-  onOpenAccount,
+  verification = null,
 }: {
   address: string;
   /** 자산이 있는 체인들(보유 자산 파생). 주소 칩이 "이 지갑이 걸쳐 있는 네트워크"를 이 목록으로 말한다. */
@@ -257,7 +260,8 @@ export function WalletPortfolio({
   coverage?: { skippedChainIds: number[]; truncatedChainIds: number[]; unresolvedCount: number; droppedCount: number };
   /** 데이터가 있는 채로 다시 조회 중이거나 배경 재조회가 실패했을 때. 이전 값을 "지금 것"처럼 단정하지 않게 알린다. */
   freshness?: "refreshing" | "stale";
-  onOpenAccount: () => void;
+  /** 등록 방식. 모르면 "연결됨"에 머문다 — 등록 방식을 모른다는 이유로 증명된 척하지 않는다. */
+  verification?: SessionWalletVerification | string | null;
 }): React.JSX.Element {
   const [tab, setTab] = useState<Tab>("token");
   const [network, setNetwork] = useState<number | "all">("all");
@@ -298,18 +302,20 @@ export function WalletPortfolio({
   return (
     <main className="min-h-dvh px-5 py-6">
       <header data-surface="wallet-portfolio-header">
-        <button
-          type="button"
-          onClick={onOpenAccount}
-          aria-label={`계정 열기 · ${address}`}
-          className="flex items-center gap-2 rounded-full py-1 pr-2 text-left transition-colors hover:bg-zinc-100"
-        >
+        <div className="-ml-2 flex items-center gap-2">
+          <Link
+            href="/wallets"
+            aria-label="지갑 목록으로"
+            className="flex h-9 w-9 items-center justify-center rounded-full text-zinc-600 transition-colors hover:bg-zinc-100 active:bg-zinc-200"
+          >
+            <svg aria-hidden="true" width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <path d="m15 6-6 6 6 6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </Link>
           <WalletMark size={28} />
-          <span className="font-semibold text-zinc-900">브라우저 지갑</span>
-          <svg aria-hidden="true" className="text-zinc-500" width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="m6 9 6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
+          <span className="font-semibold text-zinc-900">{walletLabel(verification)}</span>
+          <WalletVerificationBadge verification={verification} />
+        </div>
 
         <div className="mt-3 flex items-center gap-2">
           <span className="inline-flex items-center gap-2 rounded-full bg-zinc-100 px-3 py-1.5">

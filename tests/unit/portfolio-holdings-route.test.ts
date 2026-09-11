@@ -18,9 +18,9 @@ afterEach(() => {
   vi.resetModules();
 });
 
-async function call() {
+async function call(query = "") {
   const { GET } = await import("@/app/api/portfolio/holdings/route");
-  return GET(new Request("http://localhost/api/portfolio/holdings"));
+  return GET(new Request(`http://localhost/api/portfolio/holdings${query}`));
 }
 
 // resetModules 뒤에는 모듈 레지스트리가 새로 만들어지므로, 라우트가 instanceof로 보는 클래스와 같은 인스턴스를 얻으려면 같은 레지스트리에서 가져온다.
@@ -49,6 +49,19 @@ describe("GET /api/portfolio/holdings (FE-owned route)", () => {
     expect(body.data.holdings.map((holding: { symbol: string; costStatus: string }) => [holding.symbol, holding.costStatus])).toEqual([["ETH", "ready"], ["USDT", "ready"], ["USDC", "ready"]]);
     expect(body.data.totalValueUsd).toBe("3750");
     expect(body.data.droppedCount).toBe(0);
+    expect(body.data.byWallet).toEqual([{ address: "0xabc", verificationMethod: "siwe", totalValueUsd: "3750", chainIds: [1, 137, 8453], holdingsCount: 3, unpricedCount: 0 }]);
+  });
+
+  it("validates ?address= before any provider runs, and scopes the mock provider to that wallet (404 when unregistered)", async () => {
+    vi.stubEnv("VERAWALLET_BACKEND_ORIGIN", "");
+    requireDidSession.mockResolvedValue(session("0x1111111111111111111111111111111111111111"));
+    expect((await call("?address=nope")).status).toBe(400);
+    const own = await call("?address=0x1111111111111111111111111111111111111111");
+    expect(own.status).toBe(200);
+    expect((await own.json()).data.byWallet).toHaveLength(1);
+    const other = await call("?address=0x2222222222222222222222222222222222222222");
+    expect(other.status).toBe(404);
+    await expect(other.json()).resolves.toMatchObject({ error: { code: "not_found" } });
   });
 
   it("ON 모드: passes the BE provenance through and preserves BE rejections by status and code", async () => {
