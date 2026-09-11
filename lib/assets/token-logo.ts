@@ -11,19 +11,20 @@ import type { NormalizedEvent } from "@/lib/schema/normalized-event";
  * - NFT(토큰 번호가 있는 자산)는 티커가 아닌 개체라 조회하지 않는다.
  * - 마크가 없으면 `null` → 호출부는 대체 마크(심볼 이니셜 · NFT 박스)로 그린다.
  *
- * 마크 자체는 `TokenIcon`이 CC0 원본 벡터로 인라인한다(런타임 외부 요청 없음). 그래서 이 표는
- * "어느 컨트랙트가 어느 인라인 마크인가"만 정하고, 이미지 fetch·CDN은 이 앱의 책임이 아니다.
+ * 마크 자체는 `TokenIcon`이 인라인한다 — CC0 원본 벡터(JSX) 또는 데이터 URI(`token-mark-data.ts`). 런타임 외부
+ * 요청은 없다. 그래서 이 표는 "어느 컨트랙트가 어느 인라인 마크인가"만 정하고, 이미지 fetch·CDN은 이 앱의 책임이 아니다.
  */
 
 /** 인라인 마크가 존재하는 티커 식별자. 표시 심볼이 아니라 `TokenIcon`이 아는 표식 키다. */
-export type TokenMarkKey = "ETH" | "USDT" | "USDC";
+export type TokenMarkKey = "ETH" | "USDT" | "USDC" | "DAI" | "LINK" | "POL" | "OP" | "ARB" | "ATH" | "AGI" | "CARV" | "XAI" | "P";
 
 /** 현재 등록된 체인(Ethereum·Optimism·Polygon·Base·Arbitrum). format·explorer 레지스트리와 같은 집합이다. */
 export const REGISTERED_CHAIN_IDS: ReadonlySet<number> = new Set([1, 10, 137, 8453, 42161]);
 
-/** 등록된 체인의 네이티브 코인 로고. Polygon의 네이티브(POL)는 공식 벡터가 없어 뺀다(대체 마크로 떨어진다). */
+/** 등록된 체인의 네이티브 코인 로고. */
 const NATIVE_MARK: Record<number, TokenMarkKey> = {
   1: "ETH", // Ethereum
+  137: "POL", // Polygon — 네이티브 POL
   10: "ETH", // Optimism — 네이티브 ETH
   8453: "ETH", // Base — 네이티브 ETH
   42161: "ETH", // Arbitrum One — 네이티브 ETH
@@ -46,6 +47,21 @@ const ERC20_MARK: Record<string, TokenMarkKey> = {
   "137:0xc2132d05d31c914a87c6611c10748aeb04b58e8f": "USDT", // Polygon
   "8453:0xfde4c96c8593536e31f229ea8f37b2ada2699bb2": "USDT", // Base
   "42161:0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9": "USDT", // Arbitrum
+  // DAI (MakerDAO/Sky) — Ethereum 캐노니컬
+  "1:0x6b175474e89094c44da98b954eedeac495271d0f": "DAI",
+  // Chainlink — Ethereum 캐노니컬
+  "1:0x514910771af9ca656af840dff83e8264ecf986ca": "LINK",
+  // L2 거버넌스 토큰
+  "10:0x4200000000000000000000000000000000000042": "OP", // Optimism
+  "42161:0x912ce59144191c1204e64559fe8253a0e49e6548": "ARB", // Arbitrum
+  // 2026-09-11 실지갑(0xe6de…)에서 확인한 배포 — Summ 포트폴리오와 같은 로고를 쓴다
+  "1:0xbe0ed4138121ecfc5c0e56b40517da27e6c5226b": "ATH", // Aethir, Ethereum
+  "42161:0xc87b37a581ec3257b734886d9d3a581f5a9d056c": "ATH", // Aethir, Arbitrum
+  "1:0x7da2641000cbb407c329310c461b2cb9c70c3046": "AGI", // Delysium, Ethereum
+  "8453:0xc08cd26474722ce93f4d0c34d16201461c10aa8c": "CARV", // CARV, Base
+  "42161:0xc08cd26474722ce93f4d0c34d16201461c10aa8c": "CARV", // CARV, Arbitrum
+  "42161:0x4cb9a7ae498cedcbb5eae9f25736ae7d428c9d66": "XAI", // Xai, Arbitrum
+  "8453:0x25e1c298f100d7c600e9e44d46788c1ebbd4f69b": "P", // Pike Finance, Base
 };
 
 type ResolvableAsset = Pick<NormalizedEvent, "chain_id" | "asset_type" | "asset_contract" | "token_id">;

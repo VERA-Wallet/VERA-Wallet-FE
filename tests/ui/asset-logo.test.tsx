@@ -41,7 +41,8 @@ describe("자산 로고", () => {
   it("레지스트리에 없는 티커는 대체 마크로 그린다", () => {
     const { container } = render(
       <AssetLogo
-        event={{ ...erc20, chain_id: 42161, asset_contract: "0x912ce59144191c1204e64559fe8253a0e49e6548", asset_symbol: "ARB" }}
+        // 심볼은 진짜 ARB지만 컨트랙트가 레지스트리에 없다 — 사칭 토큰은 로고를 빌리지 못한다.
+        event={{ ...erc20, chain_id: 42161, asset_contract: "0x1111111111111111111111111111111111111111", asset_symbol: "ARB" }}
       />,
     );
     expect(container.querySelector("[data-token-icon]")).toBeNull();
