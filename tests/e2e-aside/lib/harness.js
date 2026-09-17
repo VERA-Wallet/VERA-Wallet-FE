@@ -43,6 +43,25 @@ async function shot(p, name) {
 async function rect(p, sel) { return p.evaluate((sel) => { const el = document.querySelector(sel); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height, right: r.right, bottom: r.bottom }; }, sel); }
 async function viewport(p) { return p.evaluate(() => ({ w: innerWidth, h: innerHeight, scrollW: document.documentElement.scrollWidth })); }
 async function noHorizontalOverflow(p) { const v = await viewport(p); return v.scrollW <= v.w + 1; }
+// 껍데기 기준 넘침. 문서 폭 검사(noHorizontalOverflow)는 데스크톱 뷰포트(1440px)와 비교하므로 448px 껍데기 안에서
+// 510px로 넘친 목록을 못 잡는다(2026-09-17 거래·세금 탭에서 실제로 놓쳤다). <main> 오른쪽 끝을 넘는 요소를 직접 센다.
+// 의도된 가로 스크롤(overflow-x auto/scroll/hidden 조상 아래)은 빼고, 가장 바깥 요소만 보고한다. 요소가 아주 많은
+// 화면(거래 수천 행)에서 CDP 타임아웃이 나지 않도록 앞쪽 6,000개만 본다 — 열이 밀리면 첫 행부터 넘치므로 충분하다.
+async function shellOverflow(p) {
+  return p.evaluate(() => {
+    const main = document.querySelector('main'); if (!main) return { count: 0, worst: null };
+    const edge = main.getBoundingClientRect().right; const found = [];
+    for (const el of [...main.querySelectorAll('*')].slice(0, 6000)) {
+      const r = el.getBoundingClientRect(); if (!r.width || !r.height || r.right <= edge + 1) continue;
+      let a = el.parentElement, scroller = false;
+      while (a && a !== main) { const ox = getComputedStyle(a).overflowX; if (ox === 'auto' || ox === 'scroll' || ox === 'hidden') { scroller = true; break; } a = a.parentElement; }
+      if (scroller || found.some((f) => f.el.contains(el))) continue;
+      found.push({ el, over: Math.round(r.right - edge), what: el.tagName.toLowerCase() + ' "' + (el.innerText || '').replace(/\s+/g, ' ').slice(0, 50) + '"' });
+    }
+    found.sort((x, y) => y.over - x.over);
+    return { count: found.length, worst: found[0] ? found[0].what + ' +' + found[0].over + 'px' : null };
+  });
+}
 // about:blank 에서는 앱으로의 fetch 가 교차출처로 막힌다 → 같은 출처의 가벼운 JSON 라우트에서 시작한다.
 async function newPage() { const p = await openTab(BASE + '/api/auth/session'); try { await p.setViewportSize({ width: 430, height: 900 }); } catch (e) {} return p; }
 async function closePage(p) { try { await p.close(); } catch (e) {} }
