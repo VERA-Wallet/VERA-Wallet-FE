@@ -20,8 +20,7 @@ export function PlanView({ taxYear: fallbackTaxYear }: { taxYear: number }) {
 
   return (
     <main className="min-h-dvh px-5 py-8">
-      <p className="text-sm font-semibold text-primary-500">플랜</p>
-      <div data-surface="plan" className="mt-3 flex items-start justify-between gap-3">
+      <div data-surface="plan" className="flex items-start justify-between gap-3">
         <h1 className="text-3xl font-bold tracking-tight text-zinc-900">내보낼 때만 결제하세요</h1>
         <MockProvenanceChip />
       </div>

@@ -35,10 +35,10 @@ export function WalletsList(): React.JSX.Element {
   const data = holdings.data?.data;
 
   return (
-    <main className="min-h-dvh px-5 pb-6 pt-2">
+    <main className="min-h-dvh px-5 pb-6 pt-8">
       <header data-surface="wallets-summary">
-        <div className="flex items-center justify-between py-3">
-          <h1 className="text-lg font-bold text-zinc-900">지갑</h1>
+        <div className="flex items-baseline justify-between gap-3">
+          <h1 className="text-3xl font-bold tracking-tight text-zinc-900">지갑</h1>
           <button type="button" onClick={() => setSheetOpen(true)} data-surface="wallets-import" className="text-[15px] font-semibold text-zinc-700">
             지갑 불러오기
           </button>
