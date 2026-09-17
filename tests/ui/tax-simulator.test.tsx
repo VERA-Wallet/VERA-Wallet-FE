@@ -1,9 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { TaxSimulator } from "@/components/tax/tax-simulator";
+import { ReportView } from "@/components/report/report-view";
 import { FIXTURE_TAX_YEAR } from "@/tests/fixtures/tax-year";
 import { createTaxScenarioEvents, scenarioScaleFor } from "@/lib/tax/scenarios";
 import { computeTaxEstimate } from "@/lib/tax/engine";
@@ -17,10 +16,28 @@ import type { TaxEstimateRequest } from "@/lib/ports/tax-engine";
 import { AMOUNT_KIND_LABEL, GROUP_SHORT_LABEL } from "@/components/ui/judgment-badge";
 import { formatFiat } from "@/lib/format";
 
-const ports = vi.hoisted(() => ({ listRuleSets: vi.fn(), estimate: vi.fn() }));
+const ports = vi.hoisted(() => ({
+  listRuleSets: vi.fn(),
+  estimate: vi.fn(),
+  // 리포트 화면은 계산 말고도 원장·요약·앵커 증명을 읽는다(내려받기 카드·증명 카드).
+  // 여기서 보는 것은 계산 쪽이므로 빈 원장으로 세워 두고, 그 표면들은 각자 테스트가 덮는다.
+  list: vi.fn(async () => ({ items: [], nextCursor: null })),
+  getSummary: vi.fn(async () => ({
+    periodPnl: "0",
+    computableEventCount: 0,
+    taxableEventCount: 0,
+    pendingReviewCount: 0,
+    currency: "KRW",
+    period: { from: "2025-01-01T00:00:00.000Z", to: "2026-01-01T00:00:00.000Z" },
+  })),
+  getProof: vi.fn(async () => null),
+}));
 
 vi.mock("@/lib/composition-root.client", () => ({
   taxEngine: { listRuleSets: ports.listRuleSets, estimate: ports.estimate },
+  eventRepository: { list: ports.list },
+  summaryProvider: { getSummary: ports.getSummary },
+  anchorProofProvider: { getProof: ports.getProof },
 }));
 
 // 어댑터 대신 실제 엔진을 통과시켜 DTO 계약까지 함께 검증한다.
@@ -48,7 +65,7 @@ async function renderSimulator() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const view = render(
     <QueryClientProvider client={client}>
-      <TaxSimulator currentYear={FIXTURE_TAX_YEAR} />
+      <ReportView currentYear={FIXTURE_TAX_YEAR} />
     </QueryClientProvider>,
   );
   await selectTaxYear(2025);
@@ -64,6 +81,16 @@ async function selectTaxYear(year: number) {
   fireEvent.click(screen.getByRole("button", { name: String(year) }));
 }
 
+/**
+ * 나라 칩은 이제 "다른 나라였다면" 접힘 안에 있다 — 거주국 리포트가 답이고 나라 전환은 비교이기 때문이다.
+ * 펼치는 것까지가 사용자의 동선이므로 테스트도 그대로 따라간다.
+ */
+async function selectCountry(name: RegExp) {
+  const details = (await screen.findByText("다른 나라였다면")).closest("details")!;
+  details.open = true;
+  fireEvent.click(within(details).getByRole("button", { name }));
+}
+
 // 어떤 테스트가 도중에 실패해도 다음 테스트의 전제를 오염시키지 않게 한다.
 // 영원히 pending인 구현이 새어나가면 이후 테스트가 전부 타임아웃한다.
 afterEach(() => {
@@ -73,7 +100,7 @@ afterEach(() => {
   ports.estimate.mockImplementation(defaultEstimate);
 });
 
-describe("TaxSimulator", () => {
+describe("리포트 계산 표면", () => {
   it("독일 룰셋의 확정 상태·면세분·부담 추정을 함께 보여준다", async () => {
     await renderSimulator();
 
@@ -82,53 +109,59 @@ describe("TaxSimulator", () => {
     expect(within(screen.getByLabelText("계산 요약")).getByText("확정·시행중")).toBeInTheDocument();
     expect(screen.getByText("1년 초과 보유 비과세분")).toBeInTheDocument();
     expect(screen.getByTestId("estimated-charge").textContent).toContain("1,015.44");
-    expect(document.querySelector('[data-surface="tax-simulator"] [data-testid="mock-provenance"]')).not.toBeNull();
+    expect(document.querySelector('[data-surface="report"] [data-testid="mock-provenance"]')).not.toBeNull();
   });
 
   it("국가를 바꾸면 해당 룰셋으로 다시 계산한다", async () => {
     await renderSimulator();
     await screen.findByText("독일 · 2025");
 
-    await userEvent.click(screen.getByRole("button", { name: /인도/ }));
+    await selectCountry(/인도/);
 
     await screen.findByText("인도 · 2025");
     expect(await screen.findByText("상계 불가로 무시된 손실")).toBeInTheDocument();
     expect(screen.getByText(/실효 31.2%/)).toBeInTheDocument();
   });
 
-  it("시행 전 국가는 금액 대신 과세 대상 아님과 판단 필요 항목을 제시한다", async () => {
+  it("가정을 끄면 시행 전 국가는 금액 대신 과세 대상 아님과 판단 필요 항목을 제시한다", async () => {
     await renderSimulator();
     await screen.findByText("독일 · 2025");
 
-    await userEvent.click(screen.getByRole("button", { name: /한국/ }));
+    await selectCountry(/한국/);
 
     await screen.findByText("한국 · 2025");
-    // 2027-01-01 시행이라 2025년 발생분은 "계산했더니 0원"이 아니라 과세 대상 자체가 아니다.
-    expect(screen.getByTestId("estimated-charge").textContent).toBe("과세 대상 아님");
+    // 시행 가정을 끄면 남는 것은 사실이다: 2027-01-01 시행이라 2025년 발생분은
+    // "계산했더니 0원"이 아니라 과세 대상 자체가 아니다.
+    fireEvent.click(await screen.findByRole("button", { name: "가정 끄기" }));
+    await waitFor(() => expect(screen.getByTestId("estimated-charge").textContent).toBe("과세 대상 아님"));
     expect(within(screen.getByLabelText("계산 요약")).getByText("확정·시행예정")).toBeInTheDocument();
     expect(screen.getByText("판단이 필요한 항목")).toBeInTheDocument();
+    // 부담을 산출하지 않은 상태에서 신고 기입란 8줄을 0원으로 깔면 화면이 두 이야기를 한다.
+    expect(screen.queryByText("기타소득 계산")).toBeNull();
   });
 
-  it("시행 가정을 켜면 지금 데이터로 시행 후 부담을 보여주고, 가정임을 계속 말한다", async () => {
+  it("시행 예정 룰셋은 가정을 켠 채로 열어 시행 후 부담을 보여주고, 가정임을 계속 말한다", async () => {
     await renderSimulator();
     await screen.findByText("독일 · 2025");
-    await userEvent.click(screen.getByRole("button", { name: /한국/ }));
+    await selectCountry(/한국/);
     await screen.findByText("한국 · 2025");
-    expect(screen.getByTestId("estimated-charge").textContent).toBe("과세 대상 아님");
 
-    fireEvent.click(screen.getByRole("button", { name: "시행 가정으로 보기" }));
-
-    // 2025년 데모 시나리오에 2027 시행 규칙(거주자별 총평균법)을 그대로 적용한 값.
+    // 2025년 데모 시나리오에 2027 시행 규칙(거주자별 총평균법)을 그대로 적용한 값이
+    // 첫 화면부터 보인다(2026-09-17 사용자 결정 — "반영됐다 치고" 보여 준다).
     await waitFor(() =>
       expect(screen.getByTestId("estimated-charge").textContent).toContain("₩1,480,517.64"),
     );
     // 큰 금액 옆에 가정이라는 사실이 계속 있어야 한다.
     expect(screen.getByText(/시행 가정으로 보는 중입니다/)).toBeInTheDocument();
+    // "시행 전인 지금 실제 부담은 0원"은 지우지 않고 접어 둔다.
+    expect(screen.getByText("시행 전인 지금 실제 부담은")).toBeInTheDocument();
     // 방식 라벨도 가정임을 밝힌다 — 내보낸 결과만 봐도 알 수 있어야 한다.
     expect(within(screen.getByLabelText("계산 요약")).getByText(/거주자별 총평균법 · 2027 시행 가정/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "가정 끄기" }));
     await waitFor(() => expect(screen.getByTestId("estimated-charge").textContent).toBe("과세 대상 아님"));
+    // 끄는 문을 닫아버리면 사실로 돌아갈 길이 없다 — 다시 켜는 문도 남는다.
+    expect(screen.getByRole("button", { name: "시행 가정으로 보기" })).toBeInTheDocument();
   });
 
   it("시행 예정 룰셋은 시행 연도를 미리 골라 실제 부담을 본다", async () => {
@@ -139,7 +172,7 @@ describe("TaxSimulator", () => {
     // 미래 연도를 시계로 만들지는 않는다 — 시행 예정 연도가 없는 국가에는 없어야 한다.
     expect(screen.queryByRole("button", { name: /2027/ })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /한국/ }));
+    await selectCountry(/한국/);
     await screen.findByText("한국 · 2025");
     fireEvent.click(await screen.findByRole("button", { name: /2027/ }));
 
@@ -189,7 +222,7 @@ describe("TaxSimulator", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <TaxSimulator currentYear={2025} />
+        <ReportView currentYear={2025} />
       </QueryClientProvider>,
     );
     await screen.findByText("독일 · 2025");
@@ -209,7 +242,7 @@ describe("TaxSimulator", () => {
   });
 });
 
-describe("TaxSimulator 제외 배너", () => {
+describe("리포트 제외 배너", () => {
   const base = createNormalizedEventFixtures(FIXTURE_TAX_YEAR)[0];
 
   afterEach(() => {
@@ -231,7 +264,7 @@ describe("TaxSimulator 제외 배너", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const view = render(
       <QueryClientProvider client={client}>
-        <TaxSimulator currentYear={2025} />
+        <ReportView currentYear={2025} />
       </QueryClientProvider>,
     );
     // 기본 출처(내 지갑)를 그대로 둔다.
@@ -310,7 +343,8 @@ describe("TaxSimulator 제외 배너", () => {
     // 얼마나 달라지는지는 계산하지 않았다. 금액을 쓰면 지어낸 추정이 된다.
     expect(section.textContent).not.toMatch(/[€$₩][\d,]/);
     // 고치러 갈 동선이 있다.
-    expect(section.querySelector('a[href="/dashboard?tab=review"]')).not.toBeNull();
+    // 확인 필요 큐가 요약에서 거래 탭으로 떠났다 — `/dashboard?tab=review`는 이제 닿는 곳이 없는 쿼리다.
+    expect(section.querySelector('a[href="/transactions?tab=review"]')).not.toBeNull();
   });
 
   it("기간 밖 취득만 있으면 그 기간에 셀 것이 없다고 말한다", async () => {
@@ -330,7 +364,8 @@ describe("TaxSimulator 제외 배너", () => {
       { ...base, id: "no-price", price_status: "UNKNOWN", fiat_value: null },
       { ...base, id: "zero-qty", raw_amount: "0" },
     ]);
-    expect(await screen.findByText(/확인이 필요해 계산에서 빠진 이벤트 2건/)).toBeInTheDocument();
+    // 확인 필요 신호는 합쳐진 화면에서 넛지 한 곳으로 모였다(미반영 + 원가 0원, 중복은 한 번만).
+    expect(await screen.findByRole("link", { name: /확인 필요 2건/ })).toBeInTheDocument();
   });
 
   it("자기 지갑 간 이체만 있으면 확인 필요 배너를 띄우지 않는다", async () => {
@@ -368,18 +403,21 @@ describe("TaxSimulator 제외 배너", () => {
 
     await renderSimulator();
     await screen.findByTestId("estimated-charge");
-    await userEvent.click(screen.getByRole("button", { name: "내 지갑 이벤트" }));
+    const conditions = screen.getByText("계산 조건 바꾸기").closest("details")!;
+    conditions.open = true;
+    fireEvent.click(within(conditions).getByRole("button", { name: "내 지갑 이벤트" }));
 
     await waitFor(() => {
       const calls = ports.estimate.mock.calls.map(([input]) => input.source);
       expect(calls).toContain("wallet");
     });
-    fireEvent.click(screen.getByText("계산 근거와 가정"));
+    // 출처를 바꾸면 재조회 동안 결과가 비워진다(fresh 게이트). 새 결과가 도착한 뒤에 근거를 편다.
+    fireEvent.click(await screen.findByText("계산 근거와 가정"));
     expect(await screen.findByText(/중복된 이벤트 id는 첫 건만 계산에 넘겼습니다/)).toBeInTheDocument();
   });
 });
 
-describe("세금 탭이 답 우선 3계층인가", () => {
+describe("리포트가 답 우선 3계층인가", () => {
   it("답이 계산 조건보다 먼저 나온다", async () => {
     const { container } = await renderSimulator();
     await screen.findByText("독일 · 2025");
@@ -397,7 +435,7 @@ describe("세금 탭이 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <TaxSimulator currentYear={2025} />
+        <ReportView currentYear={2025} />
       </QueryClientProvider>,
     );
     await screen.findByText("독일 · 2025");
@@ -411,20 +449,23 @@ describe("세금 탭이 답 우선 3계층인가", () => {
     expect(screen.getByRole("button", { name: "2022" })).toBeInTheDocument();
   });
 
-  it("지난 해를 보면서 '올해'라고 하지 않는다", async () => {
+  it("헤더 칩이 지금 보는 귀속연도를 그대로 말한다", async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <TaxSimulator currentYear={2026} />
+        <ReportView currentYear={2026} />
       </QueryClientProvider>,
     );
-    await screen.findByText("올해 세금");
+    // 리포트 제목은 고정이고, 어느 해를 보는지는 칩이 말한다.
+    expect(await screen.findByRole("heading", { name: "리포트", level: 1 })).toBeInTheDocument();
+    await screen.findByRole("button", { name: /2026년 귀속/ });
 
     await selectTaxYear(2025);
     await screen.findByText("독일 · 2025");
-    // 헤더가 "올해"라고 남으면 지난 해 결과를 올해라고 단정하는 것이다.
-    expect(screen.getByText("2025년 세금")).toBeInTheDocument();
-    expect(screen.queryByText("올해 세금")).not.toBeInTheDocument();
+    // 칩이 옛 연도에 머물면 지난 해 결과를 올해 것으로 읽게 된다.
+    expect(screen.getByRole("button", { name: /2025년 귀속/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /2026년 귀속/ })).toBeNull();
+    expect(document.body.textContent ?? "").not.toContain("올해 세금");
   });
 
   it("올해 거래가 없으면 마지막 거래가 있는 해로 열고 그 이유를 말한다", async () => {
@@ -433,13 +474,12 @@ describe("세금 탭이 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <TaxSimulator currentYear={2026} latestActivityYear={2025} />
+        <ReportView currentYear={2026} latestActivityYear={2025} />
       </QueryClientProvider>,
     );
 
     await screen.findByText("독일 · 2025");
-    expect(screen.getByText("2025년 세금")).toBeInTheDocument();
-    expect(screen.queryByText("올해 세금")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /2025년 귀속/ })).toBeInTheDocument();
     // 이유는 배지로 강등됐지만 삭제되지 않았다 — 배지가 보이고, 전문은 접힘 안에 그대로 있다.
     expect(screen.getByText("2025년으로 열림")).toBeInTheDocument();
     expect(screen.getByText(/2026년에는 계산할 거래가 없어/)).toBeInTheDocument();
@@ -456,7 +496,7 @@ describe("세금 탭이 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <TaxSimulator currentYear={2026} latestActivityYear={2020} />
+        <ReportView currentYear={2026} latestActivityYear={2020} />
       </QueryClientProvider>,
     );
 
@@ -470,13 +510,13 @@ describe("세금 탭이 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <TaxSimulator countryCode="DE" currentYear={2025} />
+        <ReportView countryCode="DE" currentYear={2025} />
       </QueryClientProvider>,
     );
     await screen.findByText("독일 · 2025");
     expect(screen.getByText(/거주국 룰셋을 적용한 결과/)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /미국/ }));
+    await selectCountry(/미국/);
     await screen.findByText(/미국 · 2025/);
     expect(screen.getByText(/선택한 국가 룰셋을 적용한 결과/)).toBeInTheDocument();
     expect(screen.queryByText(/거주국 룰셋을 적용한 결과/)).not.toBeInTheDocument();
@@ -495,7 +535,7 @@ describe("세금 탭이 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <TaxSimulator countryCode="DE" currentYear={2025} />
+        <ReportView countryCode="DE" currentYear={2025} />
       </QueryClientProvider>,
     );
     // 기본은 내 지갑이다.
@@ -515,7 +555,7 @@ describe("세금 탭이 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <TaxSimulator countryCode="DE" currentYear={2025} />
+        <ReportView countryCode="DE" currentYear={2025} />
       </QueryClientProvider>,
     );
     await screen.findByText("적용할 룰셋을 확인하는 중입니다. 아직 계산하지 않았습니다.");
@@ -529,7 +569,7 @@ describe("세금 탭이 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <TaxSimulator countryCode="DE" currentYear={2025} />
+        <ReportView countryCode="DE" currentYear={2025} />
       </QueryClientProvider>,
     );
     await screen.findByText("독일 · 2025");
@@ -555,7 +595,7 @@ describe("세금 탭이 답 우선 3계층인가", () => {
     await screen.findByText("독일 · 2025");
 
     for (const country of [/독일/, /호주/, /캐나다/, /영국/, /이탈리아/]) {
-      fireEvent.click(screen.getByRole("button", { name: country }));
+      await selectCountry(country);
       await waitFor(() => expect(screen.getByLabelText("계산 요약")).toBeInTheDocument());
       const summary = screen.getByLabelText("계산 요약");
       expect(summary.textContent, String(country)).toContain("과세표준 제외");
@@ -569,7 +609,7 @@ describe("세금 탭이 답 우선 3계층인가", () => {
     // 인도는 flat 30% 분리과세라 과세표준 제외가 구조적으로 0이다.
     await renderSimulator();
     await screen.findByText("독일 · 2025");
-    fireEvent.click(screen.getByRole("button", { name: /인도/ }));
+    await selectCountry(/인도/);
     await screen.findByText(/인도 · 2025/);
 
     const summary = screen.getByLabelText("계산 요약");
@@ -586,7 +626,7 @@ describe("세금 탭이 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <TaxSimulator countryCode="DE" currentYear={2025} />
+        <ReportView countryCode="DE" currentYear={2025} />
       </QueryClientProvider>,
     );
     await screen.findByText(/룰셋을 적용하지 못했습니다/);
@@ -611,7 +651,7 @@ describe("세금 탭이 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <TaxSimulator countryCode="DE" currentYear={2025} />
+        <ReportView countryCode="DE" currentYear={2025} />
       </QueryClientProvider>,
     );
     await screen.findByText("적용할 룰셋을 확인하지 못해 아직 계산하지 않았습니다.");
@@ -623,7 +663,7 @@ describe("세금 탭이 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <TaxSimulator currentYear={FIXTURE_TAX_YEAR} />
+        <ReportView currentYear={FIXTURE_TAX_YEAR} />
       </QueryClientProvider>,
     );
     await screen.findByText("계산 조건 바꾸기");
@@ -635,7 +675,7 @@ describe("세금 탭이 답 우선 3계층인가", () => {
   it("건수를 금액처럼 그리지 않는다", async () => {
     await renderSimulator();
     await screen.findByText("독일 · 2025");
-    fireEvent.click(screen.getByRole("button", { name: /한국/ }));
+    await selectCountry(/한국/);
     await screen.findByText("한국 · 2025");
 
     const list = screen.getByLabelText("계산 내역");
@@ -701,12 +741,12 @@ describe("세금 탭이 답 우선 3계층인가", () => {
     await renderSimulator();
     await screen.findByText("독일 · 2025");
 
-    fireEvent.click(screen.getByRole("button", { name: /영국/ }));
+    await selectCountry(/영국/);
     await screen.findByText(/영국 · 2025/);
     // 화면이 역년으로 되돌리거나 배타적 끝을 그대로 찍으면 하루 넓은 기간을 말한다.
     expect(screen.getByLabelText("계산 요약")).toHaveTextContent("과세기간 2025-04-06 ~ 2026-04-05");
 
-    fireEvent.click(screen.getByRole("button", { name: /호주/ }));
+    await selectCountry(/호주/);
     await screen.findByText(/호주 · 2025/);
     expect(screen.getByLabelText("계산 요약")).toHaveTextContent("과세기간 2025-07-01 ~ 2026-06-30");
   });
@@ -718,9 +758,9 @@ describe("세금 탭이 답 우선 3계층인가", () => {
     details.open = true;
 
     fireEvent.change(screen.getByLabelText(/한계세율/), { target: { value: "45" } });
-    fireEvent.click(screen.getByRole("button", { name: /미국/ }));
+    await selectCountry(/미국/);
     await screen.findByText(/미국 · 2025/);
-    fireEvent.click(screen.getByRole("button", { name: /독일/ }));
+    await selectCountry(/독일/);
     await screen.findByText("독일 · 2025");
 
     details.open = true;
@@ -769,7 +809,7 @@ describe("세금 탭이 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <TaxSimulator currentYear={FIXTURE_TAX_YEAR} />
+        <ReportView currentYear={FIXTURE_TAX_YEAR} />
       </QueryClientProvider>,
     );
 
@@ -796,7 +836,7 @@ describe("세금 탭이 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <TaxSimulator currentYear={2025} />
+        <ReportView currentYear={2025} />
       </QueryClientProvider>,
     );
 
@@ -811,7 +851,7 @@ describe("세금 탭이 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <TaxSimulator countryCode="UK" currentYear={FIXTURE_TAX_YEAR} />
+        <ReportView countryCode="UK" currentYear={FIXTURE_TAX_YEAR} />
       </QueryClientProvider>,
     );
     await selectTaxYear(2025);
@@ -831,7 +871,7 @@ describe("세금 탭이 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <TaxSimulator currentYear={FIXTURE_TAX_YEAR} />
+        <ReportView currentYear={FIXTURE_TAX_YEAR} />
       </QueryClientProvider>,
     );
 
@@ -857,7 +897,7 @@ describe("세금 탭이 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <TaxSimulator currentYear={2025} />
+        <ReportView currentYear={2025} />
       </QueryClientProvider>,
     );
     // 요청을 보낸 적이 없다 — "불러오는 중"이 아니라 "아직 계산하지 않았다"고 말해야 한다.
@@ -882,7 +922,7 @@ describe("세금 탭이 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <TaxSimulator currentYear={2025} />
+        <ReportView currentYear={2025} />
       </QueryClientProvider>,
     );
     await screen.findByText("독일 · 2025");
@@ -906,7 +946,7 @@ describe("세금 탭이 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <TaxSimulator currentYear={2025} />
+        <ReportView currentYear={2025} />
       </QueryClientProvider>,
     );
     await screen.findByText("독일 · 2025");
@@ -932,7 +972,7 @@ describe("세금 탭이 답 우선 3계층인가", () => {
     const sent = ports.estimate.mock.calls.at(-1)?.[0].profile;
     expect(Object.keys(sent).sort()).toEqual(["carriedLosses", "marginalRatePercent"]);
 
-    fireEvent.click(screen.getByRole("button", { name: /미국/ }));
+    await selectCountry(/미국/);
     await screen.findByText(/미국 · 2025/);
     await waitFor(() => {
       const next = ports.estimate.mock.calls.at(-1)?.[0].profile;
@@ -943,7 +983,7 @@ describe("세금 탭이 답 우선 3계층인가", () => {
   it("인도처럼 입력이 없는 국가는 빈 프로필을 보낸다", async () => {
     await renderSimulator();
     await screen.findByText("독일 · 2025");
-    fireEvent.click(screen.getByRole("button", { name: /인도/ }));
+    await selectCountry(/인도/);
     await screen.findByText(/인도 · 2025/);
     await waitFor(() => {
       expect(ports.estimate.mock.calls.at(-1)?.[0].profile).toEqual({});
@@ -953,7 +993,7 @@ describe("세금 탭이 답 우선 3계층인가", () => {
   it("미국으로 바꾸면 신고 구분이 살아난다", async () => {
     await renderSimulator();
     await screen.findByText("독일 · 2025");
-    fireEvent.click(screen.getByRole("button", { name: /미국/ }));
+    await selectCountry(/미국/);
     await screen.findByText(/미국 · 2025/);
 
     const details = screen.getByText("계산 조건 바꾸기").closest("details")!;
@@ -980,7 +1020,7 @@ describe("세금 탭이 답 우선 3계층인가", () => {
   it("미확정 국가는 확정 시 무엇이 되는지를 본문에 둔다", async () => {
     await renderSimulator();
     await screen.findByText("독일 · 2025");
-    fireEvent.click(screen.getByRole("button", { name: /한국/ }));
+    await selectCountry(/한국/);
     await screen.findByText("한국 · 2025");
 
     const section = screen.getByLabelText("판단 필요 항목");
@@ -996,23 +1036,27 @@ describe("세금 탭이 답 우선 3계층인가", () => {
   it("판단이 필요한 항목에서 해당 거래로 갈 수 있다", async () => {
     await renderSimulator();
     await screen.findByText("독일 · 2025");
-    fireEvent.click(screen.getByRole("button", { name: /한국/ }));
+    await selectCountry(/한국/);
     await screen.findByText("한국 · 2025");
 
     const section = screen.getByLabelText("판단 필요 항목");
     const link = [...section.querySelectorAll("a")].find((node) => /해당 이벤트 \d+건 보기/.test(node.textContent ?? ""));
     expect(link).toBeDefined();
-    expect(link?.getAttribute("href")).toBe("/dashboard");
+    // 목록이 요약에서 거래 탭으로 떠났다 — "해당 이벤트 보기"가 가야 할 곳도 함께 옮겨졌다.
+    expect(link?.getAttribute("href")).toBe("/transactions");
   });
 
   it("금액 종류가 다른 판정을 한 숫자로 더하지 않는다", async () => {
     await renderSimulator();
     await screen.findByText("독일 · 2025");
-    fireEvent.click(screen.getByRole("button", { name: /한국/ }));
+    await selectCountry(/한국/);
     await screen.findByText("한국 · 2025");
 
     // 한국의 시행 전 "과세 대상 아님"에는 손익 행과 수령 FMV 행이 함께 있다.
     // 둘을 더한 수는 아무것도 아니므로 줄을 나눠야 한다.
+    // 시행 가정이 기본으로 켜져 있으므로 끄고 나서 시행 전 판정을 본다.
+    fireEvent.click(await screen.findByRole("button", { name: "가정 끄기" }));
+    await waitFor(() => expect(screen.getByTestId("estimated-charge").textContent).toBe("과세 대상 아님"));
     const section = screen.getByLabelText("판정 그룹");
     const rows = [...section.querySelectorAll("li")].map((node) => node.textContent ?? "");
     const notTaxable = rows.filter((row) => row.includes("과세 대상 아님"));
@@ -1063,7 +1107,7 @@ describe("세금 탭이 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <TaxSimulator currentYear={FIXTURE_TAX_YEAR} />
+        <ReportView currentYear={FIXTURE_TAX_YEAR} />
       </QueryClientProvider>,
     );
     await selectTaxYear(2025);
