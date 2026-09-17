@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { DashboardView } from "@/components/dashboard/dashboard-view";
+import { TransactionsView } from "@/components/transactions/transactions-view";
 import { shortHash } from "@/lib/format";
 import { FIXTURE_TAX_YEAR } from "@/tests/fixtures/tax-year";
 import { createNormalizedEventFixtures } from "@/tests/fixtures/generated/normalized-events";
@@ -10,10 +10,13 @@ import { TaxEngineService } from "@/lib/tax/tax-engine-service.server";
 import type { NormalizedEvent } from "@/lib/schema/normalized-event";
 
 /**
- * 지갑 필터.
+ * 거래 화면(TransactionsView)의 지갑 필터.
  *
  * 사용자는 지갑을 여러 개 등록할 수 있고 거래는 등록된 지갑 전체에서 합산돼 내려온다. 한 목록에 섞여
- * 있으면 "이 지갑에서 무슨 일이 있었나"를 볼 방법이 없으므로 드롭다운으로 보는 대상을 바꾼다.
+ * 있으면 "이 지갑에서 무슨 일이 있었나"를 볼 방법이 없으므로 필터로 보는 대상을 바꾼다.
+ *
+ * 필터 UI는 칩 한 줄 + 바텀시트다: 칩(`button[data-filter="wallet"]`)을 누르면 시트가 열리고,
+ * 시트 안의 옵션 묶음(`[aria-label="지갑 필터"]`)에서 지갑을 고르면 시트가 닫히며 필터가 걸린다.
  *
  * 시각을 고정하는 이유는 연도 필터 파일과 같다 — 픽스처의 다음 해 배치가 실제 시계에 따라 커지고 작아지면
  * 건수 단언이 계절에 따라 다른 것을 지킨다.
@@ -76,16 +79,44 @@ afterEach(() => {
   serveEvents(SPLIT);
 });
 
-function renderDashboard() {
+function renderTransactions() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <DashboardView countryCode="DE" />
+      <TransactionsView countryCode="DE" />
     </QueryClientProvider>,
   );
 }
 
 const cardsOf = (container: HTMLElement) => [...container.querySelectorAll("section .mt-3.grid.gap-3 > button")];
+
+/** 필터 칩 한 개. 선택지가 하나뿐인 필터는 칩 자체를 그리지 않으므로 null이 온다. */
+const chipOf = (container: HTMLElement, key: string) =>
+  container.querySelector<HTMLButtonElement>(`[data-surface="transaction-filters"] button[data-filter="${key}"]`);
+
+/** 칩을 눌러 시트를 열고 그 안의 옵션 묶음을 돌려준다. */
+function openSheet(container: HTMLElement, key: string, label: string) {
+  const chip = chipOf(container, key);
+  expect(chip, `${key} 칩`).not.toBeNull();
+  fireEvent.click(chip!);
+  return screen.getByLabelText(label);
+}
+
+/** 시트 옵션 한 줄은 `<span>라벨</span><span>n건</span>`이다 — 스팬 단위로 나눠 읽는다. */
+function optionsOf(sheet: HTMLElement) {
+  return [...sheet.querySelectorAll("button")].map((node) => ({
+    node,
+    label: node.children[0]?.textContent ?? "",
+    count: node.children[1] === undefined ? null : Number(node.children[1].textContent?.replace(/\D/g, "")),
+  }));
+}
+
+/** 시트에서 라벨로 옵션 한 줄을 집는다. */
+function optionOf(sheet: HTMLElement, label: string) {
+  const found = optionsOf(sheet).find((option) => option.label === label);
+  expect(found, `${label} 옵션`).toBeDefined();
+  return found!;
+}
 
 async function settled(container: HTMLElement) {
   await waitFor(
@@ -99,58 +130,60 @@ async function settled(container: HTMLElement) {
 }
 
 describe("지갑 필터", () => {
-  it("지갑이 하나뿐이면 드롭다운을 두지 않는다", async () => {
+  it("지갑이 하나뿐이면 칩을 두지 않는다", async () => {
     serveEvents(ALL);
-    const { container } = renderDashboard();
+    const { container } = renderTransactions();
     await settled(container);
 
-    // 선택지가 하나인 드롭다운은 고를 것이 없으면서 자리만 차지한다(체인 칩과 같은 규칙).
-    expect(container.querySelector('[data-surface="wallet-filter"]')).toBeNull();
+    // 선택지가 하나인 필터는 눌러도 고를 것이 없으면서 자리만 차지한다(체인 칩과 같은 규칙).
+    expect(chipOf(container, "wallet")).toBeNull();
   });
 
-  it("지갑이 여럿이면 드롭다운에 각 지갑과 건수를 보인다", async () => {
-    const { container } = renderDashboard();
+  it("지갑이 여럿이면 시트에 각 지갑과 건수를 보인다", async () => {
+    const { container } = renderTransactions();
     await settled(container);
 
-    const select = screen.getByLabelText("지갑") as HTMLSelectElement;
-    const options = [...select.options].map((option) => option.textContent);
-    expect(options[0]).toBe(`전체 지갑 · ${SPLIT.length}건`);
-    expect(options).toContain(`${shortHash(WALLET_A)} · ${IN_A}건`);
-    expect(options).toContain(`${shortHash(WALLET_B)} · ${IN_B}건`);
+    const options = optionsOf(openSheet(container, "wallet", "지갑 필터"));
+    // 첫 줄은 되돌릴 문이다. 칩 시절과 달리 여기에도 건수가 붙는다.
+    expect(options[0]).toMatchObject({ label: "전체 지갑", count: SPLIT.length });
+    const rest = options.slice(1).map(({ label, count }) => ({ label, count }));
+    expect(rest).toContainEqual({ label: shortHash(WALLET_A), count: IN_A });
+    expect(rest).toContainEqual({ label: shortHash(WALLET_B), count: IN_B });
   });
 
   it("지갑을 고르면 그 지갑의 거래만 남고, 전체로 되돌리면 합이 맞는다", async () => {
-    const { container } = renderDashboard();
+    const { container } = renderTransactions();
     await settled(container);
     expect(cardsOf(container)).toHaveLength(SPLIT.length);
 
-    const select = screen.getByLabelText("지갑");
-    fireEvent.change(select, { target: { value: WALLET_B.toLowerCase() } });
+    fireEvent.click(optionOf(openSheet(container, "wallet", "지갑 필터"), shortHash(WALLET_B)).node);
+    // 고르면 시트가 닫힌다 — 닫히지 않으면 사용자는 결과를 보지 못한 채 시트에 갇힌다.
+    expect(screen.queryByLabelText("지갑 필터")).not.toBeInTheDocument();
     await waitFor(() => expect(cardsOf(container)).toHaveLength(IN_B));
 
-    fireEvent.change(select, { target: { value: WALLET_A.toLowerCase() } });
+    fireEvent.click(optionOf(openSheet(container, "wallet", "지갑 필터"), shortHash(WALLET_A)).node);
     await waitFor(() => expect(cardsOf(container)).toHaveLength(IN_A));
 
     // 두 지갑을 합치면 전체가 된다 — 어느 한쪽이 조용히 빠지면 여기서 어긋난다.
     expect(IN_A + IN_B).toBe(SPLIT.length);
 
-    fireEvent.change(select, { target: { value: "" } });
+    fireEvent.click(optionOf(openSheet(container, "wallet", "지갑 필터"), "전체 지갑").node);
     await waitFor(() => expect(cardsOf(container)).toHaveLength(SPLIT.length));
   });
 
-  it("체인 칩 건수는 고른 지갑을 기준으로 다시 센다", async () => {
-    const { container } = renderDashboard();
+  it("체인 시트 건수는 고른 지갑을 기준으로 다시 센다", async () => {
+    const { container } = renderTransactions();
     await settled(container);
 
-    const chainChipTotal = () =>
-      [...(container.querySelector('[aria-label="체인 필터"]')?.querySelectorAll("button") ?? [])]
-        .slice(1) // 첫 칩은 "전체 체인"이라 건수를 달지 않는다.
-        .reduce((sum, chip) => sum + Number(chip.textContent?.match(/(\d+)$/)?.[1] ?? 0), 0);
+    const chainOptionTotal = () =>
+      optionsOf(openSheet(container, "chain", "체인 필터"))
+        .slice(1) // 첫 줄은 "전체 체인"이라 나머지 합과 이중으로 세지 않는다.
+        .reduce((sum, option) => sum + (option.count ?? 0), 0);
 
-    expect(chainChipTotal()).toBe(SPLIT.length);
+    expect(chainOptionTotal()).toBe(SPLIT.length);
 
-    fireEvent.change(screen.getByLabelText("지갑"), { target: { value: WALLET_B.toLowerCase() } });
-    // 칩 건수가 전체 기준에 머물면 드롭다운은 한 지갑 건수를 말하는데 칩은 전체를 말하게 된다.
-    await waitFor(() => expect(chainChipTotal()).toBe(IN_B));
+    fireEvent.click(optionOf(openSheet(container, "wallet", "지갑 필터"), shortHash(WALLET_B)).node);
+    // 건수가 전체 기준에 머물면 지갑 시트는 한 지갑 건수를 말하는데 체인 시트는 전체를 말하게 된다.
+    await waitFor(() => expect(chainOptionTotal()).toBe(IN_B));
   });
 });

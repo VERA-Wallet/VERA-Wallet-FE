@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { DashboardView } from "@/components/dashboard/dashboard-view";
+import { TransactionsView } from "@/components/transactions/transactions-view";
 import { assetTicker, chainLabel, formatSignedTokenAmount } from "@/lib/format";
 import { createNormalizedEventFixtures } from "@/tests/fixtures/generated/normalized-events";
 import type { NormalizedEvent } from "@/lib/schema/normalized-event";
@@ -34,11 +34,11 @@ function setup(event: NormalizedEvent, saveResult: unknown) {
   ports.setValueOverride.mockResolvedValue(saveResult);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const invalidate = vi.spyOn(client, "invalidateQueries");
-  render(<QueryClientProvider client={client}><DashboardView /></QueryClientProvider>);
+  render(<QueryClientProvider client={client}><TransactionsView /></QueryClientProvider>);
   return { invalidate };
 }
 
-describe("dashboard 금액 override 편집", () => {
+describe("거래 탭 금액 override 편집", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });

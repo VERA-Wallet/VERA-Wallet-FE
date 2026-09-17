@@ -25,7 +25,7 @@ export function ImportCompleteToast() {
       anchor.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
-    router.push("/dashboard");
+    router.push("/transactions");
   }, [dismissToast, router]);
 
   return (

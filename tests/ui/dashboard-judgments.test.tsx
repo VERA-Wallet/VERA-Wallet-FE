@@ -1,8 +1,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DashboardView } from "@/components/dashboard/dashboard-view";
+import { TransactionsView } from "@/components/transactions/transactions-view";
 import { assetTicker, chainLabel, formatDate, formatFiat, formatSignedTokenAmount, formatTokenAmount, nativeSymbol, UTC_NOTICE } from "@/lib/format";
 import { isoDay } from "@/lib/period";
 import { FIXTURE_TAX_YEAR } from "@/tests/fixtures/tax-year";
@@ -16,6 +17,27 @@ import type { NormalizedEvent } from "@/lib/schema/normalized-event";
 
 // 화면에 나오면 즉시 눈에 띄도록 픽스처 금액과 겹치지 않는 값을 쓴다.
 const LEAK_SENTINEL_AMOUNT = "987654.32";
+
+/**
+ * 이 vitest 환경의 `window.localStorage`는 메서드가 없는 빈 객체다(jsdom이 아니라 Node의
+ * 실험적 웹스토리지가 끼어든 탓 — `--localstorage-file` 경고 참고). 잔액 가리기(`useHideBalances`)는
+ * 인자를 생략하면 그걸 읽으므로, 실제로 동작하는 메모리 스토리지로 바꿔 둬야
+ * "저장소가 켜져 있으면 거래 화면도 가린다"를 시험할 수 있다. tests/ui/settings-view.test.tsx와 같은 처방.
+ */
+function createMemoryStorage(): Storage {
+  const store = new Map<string, string>();
+  return {
+    getItem: (key) => (store.has(key) ? store.get(key)! : null),
+    setItem: (key, value) => void store.set(key, String(value)),
+    removeItem: (key) => void store.delete(key),
+    clear: () => store.clear(),
+    key: (index) => Array.from(store.keys())[index] ?? null,
+    get length() {
+      return store.size;
+    },
+  } as Storage;
+}
+Object.defineProperty(window, "localStorage", { value: createMemoryStorage(), configurable: true });
 /**
  * 이 스위트는 **한 해치 목록**을 본다. 픽스처는 기준 연도 뒤에 다음 해 배치를 붙이지만,
  * 그 해가 열리기 전 시각을 주면 배치가 비어 25건만 남는다.
@@ -76,7 +98,25 @@ ports.estimate.mockImplementation(async (input: Parameters<TaxEngineService["est
 
 let client0: QueryClient;
 
-function renderDashboard(countryCode = "DE") {
+/**
+ * 거래 화면. 목록·검색·필터 칩·탭·배지 뜻·원장 누락 고지·UTC 고지·거래 상세가 전부 여기 있다.
+ * 기간 선택은 이 화면에 없다 — 목록을 좁히는 문은 연도 필터뿐이다.
+ */
+function renderTransactions(countryCode = "DE") {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client0 = client;
+  return render(
+    <QueryClientProvider client={client}>
+      <TransactionsView countryCode={countryCode} />
+    </QueryClientProvider>,
+  );
+}
+
+/**
+ * 요약 화면. 기간 선택·그래프·요약 카드(예상 손익·계산 대상 이벤트)·신뢰도 칩·금액 가리기·
+ * 확인 필요 카드·"최근 거래" 3건과 같은 거래 상세 시트가 있다. 전체 목록은 거래 화면이 맡는다.
+ */
+function renderSummary(countryCode = "DE") {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   client0 = client;
   return render(
@@ -111,8 +151,10 @@ function resetPorts() {
 }
 
 // 테스트가 전역 목을 바꾸고 assertion 뒤에 되돌리면, 실패 한 번에 이후 전부가 오염된다.
+// 잔액 가리기는 저장소에 남는 전역 설정이라 한 테스트가 켜 두면 다음 테스트의 금액이 통째로 마스킹된다.
 afterEach(() => {
   vi.useRealTimers();
+  window.localStorage.removeItem("vw_hide_balances");
   resetPorts();
 });
 
@@ -167,6 +209,38 @@ async function openDetail(id: string): Promise<HTMLElement> {
   return screen.getByText("거래 상세").closest("div")!.parentElement!;
 }
 
+/**
+ * 필터는 이제 **칩 → 바텀시트**다(지갑·연도·체인·판정 네 개가 같은 모양).
+ * 선택지는 시트가 열려야 DOM에 생기고, 한 줄을 고르면 시트가 스스로 닫힌다 —
+ * 그래서 두 번 고르려면 그때마다 다시 열어야 한다.
+ */
+type FilterKey = "wallet" | "year" | "chain" | "group";
+const FILTER_PANEL_LABEL: Record<FilterKey, string> = {
+  wallet: "지갑 필터",
+  year: "연도 필터",
+  chain: "체인 필터",
+  group: "판정 필터",
+};
+
+/** 필터 칩을 눌러 시트를 연다. 칩이 없으면(고를 것이 없거나 판정 보류) 그 사실을 바로 드러낸다. */
+function openFilterSheet(key: FilterKey): HTMLElement {
+  const chip = document.querySelector(`[data-filter="${key}"]`);
+  if (!chip) throw new Error(`필터 칩이 없다: ${key}`);
+  fireEvent.click(chip);
+  return screen.getByLabelText(FILTER_PANEL_LABEL[key]);
+}
+
+/** 시트를 열어 한 줄을 고른다. 고르면 시트는 닫힌다. */
+function chooseFilter(key: FilterKey, name: RegExp): void {
+  const panel = openFilterSheet(key);
+  fireEvent.click(within(panel).getByRole("button", { name }));
+}
+
+/** 시트를 고르지 않고 닫는다(줄 수만 세고 물러날 때). */
+function closeFilterSheet(): void {
+  fireEvent.click(screen.getByLabelText("바텀시트 닫기"));
+}
+
 describe("거래 탭이 세금 대신 판정 도장을 찍는다", () => {
   it("세금 금액은 내역 화면 어디에도 없다 — 그 자리에는 지갑 이력 그래프가 있다", async () => {
     // UI 계약은 엔진 구현과 분리한다. 같은 함수로 기대값을 만들면 엔진 결함이 함께 통과한다.
@@ -175,18 +249,27 @@ describe("거래 탭이 세금 대신 판정 도장을 찍는다", () => {
       const base = await engine.estimate(input);
       return { ...base, totals: { ...base.totals, estimatedCharge: FIXED_CHARGE }, status: "SUPPORTED" as const };
     });
-    renderDashboard("DE");
+    // 내역은 이제 두 화면이다. 세금 금액은 **둘 다**에 없어야 하므로 둘 다 본다.
+    // 요약: 부담이 있던 자리에 지갑 이력 그래프가 있다.
+    renderSummary("DE");
     await settled();
-
-    // 부담·과세연도·기준 카드는 세금 탭 한 곳에서만 답한다. 내역이 같은 금액을 또 말하면
-    // 두 화면 중 어느 쪽이 최신인지 알 수 없다.
-    const body = document.body.textContent ?? "";
-    expect(body, "세금 금액이 내역 화면에 새면 안 된다").not.toContain(formatFiat(FIXED_CHARGE, "EUR"));
-    expect(body).not.toMatch(/년 세금/);
+    const summaryBody = document.body.textContent ?? "";
+    expect(summaryBody, "세금 금액이 요약 화면에 새면 안 된다").not.toContain(formatFiat(FIXED_CHARGE, "EUR"));
+    expect(summaryBody).not.toMatch(/년 세금/);
     expect(screen.queryByLabelText("판정 기준")).not.toBeInTheDocument();
-
     // 빈자리를 남기지 않는다 — 지갑 이력이 그린 선이 그 자리에 있다.
     expect(screen.getByLabelText("누적 순유입")).toBeInTheDocument();
+
+    cleanup();
+
+    // 거래 화면: 부담·과세연도·기준 카드는 세금 탭 한 곳에서만 답한다. 내역이 같은 금액을 또 말하면
+    // 두 화면 중 어느 쪽이 최신인지 알 수 없다.
+    renderTransactions("DE");
+    await settled();
+    const body = document.body.textContent ?? "";
+    expect(body, "세금 금액이 거래 화면에 새면 안 된다").not.toContain(formatFiat(FIXED_CHARGE, "EUR"));
+    expect(body).not.toMatch(/년 세금/);
+    expect(screen.queryByLabelText("판정 기준")).not.toBeInTheDocument();
 
     // 도장 자체는 남는다 — 금액만 사라진 것이지 판정까지 사라진 것이 아니다.
     // 목록 재설계로 도장은 목록이 아니라 상세에서 말한다: 매수(취득) 행을 열어 확인한다.
@@ -198,7 +281,7 @@ describe("거래 탭이 세금 대신 판정 도장을 찍는다", () => {
   it("시행 전 국가에서도 내역은 부담을 말하지 않고 행 도장만 남긴다", async () => {
     // 한국은 2027-01-01 시행이라 2025년 발생분에는 부담이 존재하지 않는다.
     // 그 사실을 말할 자리는 세금 탭이고, 내역은 행마다 도장을 찍는다.
-    const { container } = renderDashboard("KR");
+    const { container } = renderTransactions("KR");
     await settled();
     // 시행 가정 토글은 세금 탭의 것이라 대시보드엔 없다. 부담(세금 금액)도 내역에 없다.
     expect(screen.queryByRole("button", { name: "시행 가정으로 보기" })).not.toBeInTheDocument();
@@ -220,7 +303,7 @@ describe("거래 탭이 세금 대신 판정 도장을 찍는다", () => {
   });
 
   it("목록은 검증된 자산에 딱지를 남기지 않고 처리 방식 배지는 상세로 보낸다", async () => {
-    renderDashboard("KR");
+    renderTransactions("KR");
     // 픽스처 첫 건은 추정가이고, event-07은 사용자가 수동 분류한 건이다.
     const estimated = events.find((event) => event.price_status === "ESTIMATED")!;
     const overridden = events.find((event) => event.user_override !== null)!;
@@ -242,7 +325,7 @@ describe("거래 탭이 세금 대신 판정 도장을 찍는다", () => {
   });
 
   it("목록이 토큰을 심볼로 부른다", async () => {
-    renderDashboard("KR");
+    renderTransactions("KR");
     // 8453(Base)의 ERC20 픽스처 — "ERC20"이 아니라 토큰 이름이어야 한다.
     const token = events.find((event) => event.asset_type === "ERC20" && event.chain_id === 8453)!;
     expect(token.asset_symbol).toBe("USDC");
@@ -255,7 +338,7 @@ describe("거래 탭이 세금 대신 판정 도장을 찍는다", () => {
   });
 
   it("쓴 것과 얻은 것을 부호로 가른다", async () => {
-    renderDashboard("KR");
+    renderTransactions("KR");
     const received = events.find((event) => effectiveClassificationOf(event) === "RECEIVE" && event.token_id === null)!;
     const sent = events.find((event) => effectiveClassificationOf(event) === "SEND" && event.token_id === null)!;
     const moved = events.find((event) => effectiveClassificationOf(event) === "INTERNAL_TRANSFER")!;
@@ -273,28 +356,28 @@ describe("거래 탭이 세금 대신 판정 도장을 찍는다", () => {
   });
 
   it("체인별로 걸러 보고, 판정 필터와 겹쳐 걸 수 있다", async () => {
-    const { container } = renderDashboard("KR");
+    const { container } = renderTransactions("KR");
     await settled();
     const cards = () => container.querySelectorAll("section .mt-3.grid.gap-3 > button").length;
     const all = cards();
 
-    const chainRow = screen.getByLabelText("체인 필터");
-    fireEvent.click(within(chainRow).getByRole("button", { name: /^Base/ }));
+    // 필터는 칩 → 바텀시트다. 시트에서 한 줄을 고르면 시트가 닫히므로 다시 고르려면 다시 연다.
+    chooseFilter("chain", /^Base/);
     const baseOnly = events.filter((event) => event.chain_id === 8453).length;
     expect(cards()).toBe(baseOnly);
     expect(cards()).toBeLessThan(all);
-    // 체인은 이름 텍스트가 아니라 로고 배지로만 말한다(aria-hidden, data-chain-icon).
+    // 체인은 목록에서 이름 텍스트가 아니라 로고 배지로만 말한다(aria-hidden, data-chain-icon).
     for (const card of container.querySelectorAll("section .mt-3.grid.gap-3 > button")) {
       expect(card.querySelector('[data-chain-icon="8453"]')).not.toBeNull();
     }
 
-    // 같은 칩을 다시 누르면 전체로 돌아온다.
-    fireEvent.click(within(chainRow).getByRole("button", { name: /^Base/ }));
+    // 같은 줄을 다시 고르면 전체로 돌아온다.
+    chooseFilter("chain", /^Base/);
     expect(cards()).toBe(all);
   });
 
   it("목록이 자산마다 표식을 붙이고, 이미지가 없는 NFT는 NFT 박스로 그린다", async () => {
-    renderDashboard("KR");
+    renderTransactions("KR");
     // 로고는 (체인·컨트랙트)로만 해석한다. 네이티브 ETH는 컨트랙트 없이 체인으로 공식 로고를 얻는다.
     const nativeEth = events.find(
       (event) => event.asset_type === "NATIVE" && event.token_id === null && [1, 10, 8453, 42161].includes(event.chain_id),
@@ -319,7 +402,7 @@ describe("거래 탭이 세금 대신 판정 도장을 찍는다", () => {
   });
 
   it("거래 행은 도장만 찍고, 금액이 세금이 아님은 상세가 라벨로 밝힌다", async () => {
-    renderDashboard("DE");
+    renderTransactions("DE");
     await settled();
     // 첫 매수 이벤트는 취득 판정을 받는다.
     const acquired = events.find((event) => derived.events.some((tax) => tax.id === event.id && tax.kind === "ACQUIRE"));
@@ -343,7 +426,7 @@ describe("거래 탭이 세금 대신 판정 도장을 찍는다", () => {
   });
 
   it("계산에서 빠진 이벤트는 계산 제외 도장을 받고 확인 필요 탭과 같은 집합이다", async () => {
-    renderDashboard("DE");
+    renderTransactions("DE");
     await settled();
     expect(derived.excludedEventIds.length).toBeGreaterThan(0);
     const excluded = events.find((event) => derived.excludedEventIds.includes(event.id))!;
@@ -356,7 +439,7 @@ describe("거래 탭이 세금 대신 판정 도장을 찍는다", () => {
   });
 
   it("기존 탭 접근가능 이름과 거래 카드 구조를 유지한다", async () => {
-    const { container } = renderDashboard("DE");
+    const { container } = renderTransactions("DE");
     await settled();
     expect(screen.getByRole("tab", { name: "전체 거래" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "확인 필요" })).toBeInTheDocument();
@@ -365,11 +448,10 @@ describe("거래 탭이 세금 대신 판정 도장을 찍는다", () => {
   });
 
   it("그룹 필터가 목록을 좁힌다", async () => {
-    const { container } = renderDashboard("DE");
+    const { container } = renderTransactions("DE");
     await settled();
     const all = container.querySelectorAll("section .mt-3.grid.gap-3 > button").length;
-    const chip = screen.getByRole("button", { name: /^계산 제외/ });
-    fireEvent.click(chip);
+    chooseFilter("group", /^계산 제외/);
     const filtered = container.querySelectorAll("section .mt-3.grid.gap-3 > button").length;
     expect(filtered).toBe(derived.excludedEventIds.length);
     expect(filtered).toBeLessThan(all);
@@ -384,7 +466,7 @@ describe("판정도 제외도 아닌 거래가 침묵하지 않는다", () => {
     expect(derived.events.some((tax) => tax.id === internal!.id)).toBe(false);
     expect(derived.excludedEventIds).not.toContain(internal!.id);
 
-    renderDashboard("DE");
+    renderTransactions("DE");
     await settled();
     // "이동 · 처분 아님" 도장은 목록에서 빠지고, 그 이유는 이제 상세가 문장으로 밝힌다.
     const sheet = await openDetail(internal!.id);
@@ -405,7 +487,7 @@ describe("아키텍트가 지적한 P1 경계", () => {
   it("어느 거래도 상세에서 침묵하지 않는다 — 판정·상태를 상세가 반드시 밝힌다", async () => {
     // 목록 재설계로 판정 도장이 목록에서 빠졌으므로, "침묵하는 카드가 없다"는 이제 상세에서 지킨다:
     // 모든 거래의 상세는 판정(취득·과세…)이나 상태(제외·중복·이동·보류)를 문장/도장으로 말해야 한다.
-    const { container } = renderDashboard("DE");
+    const { container } = renderTransactions("DE");
     await settled();
     const rows = [...container.querySelectorAll("section .mt-3.grid.gap-3 > button")] as HTMLElement[];
     expect(rows.length).toBeGreaterThan(0);
@@ -419,7 +501,10 @@ describe("아키텍트가 지적한 P1 경계", () => {
         { timeout: SETTLE_TIMEOUT },
       );
     }
-  });
+    // 행을 하나씩 열어 상세를 확인하는 구조라 본래 느리다. 기본 5초에서는 전체 스위트를 병렬로 돌리거나
+    // 다른 작업(e2e·빌드)과 겹칠 때 타임아웃으로 떨어졌고 단독 실행은 늘 통과했다(2026-09-17 하루에 세 번).
+    // 단언은 그대로 두고 시간만 준다 — 실패가 아닌 것을 실패로 보고하는 테스트는 진짜 실패를 가린다.
+  }, 20_000);
 
   it("자기 지갑 간 이체는 실현손익에도 들어가지 않는다", () => {
     const internal: NormalizedEvent = {
@@ -448,7 +533,7 @@ describe("아키텍트가 지적한 P1 경계", () => {
     });
     render(
       <QueryClientProvider client={client}>
-        <DashboardView countryCode="DE" />
+        <TransactionsView countryCode="DE" />
       </QueryClientProvider>,
     );
     await settled();
@@ -468,7 +553,7 @@ describe("2차 리뷰 P1 경계", () => {
       { event: { ...base }, version: 1 },
     ];
     ports.list.mockResolvedValueOnce({ items: dupes, nextCursor: null });
-    renderDashboard("DE");
+    renderTransactions("DE");
     await settled();
 
     const cards = screen.getAllByText(rowLabel(base)).map((node) => node.closest("button")!);
@@ -493,7 +578,7 @@ describe("2차 리뷰 P1 경계", () => {
     });
     render(
       <QueryClientProvider client={client}>
-        <DashboardView countryCode="DE" />
+        <TransactionsView countryCode="DE" />
       </QueryClientProvider>,
     );
     await settled();
@@ -507,7 +592,7 @@ describe("2차 리뷰 P1 경계", () => {
   it("판정이 아직 없으면 계산 결과 없음이라 단정하지 않는다", async () => {
     // estimate가 끝내 도착하지 않으면 기간 판단을 보류해야 한다.
     ports.estimate.mockImplementation(() => new Promise(() => {}));
-    const { container } = renderDashboard("DE");
+    const { container } = renderTransactions("DE");
     // 이벤트 목록은 도착하지만 판정은 계속 pending인 상태를 만든다.
     await screen.findByText(rowLabel(events[0]));
     const cards = [...container.querySelectorAll("section .mt-3.grid.gap-3 > button")];
@@ -538,7 +623,7 @@ describe("중복 판정이 필터에 따라 뒤집히지 않는다", () => {
       ],
       nextCursor: null,
     });
-    renderDashboard("DE");
+    renderTransactions("DE");
     await settled();
 
     fireEvent.click(screen.getByRole("tab", { name: "확인 필요" }));
@@ -572,7 +657,7 @@ describe("3차 리뷰 P1 경계", () => {
       ],
       nextCursor: null,
     });
-    renderDashboard("DE");
+    renderTransactions("DE");
     await settled();
     const cards = screen.getAllByText(rowLabel(highConfidenceInternal)).map((n) => n.closest("button")!);
     fireEvent.click(cards[1]);
@@ -592,9 +677,9 @@ describe("3차 리뷰 P1 경계", () => {
       ],
       nextCursor: null,
     });
-    const { container } = renderDashboard("DE");
+    const { container } = renderTransactions("DE");
     await settled();
-    fireEvent.click(screen.getByRole("button", { name: /^취득/ }));
+    chooseFilter("group", /^취득/);
     const cards = [...container.querySelectorAll("section .mt-3.grid.gap-3 > button")];
     // 칩 건수는 고유 이벤트 기준이므로 카드도 1장이어야 한다.
     expect(cards).toHaveLength(1);
@@ -604,7 +689,7 @@ describe("3차 리뷰 P1 경계", () => {
   it("판정 조회가 실패하면 로딩이라 말하지 않는다", async () => {
     // 재시도까지 전부 실패시켜야 isError가 뜬다.
     ports.estimate.mockRejectedValue(new Error("boom"));
-    const { container } = renderDashboard("DE");
+    const { container } = renderTransactions("DE");
     await screen.findByText(/세금 판정을 불러오지 못해/, undefined, { timeout: 3000 });
     const cards = [...container.querySelectorAll("section .mt-3.grid.gap-3 > button")];
     // 오류에도 목록은 값을 지어내지 않는다 — 판정 손익 블록을 렌더하지 않는다(보류와 같은 '부재').
@@ -619,7 +704,7 @@ describe("3차 리뷰 P1 경계", () => {
   });
 });
 
-describe("그룹 칩 건수가 실제 카드 수와 같은가", () => {
+describe("필터 시트의 건수가 실제 카드 수와 같은가", () => {
   it("중복 레코드가 있어도 모든 칩에서 건수와 카드 수가 일치한다", async () => {
     const clean = events.find(
       (event) => !needsReview(event) && derived.events.some((tax) => tax.id === event.id),
@@ -631,42 +716,48 @@ describe("그룹 칩 건수가 실제 카드 수와 같은가", () => {
       ],
       nextCursor: null,
     });
-    const { container } = renderDashboard("DE");
+    const { container } = renderTransactions("DE");
     await settled();
 
-    // 전체 탭과 확인 필요 탭 모두에서, 체인 칩·판정 칩 어느 쪽을 눌러도 칩 건수 == 카드 수여야 한다.
+    // 전체 탭과 확인 필요 탭 모두에서, 체인 시트·판정 시트 어느 줄을 골라도 줄 건수 == 카드 수여야 한다.
     for (const tabName of ["전체 거래", "확인 필요"] as const) {
       fireEvent.click(screen.getByRole("tab", { name: tabName }));
-      // 스냅샷 NodeList를 재사용하면 리렌더로 교체된 노드를 눌러 아무 일도 일어나지 않는다.
-      // 필터가 둘로 늘어난 뒤 실제로 그 증상이 났다 — 매번 다시 조회한다.
-      const allChips = () => [
-        ...container.querySelectorAll('[aria-label="체인 필터"] button, [aria-label="판정 필터"] button'),
-      ];
-      const chipsNow = () => allChips().filter((chip) => !/^전체/.test(chip.textContent ?? ""));
-      // 필터 하나를 재는 동안 다른 하나가 걸려 있으면 안 된다. 매번 두 줄을 모두 푼다.
+      // 필터가 칩 → 시트가 된 뒤로 선택지는 시트가 열려 있는 동안에만 DOM에 있고,
+      // 한 줄을 고르면 시트가 닫힌다. 스냅샷을 재사용하면 이미 떼어진 노드를 누르게 되므로
+      // 잴 때마다 시트를 다시 열어 그 순간의 줄을 읽는다.
+      const optionsOf = (key: FilterKey) => [...openFilterSheet(key).querySelectorAll("button")];
+      // 필터 하나를 재는 동안 다른 하나가 걸려 있으면 안 된다. 매번 두 필터를 모두 푼다.
       const reset = () => {
-        for (const label of ["전체 체인", "전체"]) {
-          const button = allChips().find((chip) => chip.textContent === label);
-          if (button) fireEvent.click(button);
+        for (const key of ["chain", "group"] as const) {
+          if (!document.querySelector(`[data-filter="${key}"]`)) continue;
+          // "전체 체인"·"전체"는 각 시트의 첫 줄이다.
+          fireEvent.click(optionsOf(key)[0]);
         }
       };
-      for (let index = 0; index < chipsNow().length; index += 1) {
-        reset();
-        const label = chipsNow()[index].textContent ?? "";
-        const expected = Number(label.match(/(\d+)\s*$/)?.[1]);
-        expect(Number.isFinite(expected), `칩 라벨에 건수가 없다: ${label}`).toBe(true);
-        fireEvent.click(chipsNow()[index]);
-        const cards = container.querySelectorAll("section .mt-3.grid.gap-3 > button").length;
-        expect(cards, `${tabName} 탭 칩 "${label}"의 건수와 카드 수가 다르다`).toBe(expected);
+      for (const key of ["chain", "group"] as const) {
+        if (!document.querySelector(`[data-filter="${key}"]`)) continue;
+        const total = optionsOf(key).length;
+        closeFilterSheet();
+        // 0번은 "전체" 줄이라 건수와 카드 수를 재는 대상이 아니다.
+        for (let index = 1; index < total; index += 1) {
+          reset();
+          const options = optionsOf(key);
+          const label = options[index].textContent ?? "";
+          const expected = Number(label.match(/(\d+)건\s*$/)?.[1]);
+          expect(Number.isFinite(expected), `필터 줄에 건수가 없다: ${label}`).toBe(true);
+          fireEvent.click(options[index]);
+          const cards = container.querySelectorAll("section .mt-3.grid.gap-3 > button").length;
+          expect(cards, `${tabName} 탭 ${FILTER_PANEL_LABEL[key]} "${label}"의 건수와 카드 수가 다르다`).toBe(expected);
+        }
       }
       reset();
     }
   });
 
   it("판정 조회가 실패하면 그룹 필터가 조용히 빈 목록을 만들지 않는다", async () => {
-    const { container } = renderDashboard("DE");
+    const { container } = renderTransactions("DE");
     await settled();
-    fireEvent.click(screen.getByRole("button", { name: /^취득/ }));
+    chooseFilter("group", /^취득/);
     expect(container.querySelectorAll("section .mt-3.grid.gap-3 > button").length).toBeGreaterThan(0);
 
     ports.estimate.mockRejectedValue(new Error("boom"));
@@ -684,7 +775,7 @@ describe("4차 리뷰 P1 경계 — 오래된 상태가 최신인 척하지 않�
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { rerender } = render(
       <QueryClientProvider client={client}>
-        <DashboardView countryCode="DE" />
+        <TransactionsView countryCode="DE" />
       </QueryClientProvider>,
     );
     // 먼저 성공시켜 도장을 받는다 — 판정(취득) 섹션은 이제 상세에 있다.
@@ -697,7 +788,7 @@ describe("4차 리뷰 P1 경계 — 오래된 상태가 최신인 척하지 않�
     await client.invalidateQueries({ queryKey: ["tax", "estimate"] });
     rerender(
       <QueryClientProvider client={client}>
-        <DashboardView countryCode="DE" />
+        <TransactionsView countryCode="DE" />
       </QueryClientProvider>,
     );
     await screen.findByText(/세금 판정을 불러오지 못해/, undefined, { timeout: 3000 });
@@ -712,7 +803,7 @@ describe("4차 리뷰 P1 경계 — 오래된 상태가 최신인 척하지 않�
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <DashboardView countryCode="DE" />
+        <TransactionsView countryCode="DE" />
       </QueryClientProvider>,
     );
     await settled();
@@ -733,7 +824,8 @@ describe("4차 리뷰 P1 경계 — 오래된 상태가 최신인 척하지 않�
 
   it("요약 조회가 실패하면 옛 집계를 최신인 척 보이지 않는다", async () => {
     ports.getSummary.mockRejectedValue(new Error("boom"));
-    renderDashboard("DE");
+    // 집계 카드는 요약 화면의 것이다 — 거래 화면에는 애초에 없다.
+    renderSummary("DE");
     await screen.findByText(/요약을 불러오지 못했습니다/, undefined, { timeout: 3000 });
     // 한 카드만 비고 다른 카드가 옛 값을 유지해도 통과하면 안 된다.
     expect(screen.getByText("예상 손익").parentElement?.textContent).toContain("—");
@@ -759,7 +851,7 @@ describe("5차 리뷰 P1 경계 — 열린 시트가 외부 변경을 반영한�
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <DashboardView countryCode="DE" />
+        <TransactionsView countryCode="DE" />
       </QueryClientProvider>,
     );
     await settled();
@@ -787,10 +879,10 @@ describe("5차 리뷰 P1 경계 — 열린 시트가 외부 변경을 반영한�
   });
 
   it("탭에 없는 그룹 필터는 조용히 빈 목록을 만들지 않는다", async () => {
-    const { container } = renderDashboard("DE");
+    const { container } = renderTransactions("DE");
     await settled();
     // 취득 칩은 전체 탭에만 있고 확인 필요 탭에는 없다.
-    fireEvent.click(screen.getByRole("button", { name: /^취득/ }));
+    chooseFilter("group", /^취득/);
     fireEvent.click(screen.getByRole("tab", { name: "확인 필요" }));
     expect(screen.queryByText("확인이 필요한 거래가 없습니다.")).not.toBeInTheDocument();
     expect(container.querySelectorAll("section .mt-3.grid.gap-3 > button").length).toBeGreaterThan(0);
@@ -808,7 +900,7 @@ describe("자기 변경을 외부 변경으로 오인하지 않는다", () => {
     });
     render(
       <QueryClientProvider client={client}>
-        <DashboardView countryCode="DE" />
+        <TransactionsView countryCode="DE" />
       </QueryClientProvider>,
     );
     await settled();
@@ -842,7 +934,7 @@ describe("6차 리뷰 P1 경계", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <DashboardView countryCode="DE" />
+        <TransactionsView countryCode="DE" />
       </QueryClientProvider>,
     );
     await settled();
@@ -882,7 +974,7 @@ describe("6차 리뷰 P1 경계", () => {
         ? { items: events.slice(half).map((event) => ({ event, version: 1 })), nextCursor: null }
         : { items: events.slice(0, half).map((event) => ({ event, version: 1 })), nextCursor: "c1" },
     );
-    const { container } = renderDashboard("DE");
+    const { container } = renderTransactions("DE");
     await settled();
     // 커서를 버리면 뒷페이지 거래가 화면에서 통째로 사라진다.
     await waitFor(() =>
@@ -899,7 +991,7 @@ describe("목록을 다 못 받았으면 그 사실을 말한다", () => {
       items: events.slice(0, 2).map((event) => ({ event, version: 1 })),
       nextCursor: "same",
     }));
-    renderDashboard("DE");
+    renderTransactions("DE");
     expect(await screen.findByText(/일부만 불러옴/)).toBeInTheDocument();
     ports.list.mockResolvedValue({ items: events.map((event) => ({ event, version: 1 })), nextCursor: null });
   });
@@ -911,7 +1003,7 @@ describe("7차 리뷰 P1 경계 — 보류 중에 옛 사실을 단정하지 않
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <DashboardView countryCode="DE" />
+        <TransactionsView countryCode="DE" />
       </QueryClientProvider>,
     );
     await settled();
@@ -949,6 +1041,7 @@ describe("7차 리뷰 P1 경계 — 보류 중에 옛 사실을 단정하지 않
   it("외부 버전 변경 시 요약 카드도 함께 갱신한다", async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const invalidate = vi.spyOn(client, "invalidateQueries");
+    // 갱신을 받아야 하는 쪽이 요약 카드이므로 요약 화면에서 본다.
     render(
       <QueryClientProvider client={client}>
         <DashboardView countryCode="DE" />
@@ -973,19 +1066,20 @@ describe("7차 리뷰 P1 경계 — 보류 중에 옛 사실을 단정하지 않
 describe("판정 보류 중에는 칩도 함께 보류한다", () => {
   it("카드가 '판정 확인 중'이면 그룹 칩이 옛 건수를 단정하지 않는다", async () => {
     ports.estimate.mockImplementation(() => new Promise(() => {}));
-    const { container } = renderDashboard("DE");
+    const { container } = renderTransactions("DE");
     await screen.findByText(rowLabel(events[0]));
 
     const cards = [...container.querySelectorAll("section .mt-3.grid.gap-3 > button")];
     // 판정 보류는 목록에서 손익 블록의 '부재'로 나타난다(적어도 한 카드가 보류다).
     expect(cards.some((card) => !card.querySelector('[data-surface="event-gain"]'))).toBe(true);
-    // 카드가 판정을 모른다는데 칩이 "취득 10"이라 하면 두 이야기다.
-    const chips = [...container.querySelectorAll('[aria-label="판정 필터"] button[aria-pressed]')].filter(
-      (chip) => !/^전체/.test(chip.textContent ?? ""),
-    );
-    expect(chips.map((chip) => chip.textContent)).toEqual([]);
+    // 카드가 판정을 모른다는데 칩이 "취득 10"이라 하면 두 이야기다 —
+    // 무엇이 있는지 모르는 동안에는 판정 칩 자체를 달지 않는다(열 문이 없다).
+    expect(container.querySelector('[data-filter="group"]')).toBeNull();
     // 체인은 판정이 아니라 온체인 사실이라 판정을 기다리는 동안에도 고를 수 있다.
-    expect(container.querySelector('[aria-label="체인 필터"]')).not.toBeNull();
+    expect(container.querySelector('[data-filter="chain"]')).not.toBeNull();
+    const chainPanel = openFilterSheet("chain");
+    expect(within(chainPanel).getByRole("button", { name: /^Base/ })).toBeInTheDocument();
+    closeFilterSheet();
     ports.estimate.mockImplementation(async (input: Parameters<TaxEngineService["estimate"]>[0]) => engine.estimate(input));
   });
 });
@@ -996,7 +1090,7 @@ describe("남은 WATCH 항목 회귀", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <DashboardView countryCode="DE" />
+        <TransactionsView countryCode="DE" />
       </QueryClientProvider>,
     );
     await settled();
@@ -1030,7 +1124,7 @@ describe("남은 WATCH 항목 회귀", () => {
       calls += 1;
       return { items: events.slice(0, 2).map((event) => ({ event, version: 1 })), nextCursor: `c${calls}` };
     });
-    renderDashboard("DE");
+    renderTransactions("DE");
     await screen.findByText(/일부만 불러옴/);
     const before = calls;
     fireEvent.click(screen.getByRole("button", { name: "더 불러오기" }));
@@ -1046,7 +1140,7 @@ describe("파생 표면 전체가 '지금 것인가'를 지킨다", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <DashboardView countryCode="DE" />
+        <TransactionsView countryCode="DE" />
       </QueryClientProvider>,
     );
     await settled();
@@ -1064,7 +1158,7 @@ describe("파생 표면 전체가 '지금 것인가'를 지킨다", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <DashboardView countryCode="DE" />
+        <TransactionsView countryCode="DE" />
       </QueryClientProvider>,
     );
     await settled();
@@ -1096,7 +1190,7 @@ describe("파생 표면 전체가 '지금 것인가'를 지킨다", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <DashboardView countryCode="DE" />
+        <TransactionsView countryCode="DE" />
       </QueryClientProvider>,
     );
     await settled();
@@ -1113,11 +1207,14 @@ describe("파생 표면 전체가 '지금 것인가'를 지킨다", () => {
 describe("믿을 수 있는 기간이 없으면 과세연도를 단정하지 않는다", () => {
   it("요약이 실패하면 화면이 판정을 계산하지 않았다고 밝힌다", async () => {
     ports.getSummary.mockRejectedValue(new Error("boom"));
-    renderDashboard("DE");
-    await screen.findByText(/요약을 불러오지 못했습니다/, undefined, { timeout: 3000 });
+    renderTransactions("DE");
+    // 요약 실패 문구("요약을 불러오지 못했습니다")는 요약 카드의 것이라 거래 화면에는 없다.
+    // 정착 신호는 목록 도착으로 잡는다 — 판정 보류 배너는 요약을 기다리는 동안에도 떠 있어 이르다.
+    await screen.findByText(rowLabel(events[0]));
     // 지갑 기간을 모르는데 "2026년 세금"이라 말하면 근거 없는 단정이다.
     expect(document.body.textContent ?? "").not.toMatch(/년 세금/);
     // 요청조차 하지 않았으므로 "불러오는 중"이라 말하면 없는 진행을 지어내는 것이다.
+    // 같은 사실을 거래 화면이 말하는 자리는 판정 보류 배너다.
     expect(screen.getByText("기준 기간을 확인하지 못해 판정을 계산하지 않았습니다.")).toBeInTheDocument();
     expect(screen.queryByText(/세금 판정을 불러오지 못해/)).not.toBeInTheDocument();
 
@@ -1143,7 +1240,7 @@ describe("부담이 0이어도 내역 화면은 부담을 말하지 않는다", 
       .slice(0, 2);
     expect(acquireOnly.length, "픽스처에 취득 이벤트가 있어야 한다").toBeGreaterThan(0);
     setListEvents(acquireOnly);
-    const { container } = renderDashboard("DE");
+    const { container } = renderTransactions("DE");
     await settled();
     // 처분·소득이 없어 부담은 0이다. 그 0을 말할 자리는 세금 탭이고 내역에는 없다.
     expect(container.textContent ?? "").not.toContain("부담 없음");
@@ -1163,7 +1260,7 @@ describe("한계 기여도도 재조회 중 옛 값을 보이지 않는다", () 
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <DashboardView countryCode="DE" />
+        <TransactionsView countryCode="DE" />
       </QueryClientProvider>,
     );
     await settled();
@@ -1183,7 +1280,7 @@ describe("3세대 P1 경계", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <DashboardView countryCode="DE" />
+        <TransactionsView countryCode="DE" />
       </QueryClientProvider>,
     );
     await settled();
@@ -1216,8 +1313,11 @@ describe("3세대 P1 경계", () => {
 
   it("믿을 기간이 없으면 상세의 파생 계산도 돌리지 않는다", async () => {
     ports.getSummary.mockRejectedValue(new Error("boom"));
-    renderDashboard("DE");
-    await screen.findByText(/요약을 불러오지 못했습니다/, undefined, { timeout: 3000 });
+    renderTransactions("DE");
+    // 요약 실패 문구는 요약 화면의 것이다 — 거래 화면에서는 목록 도착을 신호로 삼고,
+    // 기준 기간 상실은 판정 보류 배너로 확인한다(배너는 요약을 기다리는 동안에도 떠 있어 신호로는 이르다).
+    await screen.findByText(rowLabel(events[0]));
+    expect(screen.getByText("기준 기간을 확인하지 못해 판정을 계산하지 않았습니다.")).toBeInTheDocument();
     const before = ports.estimate.mock.calls.length;
 
     fireEvent.click(screen.getByText(rowLabel(events[0])));
@@ -1234,7 +1334,7 @@ describe("4세대 P1 — 비활성 쿼리의 캐시가 답을 말하지 않는�
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <DashboardView countryCode="DE" />
+        <TransactionsView countryCode="DE" />
       </QueryClientProvider>,
     );
     // 1) 정상 상태에서 상세를 열어 한계 기여도·나라별 비교 캐시를 만든다.
@@ -1250,7 +1350,8 @@ describe("4세대 P1 — 비활성 쿼리의 캐시가 답을 말하지 않는�
     // 2) 기준 기간을 잃는다. 캐시가 남아 있어도 그건 근거 없는 계산이다.
     ports.getSummary.mockRejectedValue(new Error("boom"));
     void client.invalidateQueries({ queryKey: ["events", "summary"] });
-    await screen.findByText(/요약을 불러오지 못했습니다/, undefined, { timeout: 3000 });
+    // 거래 화면이 기준 기간 상실을 말하는 자리는 판정 보류 배너다(요약 실패 문구는 요약 화면의 것).
+    await screen.findByText("기준 기간을 확인하지 못해 판정을 계산하지 않았습니다.", undefined, { timeout: 3000 });
 
     // 요약이 사라지면 과세연도 자리표시자가 바뀌어 키도 달라진다.
     // 그러면 "캐시가 새는가"를 시험할 수 없으므로, 그 키를 **직접 채워** 실제 유입을 재현한다.
@@ -1302,7 +1403,7 @@ describe("5세대 P2 — 비활성·보류를 진행 중이라 말하지 않는�
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <DashboardView countryCode="DE" />
+        <TransactionsView countryCode="DE" />
       </QueryClientProvider>,
     );
     await settled();
@@ -1326,7 +1427,7 @@ describe("7세대 — 복합 장애에서도 모든 표면이 같은 말을 한�
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <DashboardView countryCode="DE" />
+        <TransactionsView countryCode="DE" />
       </QueryClientProvider>,
     );
     await settled();
@@ -1338,10 +1439,9 @@ describe("7세대 — 복합 장애에서도 모든 표면이 같은 말을 한�
 
     ports.getSummary.mockRejectedValue(new Error("boom"));
     void client.invalidateQueries({ queryKey: ["events", "summary"] });
-    await screen.findByText(/요약을 불러오지 못했습니다/, undefined, { timeout: 3000 });
-
     // 기준 기간이 없으면 애초에 요청하지 않았다. 옛 오류를 현재 상태로 말하면 안 된다.
-    expect(screen.getByText("기준 기간을 확인하지 못해 판정을 계산하지 않았습니다.")).toBeInTheDocument();
+    // (요약 실패 문구는 요약 화면의 것이고, 거래 화면은 이 배너로 같은 사실을 말한다.)
+    await screen.findByText("기준 기간을 확인하지 못해 판정을 계산하지 않았습니다.", undefined, { timeout: 3000 });
     expect(screen.queryByText(/세금 판정을 불러오지 못해/)).not.toBeInTheDocument();
 
     // 행도 같은 말을 해야 한다 — 기준 기간을 모르면 판정을 계산하지 않으므로,
@@ -1355,7 +1455,7 @@ describe("7세대 — 복합 장애에서도 모든 표면이 같은 말을 한�
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <DashboardView countryCode="DE" />
+        <TransactionsView countryCode="DE" />
       </QueryClientProvider>,
     );
     await settled();
@@ -1373,11 +1473,11 @@ describe("7세대 — 복합 장애에서도 모든 표면이 같은 말을 한�
 
     ports.getSummary.mockRejectedValue(new Error("boom"));
     void client.invalidateQueries({ queryKey: ["events", "summary"] });
-    await screen.findByText(/요약을 불러오지 못했습니다/, undefined, { timeout: 3000 });
+    // 거래 화면이 기준 기간 상실을 말하는 자리는 판정 보류 배너다(요약 실패 문구는 요약 화면의 것).
+    await screen.findByText("기준 기간을 확인하지 못해 판정을 계산하지 않았습니다.", undefined, { timeout: 3000 });
 
     // 캐시가 남아 있어도 근거가 없으면 답하지 않는다.
     expect(document.body.textContent ?? "").not.toMatch(/년 세금/);
-    expect(screen.getByText("기준 기간을 확인하지 못해 판정을 계산하지 않았습니다.")).toBeInTheDocument();
     const cards = [...document.querySelectorAll("section .mt-3.grid.gap-3 > button")];
     expect(cards.some((card) => /취득 · 원가 기록/.test(card.textContent ?? ""))).toBe(false);
   });
@@ -1386,12 +1486,14 @@ describe("7세대 — 복합 장애에서도 모든 표면이 같은 말을 한�
 describe("부담을 산출하지 않는 룰셋은 한계 기여도를 답하지 않는다", () => {
   it("한국 상세가 '부담에 영향 없음'이라 말하지 않는다", async () => {
     // 테스트 계정 거주국이 KR이므로 이건 기본 경로다. 2027-01-01 시행 전이라 부담 자체가 없다.
-    renderDashboard("KR");
+    renderTransactions("KR");
     await settled();
 
-    // 이 건수는 가격·분류만 보고 센 수다. 판정이 갈리기 전에 "과세 대상"이라 하면 단정이다.
+    // 건수 카드("계산 대상 이벤트")는 요약 화면으로 갔다 — 그 문구 검증은 요약 스위트가 맡는다.
+    // 거래 화면이 지켜야 할 같은 사실은 둘이다: "과세 대상"이라 미리 단정하지 않고(카드가 없으니
+    // 문구도 없다), 판정을 실제로 계산했다는 것(보류 배너가 없다).
     expect(screen.queryByText("과세 대상 이벤트")).not.toBeInTheDocument();
-    expect(screen.getByText("계산 대상 이벤트")).toBeInTheDocument();
+    expect(screen.queryByText("기준 기간을 확인하지 못해 판정을 계산하지 않았습니다.")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByText(rowLabel(events[0])));
     await screen.findByText("거래 상세");
@@ -1409,11 +1511,13 @@ describe("부담을 산출하지 않는 룰셋은 한계 기여도를 답하지 
   it("확정 룰셋에서도 '과세 대상'이라 단정하지 않는다", async () => {
     // 이 건수는 가격·분류가 확정돼 계산에 들어간 수일 뿐,
     // 취득·비과세·상계 소멸까지 포함한다. "과세 대상"이라 부르면 과장이다.
-    renderDashboard("DE");
+    // 건수 카드는 요약 화면의 것이다.
+    renderSummary("DE");
     await settled();
     expect(screen.getByText("계산 대상 이벤트")).toBeInTheDocument();
     expect(screen.queryByText("과세 대상 이벤트")).not.toBeInTheDocument();
-    expect(document.body.textContent ?? "").toContain("과세 여부는 아래 판정에서 갈립니다");
+    // 목록이 거래 탭으로 떠나면서 "아래 판정"이 가리킬 곳이 없어졌다 — 카드는 그 문을 이름으로 말한다.
+    expect(document.body.textContent ?? "").toContain("과세 여부는 거래 탭의 판정에서 갈립니다");
   });
 
   it("중복 레코드는 첫 건의 한계 기여도·나라별 비교를 물려받지 않는다", async () => {
@@ -1426,7 +1530,7 @@ describe("부담을 산출하지 않는 룰셋은 한계 기여도를 답하지 
       ],
       nextCursor: null,
     });
-    renderDashboard("DE");
+    renderTransactions("DE");
     await settled();
 
     const cards = screen.getAllByText(rowLabel(target)).map((node) => node.closest("button")!);
@@ -1442,7 +1546,7 @@ describe("부담을 산출하지 않는 룰셋은 한계 기여도를 답하지 
   });
 });
 
-describe("없는 것을 계산된 것처럼 말하지 않는다", () => {
+describe("요약 화면이 없는 것을 계산된 것처럼 말하지 않는다", () => {
   it("계산할 거래가 없으면 ₩0을 손익이라 하지 않는다", async () => {
     // 손익·건수는 세금 화면과 같은 estimate에서 파생하므로, "계산할 것 없음"도 estimate로 낸다 —
     // 목록·엔진을 함께 비워야(setListEvents) estimate에 기간 내 판정이 없어 카드가 "계산할 거래 없음"이 된다.
@@ -1455,7 +1559,8 @@ describe("없는 것을 계산된 것처럼 말하지 않는다", () => {
       currency: "KRW",
       period: FIXTURE_PERIOD,
     });
-    renderDashboard("DE");
+    // 손익 카드는 요약 화면의 것이다.
+    renderSummary("DE");
     expect(await screen.findByText("계산할 거래 없음")).toBeInTheDocument();
     expect(document.body.textContent ?? "").not.toContain("₩0");
     expect(screen.getByText(/가격·분류를 확정한 거래가 아직 없습니다/)).toBeInTheDocument();
@@ -1463,11 +1568,12 @@ describe("없는 것을 계산된 것처럼 말하지 않는다", () => {
 
   it("판정 결과가 오기 전에는 '과세 대상'이라 단정하지 않는다", async () => {
     ports.estimate.mockImplementation(() => new Promise(() => {}));
-    renderDashboard("DE");
-    await screen.findByText(rowLabel(events[0]));
+    renderSummary("DE");
+    // 목록은 거래 탭이 맡으므로 요약의 정착 신호는 **요약이 도착해야** 채워지는 건수 카드 보조 문구다
+    // (카드 제목은 로딩 중에도 떠 있어 신호가 되지 못한다).
+    await screen.findByText(/과세 여부는/);
     // 요약이 먼저 도착해도 과세 여부는 아직 모른다.
     expect(screen.queryByText("과세 대상 이벤트")).not.toBeInTheDocument();
-    expect(screen.getByText("계산 대상 이벤트")).toBeInTheDocument();
     expect(document.body.textContent ?? "").toContain("과세 여부는 아직 판단하지 않았습니다");
   });
 
@@ -1480,9 +1586,10 @@ describe("없는 것을 계산된 것처럼 말하지 않는다", () => {
       currency: "KRW",
       period: { from: "", to: "" },
     });
-    const { container } = renderDashboard("DE");
+    // 기간 헤더는 요약 화면의 것이다.
+    const { container } = renderSummary("DE");
     // 기준 기간이 없으면 estimate를 아예 요청하지 않아 손익 카드는 "—"다.
-    // 정착 신호는 요약이 도착해야 뜨는 헤더의 "기간 미정"으로 잡는다(판정 미계산 배너는 로딩 중에도 떠서 이르다).
+    // 정착 신호는 요약이 도착해야 뜨는 헤더의 "기간 미정"으로 잡는다.
     await screen.findByText("기간 미정");
     // 헤더에 ` ~ `만 보이면 기간이 있는 것처럼 말하는 셈이다.
     const header = container.querySelector('[data-surface="dashboard-summary"]')!;
@@ -1490,11 +1597,14 @@ describe("없는 것을 계산된 것처럼 말하지 않는다", () => {
     expect(header.textContent).not.toMatch(/\s~\s*$/);
     // 빈 기간을 그대로 쓰면 "NaN년 세금"이 된다.
     expect(container.textContent ?? "").not.toMatch(/NaN/);
-    expect(screen.getByText("기준 기간을 확인하지 못해 판정을 계산하지 않았습니다.")).toBeInTheDocument();
+    // 판정 미계산 배너는 거래 화면의 것이다. 요약에서 같은 사실은 **카드가 답하지 않는 것**으로 나타난다 —
+    // 근거가 없으면 손익도 건수도 단정하지 않고 "—"로 둔다.
+    expect(screen.getByText("예상 손익").parentElement?.textContent).toContain("—");
+    expect(screen.getByText("계산 대상 이벤트").parentElement?.textContent).toContain("—");
   });
 });
 
-describe("잘못된 기간에서 헤더와 판정 안내가 갈리지 않는다", () => {
+describe("요약 화면 — 잘못된 기간에서 헤더와 요약 카드가 갈리지 않는다", () => {
   for (const period of [
     { from: "2025", to: "2025-12-31" },
     { from: "2025-02-30", to: "2025-03-31" },
@@ -1511,15 +1621,17 @@ describe("잘못된 기간에서 헤더와 판정 안내가 갈리지 않는다"
         currency: "KRW",
         period,
       });
-      const { container } = renderDashboard("DE");
+      // 기간 헤더와 손익·건수 카드는 요약 화면의 것이다.
+      const { container } = renderSummary("DE");
       // 기준 기간이 없으면 estimate를 요청하지 않아 손익 카드는 "—"다.
-      // 정착 신호는 요약이 도착해야 뜨는 헤더의 "기간 미정"으로 잡는다(판정 미계산 배너는 로딩 중에도 떠서 이르다).
+      // 정착 신호는 요약이 도착해야 뜨는 헤더의 "기간 미정"으로 잡는다.
       await screen.findByText("기간 미정");
 
       const header = container.querySelector('[data-surface="dashboard-summary"]')!;
       expect(header.textContent).toContain("기간 미정");
-      // 헤더는 "기간 미정"인데 판정 안내가 "2025년 세금"이라 하면 같은 화면이 두 이야기를 한다.
-      expect(screen.getByText("기준 기간을 확인하지 못해 판정을 계산하지 않았습니다.")).toBeInTheDocument();
+      // 헤더는 "기간 미정"인데 카드가 "2025년 세금"·옛 집계를 말하면 같은 화면이 두 이야기를 한다.
+      expect(screen.getByText("예상 손익").parentElement?.textContent).toContain("—");
+      expect(screen.getByText("계산 대상 이벤트").parentElement?.textContent).toContain("—");
       expect(container.textContent ?? "").not.toMatch(/년 세금|NaN/);
     });
   }
@@ -1556,7 +1668,7 @@ describe("여러 취득분을 소비한 처분을 화면이 어떻게 말하는�
       };
     });
 
-    renderDashboard("DE");
+    renderTransactions("DE");
     await settled();
     const card = await screen.findByText(rowLabel(target));
     // 목록은 도장만 찍는다. 보유일이 섞였다는 사실은 상세의 손익 근거표가 말해야 한다.
@@ -1586,13 +1698,26 @@ describe("금액을 말하지 않는 화면은 그 금액의 한계도 옮겨오
       };
     });
 
-    renderDashboard("DE");
+    // 내역은 두 화면(거래·요약)이 되었고, 금지 문구는 **둘 다**에 없어야 한다.
+    const noLimitationLeak = () => {
+      const body = document.body.textContent ?? "";
+      expect(body).not.toMatch(/흔들리는 지점/);
+      expect(body).not.toContain("부인된 손실을 대체 취득분 원가에 더하지 않았습니다.");
+      // 세금 탭은 리포트(/export)로 합쳐졌다 — 한계를 볼 문은 이제 리포트다.
+      // /tax는 리다이렉트만 남는 옛 주소라 어느 화면도 더 이상 직접 링크해선 안 된다.
+      expect(document.querySelector('a[href="/tax"]')).toBeNull();
+      expect(document.querySelector('a[href="/export"]')).toBeNull();
+    };
+
+    renderTransactions("DE");
     await settled();
-    const body = document.body.textContent ?? "";
-    expect(body).not.toMatch(/흔들리는 지점/);
-    expect(body).not.toContain("부인된 손실을 대체 취득분 원가에 더하지 않았습니다.");
-    // 대신 한계를 볼 문은 세금 탭이다. 내역이 자기 자리에서 답하려 들면 두 화면이 갈린다.
-    expect(document.querySelector('a[href="/tax"]')).toBeNull();
+    noLimitationLeak();
+
+    cleanup();
+
+    renderSummary("DE");
+    await settled();
+    noLimitationLeak();
   });
 });
 
@@ -1628,7 +1753,7 @@ describe("상세 시트가 손익 계산 4줄을 보인다", () => {
       };
     });
 
-    renderDashboard("DE");
+    renderTransactions("DE");
     await settled();
     fireEvent.click(screen.getByText(rowLabel(target)).closest("button")!);
     await screen.findByText("거래 상세");
@@ -1654,7 +1779,7 @@ describe("거래 카드는 온체인 사실 네 가지와 도장만 말한다", 
   );
 
   it("날짜는 UTC 하루 머리글에 한 번만 찍고 그 사실을 화면이 밝힌다", async () => {
-    const { container } = renderDashboard("DE");
+    const { container } = renderTransactions("DE");
     await settled();
     const headings = [...container.querySelectorAll("section .mt-3.grid.gap-3 > h3")];
     const days = [...new Set(newestFirst.map((event) => isoDay(event.block_timestamp)))];
@@ -1666,7 +1791,7 @@ describe("거래 카드는 온체인 사실 네 가지와 도장만 말한다", 
   });
 
   it("체인·수량·거래방법·실현 손익(₩)을 싣고, 그 밖의 통화 금액은 싣지 않는다", async () => {
-    const { container } = renderDashboard("DE");
+    const { container } = renderTransactions("DE");
     await settled();
     const cards = cardsOf(container);
     expect(cards).toHaveLength(events.length);
@@ -1691,7 +1816,7 @@ describe("거래 카드는 온체인 사실 네 가지와 도장만 말한다", 
   it("확인이 필요한 건은 확인 필요 탭에 모이고, 사유는 상세가 review.ts 판정 그대로 밝힌다", async () => {
     // 목록 재설계로 사유 배지("가격 확인 필요" 등)는 목록에서 빠졌다. 두 안전 신호를 함께 지킨다:
     // (1) 확인 필요 탭이 고칠 건을 모으고, (2) 거래 상세가 review.ts 판정 사유를 그대로 밝힌다.
-    renderDashboard("DE");
+    renderTransactions("DE");
     await settled();
     // 가격 미확인 이벤트가 픽스처에 없으면 이 단언은 아무것도 지키지 않는다.
     expect(events.filter((event) => reviewReason(event) === "가격 확인 필요").length).toBeGreaterThan(0);
@@ -1713,7 +1838,7 @@ describe("거래 카드는 온체인 사실 네 가지와 도장만 말한다", 
   });
 
   it("계산에 안 들어간 가스는 상세에서 손익 근거 옆에 답한다", async () => {
-    renderDashboard("DE");
+    renderTransactions("DE");
     await settled();
     const target = events[0];
     fireEvent.click(screen.getByText(rowLabel(target)).closest("button")!);
@@ -1726,7 +1851,7 @@ describe("거래 카드는 온체인 사실 네 가지와 도장만 말한다", 
 
 describe("DeFi 수익은 종류 배지로 드러난다", () => {
   it("income_kind 이벤트 카드는 수신 대신 수익 종류를 주 배지로 찍는다", async () => {
-    renderDashboard("DE");
+    renderTransactions("DE");
     await settled();
 
     const cases: Array<{ kind: NormalizedEvent["income_kind"]; label: string }> = [
@@ -1746,7 +1871,7 @@ describe("DeFi 수익은 종류 배지로 드러난다", () => {
   });
 
   it("income_kind가 없는 수신은 기존 '수신' 배지 그대로다", async () => {
-    renderDashboard("DE");
+    renderTransactions("DE");
     await settled();
     const plainReceive = events.find(
       (event) => event.income_kind === null && effectiveClassificationOf(event) === "RECEIVE",
@@ -1758,7 +1883,7 @@ describe("DeFi 수익은 종류 배지로 드러난다", () => {
   });
 
   it("상세는 수익 종류 행을 두고 분류 배지는 유지한다", async () => {
-    renderDashboard("DE");
+    renderTransactions("DE");
     await settled();
     const income = events.find((event) => event.income_kind === "STAKING")!;
     fireEvent.click(screen.getByText(rowLabel(income)).closest("button")!);
@@ -1783,7 +1908,8 @@ describe("기본 과세연도는 마지막 활동에서 나온다", () => {
       currency: "KRW",
       period: { from: "2021-05-12T09:00:00.000Z", to: FIXTURE_PERIOD.to },
     });
-    renderDashboard("KR");
+    // 과세연도는 요약 기간에서 파생한다 — 그 기간을 화면으로 말하는 쪽이 요약이다.
+    renderSummary("KR");
     await settled();
     const years = ports.estimate.mock.calls.filter(([input]) => input.source === "wallet").map(([input]) => input.taxYear);
     expect(years.length).toBeGreaterThan(0);
@@ -1824,7 +1950,7 @@ describe("목록이 실현 손익(₩)을 상세와 같은 소스에서 뽑아 �
       };
     });
 
-    renderDashboard("DE");
+    renderTransactions("DE");
     await settled();
 
     const gainCard = rowById(target.id);
@@ -1892,16 +2018,17 @@ describe("목록이 실현 손익(₩)을 상세와 같은 소스에서 뽑아 �
         ],
       };
     });
-    renderDashboard("DE");
+    // 금액 가리기 **버튼**은 요약에만 있다. 거래 화면은 저장소에 남은 전역 설정을 읽기만 하므로
+    // 스위치가 이미 켜진 상태(다른 화면에서 켠 상태)로 들어가 같은 규칙을 따르는지 본다.
+    window.localStorage.setItem("vw_hide_balances", "1");
+    renderTransactions("DE");
     await settled();
-    // 가리기를 켜면 카드 제목(수량)도 마스킹되어 라벨로 못 찾는다 — data-event-id로 카드를 붙잡는다.
-    const card = screen.getByText(rowLabel(target)).closest("button")!;
-    const eventId = card.getAttribute("data-event-id")!;
-    fireEvent.click(screen.getByRole("button", { name: "금액 가리기" }));
+    // 가리기가 켜져 있으면 카드 제목(수량)도 마스킹되어 라벨로 못 찾는다 — data-event-id로 카드를 붙잡는다.
+    expect(screen.queryByRole("button", { name: "금액 가리기" }), "가리기 스위치는 요약에만 있다").not.toBeInTheDocument();
 
     // 손익 금액은 돈이므로 잔액 가리기에서 요약 손익·이력 선과 같이 마스킹된다.
     await waitFor(() => {
-      const gainRow = document.querySelector(`button[data-event-id="${eventId}"] [data-surface="event-gain"]`)!;
+      const gainRow = document.querySelector(`button[data-event-id="${target.id}"] [data-surface="event-gain"]`)!;
       expect(gainRow.textContent).toContain("•••••");
       expect(gainRow.textContent ?? "").not.toMatch(/[€₩$]/);
     });

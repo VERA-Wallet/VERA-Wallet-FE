@@ -31,7 +31,7 @@ import { ImportSyncError, resumeImportSync, runImportSync, type ImportSyncJob } 
 export const PARTIAL_IMPORT_CODE = "partial_sync";
 
 /** "새로 들어온 거래" 마커가 의미를 갖는 화면. 여기를 떠나는 순간이 마커를 걷는 경계다. */
-const LEDGER_PATH = "/dashboard";
+const LEDGER_PATH = "/transactions";
 
 export type ImportTracker = {
   state: ImportTrackerState;

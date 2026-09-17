@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DashboardView } from "@/components/dashboard/dashboard-view";
+import { TransactionsView } from "@/components/transactions/transactions-view";
 import type { NormalizedEvent } from "@/lib/schema/normalized-event";
 import { TaxEngineService } from "@/lib/tax/tax-engine-service.server";
 
@@ -91,7 +91,7 @@ function mountWith(events: NormalizedEvent[]) {
 
   return render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-      <DashboardView countryCode="KR" />
+      <TransactionsView countryCode="KR" />
     </QueryClientProvider>,
   );
 }

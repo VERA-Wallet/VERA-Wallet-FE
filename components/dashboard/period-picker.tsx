@@ -15,12 +15,13 @@ import type { PeriodSelection } from "@/lib/portfolio/period-selection";
  * 프리셋(그래프 버튼과 **같은 것**)과 직접 지정을 한 패널에 둔다 — 둘이 서로 다른 곳에 있으면
  * 사용자는 지금 기간이 어느 쪽에서 왔는지 추적할 수 없다.
  *
- * 이 선택이 무엇을 바꾸고 무엇을 **바꾸지 않는지**는 패널 안에서 밝힌다. 목록·그래프는 좁아지지만
+ * 이 선택이 무엇을 바꾸고 무엇을 **바꾸지 않는지**는 패널 안에서 밝힌다. 그래프는 좁아지지만
  * 손익·계산 대상 건수는 과세연도 기준이라 흔들리지 않는다. 그 사실을 숨기면 사용자는
  * 기간을 좁혔는데 손익이 그대로인 화면을 보고 계산이 틀렸다고 읽게 된다.
+ * (전체 거래 목록은 거래 탭이 맡으므로 이 선택에 반응하지 않는다 — 목록을 좁히는 문은 그쪽 연도 필터다.)
  *
- * 패널은 흐름에 끼지 않고 **위에 뜬다**. 기간을 고르는 동안 목록이 아래로 밀려나면 사용자는
- * 자기가 좁히려는 그 목록을 눈에서 놓치고, 닫는 순간 화면이 다시 튀어 오른다.
+ * 패널은 흐름에 끼지 않고 **위에 뜬다**. 기간을 고르는 동안 아래 내용이 밀려나면 사용자는
+ * 자기가 좁히려는 그래프를 눈에서 놓치고, 닫는 순간 화면이 다시 튀어 오른다.
  */
 export function PeriodPicker({
   label,
@@ -152,7 +153,7 @@ export function PeriodPicker({
           <div className="mt-3 flex items-center justify-between gap-2 border-t border-zinc-100 pt-3">
             {/* 이 선택이 무엇을 바꾸지 **않는지**를 고르는 자리에서 함께 말한다. */}
             <p className="text-xs leading-5 text-zinc-500">
-              목록과 그래프만 이 기간으로 좁힙니다. 손익·계산 대상 건수는 과세연도 기준이라 바뀌지 않습니다.
+              그래프만 이 기간으로 좁힙니다. 손익·계산 대상 건수는 과세연도 기준이라 바뀌지 않습니다.
             </p>
             {isDefaultPeriod(selection) ? null : (
               <button type="button" className="shrink-0 text-xs font-semibold text-zinc-500 underline" onClick={reset}>

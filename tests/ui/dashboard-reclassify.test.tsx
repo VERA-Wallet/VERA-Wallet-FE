@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { DashboardView } from "@/components/dashboard/dashboard-view";
+import { TransactionsView } from "@/components/transactions/transactions-view";
 import { assetTicker, chainLabel, formatSignedTokenAmount } from "@/lib/format";
 import { createNormalizedEventFixtures } from "@/tests/fixtures/generated/normalized-events";
 import type { NormalizedEvent } from "@/lib/schema/normalized-event";
@@ -30,11 +30,11 @@ function setup(result: unknown, history: unknown[] = []) {
   ports.getById.mockResolvedValue({ event, version: 1, override_history: history });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const invalidate = vi.spyOn(client, "invalidateQueries");
-  render(<QueryClientProvider client={client}><DashboardView /></QueryClientProvider>);
+  render(<QueryClientProvider client={client}><TransactionsView /></QueryClientProvider>);
   return { event, invalidate };
 }
 
-describe("dashboard reclassification", () => {
+describe("거래 탭 reclassification", () => {
   it("invalidates event, detail, and summary queries after an accepted change", async () => {
     const event = createNormalizedEventFixtures()[0];
     const { invalidate } = setup({ status: "ok", event: { ...event, classification: "SEND" }, version: 2 });

@@ -60,6 +60,8 @@ describe("dashboard summary", () => {
     // 계산 대상 이벤트 건수는 estimate의 기간 내 고유 판정 이벤트 수(4)에서 파생한다.
     expect(await screen.findByText("4건")).toBeInTheDocument();
     // 판정 결과가 없으면 "과세 대상"이라 단정하지 않으므로 후보 라벨과 유보 문구가 붙는다.
-    expect(screen.getByText(/확인 필요 항목 2건/)).toBeInTheDocument();
+    expect(screen.getByText(/과세 여부는/)).toBeInTheDocument();
+    // 요약의 다리 단위 건수(pendingReviewCount)는 화면에 나오지 않는다 — 확인 필요 건수는 행 단위 한 값만 말한다.
+    expect(screen.queryByText(/확인 필요 항목/)).not.toBeInTheDocument();
   });
 });

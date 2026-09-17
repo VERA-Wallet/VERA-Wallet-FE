@@ -1,7 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
-import { DashboardView } from "@/components/dashboard/dashboard-view";
+// 탭·목록은 요약에서 거래 화면으로 떠났다 — "확인 필요" 큐를 보는 자리는 이제 여기 하나뿐이다.
+import { TransactionsView } from "@/components/transactions/transactions-view";
 import { formatSignedTokenAmount } from "@/lib/format";
 import { createNormalizedEventFixtures } from "@/tests/fixtures/generated/normalized-events";
 
@@ -15,7 +16,7 @@ it("filters review tab to unknown price, unknown classification, or low confiden
   const lowConfidence = { ...source, id: "low-confidence", raw_amount: "400000000000000000", confidence: 0.3 };
   ports.list.mockResolvedValue({ items: [resolved, unknownPrice, unknownClassification, lowConfidence].map((event, index) => ({ event, version: index + 1 })), nextCursor: null });
   ports.getSummary.mockResolvedValue({ periodPnl: "1", computableEventCount: 1, taxableEventCount: 1, pendingReviewCount: 3, currency: "KRW", period: { from: "a", to: "b" } });
-  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><DashboardView /></QueryClientProvider>);
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TransactionsView /></QueryClientProvider>);
   // 얻은 것은 `+`, 쓴 것은 `-`. 부호까지가 카드 제목이다.
   const resolvedLabel = formatSignedTokenAmount(resolved);
   await screen.findByText(`${resolvedLabel} ETH`);
@@ -34,7 +35,7 @@ it("방향·분류 모순 건이 사유와 함께 확인 필요 큐에 나온다
   const conflict = { ...source, id: "dir-conflict", raw_amount: "200000000000000000", classification: "RECEIVE" as const, direction: "OUT" as const };
   ports.list.mockResolvedValue({ items: [resolved, conflict].map((event, index) => ({ event, version: index + 1 })), nextCursor: null });
   ports.getSummary.mockResolvedValue({ periodPnl: "1", computableEventCount: 1, taxableEventCount: 1, pendingReviewCount: 1, currency: "KRW", period: { from: "a", to: "b" } });
-  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><DashboardView /></QueryClientProvider>);
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TransactionsView /></QueryClientProvider>);
 
   const resolvedLabel = formatSignedTokenAmount(resolved);
   await screen.findByText(`${resolvedLabel} ETH`);
