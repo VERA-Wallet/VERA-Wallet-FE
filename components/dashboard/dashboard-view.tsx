@@ -17,6 +17,7 @@ import {
 } from "@/lib/portfolio/period-selection";
 import type { PeriodSelection } from "@/lib/portfolio/period-selection";
 import { ChainIcon } from "@/components/ui/chain-icon";
+import { ChipStrip } from "@/components/ui/chip-strip";
 import { AssetLogo, SplitAssetLogo } from "@/components/ui/asset-logo";
 import { CLASSIFICATION_LABEL, ClassificationBadge } from "@/components/ui/classification-badge";
 import { INCOME_KIND_LABEL } from "@/components/ui/income-kind-badge";
@@ -1349,7 +1350,7 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
             "2025년에 무슨 일이 있었나"를 보려면 그 해만 남길 문이 있어야 한다.
             체인 필터와 같은 표시 필터라 판정·요약 금액은 이 선택에 흔들리지 않는다. */}
         {yearFilters.length > 0 ? (
-          <div className="mt-3 flex gap-2 overflow-x-auto pb-1" aria-label="연도 필터">
+          <ChipStrip label="연도 필터" className="mt-3">
             <button
               type="button"
               aria-pressed={activeYear === null}
@@ -1370,12 +1371,12 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
                 {value}년 <span aria-hidden="true">{count}</span>
               </button>
             ))}
-          </div>
+          </ChipStrip>
         ) : null}
         {/* 체인 필터. 여러 체인을 한 목록에 섞어 두면 "이 체인에서 무슨 일이 있었나"를 볼 방법이 없다.
             판정 필터와 독립이라 둘을 겹쳐 걸 수 있고, 각 칩의 건수는 상대 필터를 적용한 뒤의 수다. */}
         {chainFilters.length > 0 ? (
-          <div className="mt-3 flex gap-2 overflow-x-auto pb-1" aria-label="체인 필터">
+          <ChipStrip label="체인 필터" className="mt-3">
             <button
               type="button"
               aria-pressed={activeChain === null}
@@ -1397,10 +1398,10 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
                 {chainLabel(chainId)} <span aria-hidden="true">{count}</span>
               </button>
             ))}
-          </div>
+          </ChipStrip>
         ) : null}
         {!judgments.isLoading && groups.length > 0 ? (
-          <div className="mt-3 flex gap-2 overflow-x-auto pb-1" aria-label="판정 필터">
+          <ChipStrip label="판정 필터" className="mt-3">
             <button type="button" aria-pressed={activeGroup === null} className={`shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold ${activeGroup === null ? "bg-primary-500 text-white" : "bg-zinc-100 text-zinc-600"}`} onClick={() => setGroup(null)}>
               전체
             </button>
@@ -1409,7 +1410,7 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
                 {GROUP_SHORT_LABEL[item]} <span aria-hidden="true">{count}</span>
               </button>
             ))}
-          </div>
+          </ChipStrip>
         ) : null}
         {tab === "review" ? (
           <div className="mt-3 text-sm text-zinc-500">
