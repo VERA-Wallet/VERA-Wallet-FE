@@ -330,7 +330,7 @@ export function WalletPortfolio({
   const shownCount = tab === "nft" ? shownNfts.length : tab === "defi" ? shownDefi.length : shownTokens.length;
 
   return (
-    <main className="min-h-dvh px-5 py-6">
+    <main className="min-h-dvh px-5 pb-6 pt-8">
       <header data-surface="wallet-portfolio-header">
         <div className="-ml-2 flex items-center gap-2">
           <Link
@@ -343,7 +343,7 @@ export function WalletPortfolio({
             </svg>
           </Link>
           <WalletMark size={28} />
-          <span className="font-semibold text-zinc-900">{walletLabel(verification)}</span>
+          <h1 className="text-3xl font-bold tracking-tight text-zinc-900">{walletLabel(verification)}</h1>
         </div>
 
         <div className="mt-3 flex items-center gap-2">
