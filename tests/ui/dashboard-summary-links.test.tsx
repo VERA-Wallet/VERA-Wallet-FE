@@ -99,26 +99,14 @@ describe("요약은 원장으로 가는 문을 연다", () => {
     expect(all).toHaveAttribute("href", "/transactions");
   });
 
-  it("확인할 것이 있으면 건수와 함께 확인 필요 탭으로 보낸다", async () => {
-    // 가격을 확정하지 못한 건 하나 — 확인 필요 큐에 오른다.
+  it("확인할 것이 있어도 요약에는 확인 필요 카드를 두지 않는다", async () => {
+    // 가격을 확정하지 못한 건 하나 — 확인 필요 큐에는 오르지만, 그 큐를 말하는 자리는 거래 탭이다.
     serve([...FIVE, event("needs-review", "06", { price_status: "UNKNOWN" as const, fiat_value: null })]);
     renderSummary();
     await vi.waitFor(() => expect(rowIds()).toHaveLength(3));
 
-    const nudge = screen.getByRole("link", { name: /확인 필요 1건/ });
-    // 건수만 말하고 갈 곳을 주지 않으면 사용자는 탭을 뒤져 같은 큐를 다시 찾아야 한다.
-    expect(nudge).toHaveAttribute("href", "/transactions?tab=review");
-    expect(nudge.textContent).toContain("가격·분류를 확정하면 계산에 들어갑니다.");
-  });
-
-  it("확인할 것이 없으면 카드를 아예 두지 않는다", async () => {
-    serve(FIVE);
-    renderSummary();
-    await vi.waitFor(() => expect(rowIds()).toHaveLength(3));
-
-    // 0건에도 카드를 남기면 "할 일 없음"을 매번 확인시키는 줄이 되고,
-    // 진짜 확인할 것이 생겼을 때 그 줄이 눈에 띄지 않는다.
     expect(document.querySelector('[data-surface="review-nudge"]')).toBeNull();
+    expect(screen.queryByRole("link", { name: /확인 필요/ })).toBeNull();
   });
 
   it("헤더 우측 톱니가 설정으로 데려간다", async () => {

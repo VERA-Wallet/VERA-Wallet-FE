@@ -3,8 +3,9 @@ import type { RuleSetSummary } from "@/lib/tax/types";
 /**
  * "다른 나라였다면" — 룰셋 비교.
  *
- * 거주국 리포트가 답이고, 나라를 바꾸는 것은 비교다. 그래서 칩을 첫 화면에서 접어 둔다.
- * 고른 나라가 거주국이 아니면 위 금액 옆에 "비교 중"이라는 사실이 계속 붙고, 내려받기는 막힌다.
+ * 거주국 리포트가 답이고, 나라를 바꾸는 것은 비교다. 그래서 첫 화면(메인)에는 두지 않고
+ * 이 화면으로 따로 뺐다 — 페이지가 곧 그 주제이므로 여기서는 접지 않는다.
+ * 고른 나라가 거주국이 아니면 메인 금액 옆에 "비교 중"이라는 사실이 계속 붙고, 내려받기는 막힌다.
  */
 export function OtherCountries({
   rulesets,
@@ -18,9 +19,8 @@ export function OtherCountries({
   loading: boolean;
 }) {
   return (
-    <details className="mt-4 rounded-card border border-zinc-200 bg-white p-4 shadow-card" aria-label="다른 나라 비교">
-      <summary className="cursor-pointer font-bold text-zinc-900 marker:text-zinc-400">다른 나라였다면</summary>
-      <p className="mt-2 text-sm leading-6 text-zinc-500">
+    <section className="mt-6 rounded-card border border-zinc-200 bg-white p-4 shadow-card" aria-label="다른 나라 비교">
+      <p className="text-sm leading-6 text-zinc-500">
         같은 원장에 다른 나라 룰셋을 적용해 봅니다. 신고 근거자료는 거주국 기준으로만 만듭니다.
       </p>
       <section className="mt-3" aria-label="국가 선택">
@@ -41,6 +41,6 @@ export function OtherCountries({
         </div>
         {loading ? <p className="text-sm text-zinc-500">룰셋을 불러오는 중입니다</p> : null}
       </section>
-    </details>
+    </section>
   );
 }

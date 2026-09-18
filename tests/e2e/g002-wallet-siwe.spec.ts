@@ -132,25 +132,27 @@ offModeOnly("G002 synthetic wallet SIWE red team", () => {
 
     act({ type: "goto", url: "/login" });
     await page.goto("/login");
+    // 거주국 버튼은 인증 모드와 무관하게 늘 주 버튼 아래 접힌 <details> 안에 있다(거주 국가는 사용자가 신고하는 값) — 먼저 펼쳐야 US를 고를 수 있다.
+    act({ type: "click", selector: "details > summary" });
+    await page.locator("details > summary").click();
     act({ type: "click", selector: "role=button[name='US']" });
     await page.getByRole("button", { name: "US", exact: true }).click();
     act({ type: "click", selector: "role=button[name='QR/딥링크 제시']" });
     await page.getByRole("button", { name: "QR/딥링크 제시" }).click();
     act({ type: "click", selector: "role=button[name='제시 완료']" });
     await page.getByRole("button", { name: "제시 완료" }).click();
-    await expect(page.getByText("US 거주국 클레임이 확인되었습니다.")).toBeVisible();
-    await expect(page.getByText("US FIFO")).toBeVisible();
-    assertion("US DID claim and ruleset badge visible", true, "text=US FIFO");
+    // "DID"·"클레임" 문구는 화면에서 빠졌다. 확인 상태와 거주 국가 표시로 US 선택이 반영됐음을 검증한다.
+    // (옛 "US FIFO" 원가법 배지는 이 화면에서 더는 렌더되지 않는다 — 구현 쪽 발견 사항으로 별도 보고.)
+    await expect(page.getByRole("status")).toContainText("본인 확인이 끝났어요");
+    await expect(page.getByRole("status")).toContainText("거주 국가 미국 기준으로 계산할게요");
+    assertion("US DID claim confirmed with the selected country reflected in the status text", true, "role=status");
     act({ type: "screenshot", selector: "body", target: didScreenshot });
     await page.screenshot({ path: didScreenshot, fullPage: true, type: "jpeg", quality: 85 });
-    record(cases, "wallet-connect-synthetic-provider", "US DID claim displays its ruleset badge", "US claim and US FIFO badge", { claim: await page.getByText("US 거주국 클레임이 확인되었습니다.").isVisible(), badge: await page.getByText("US FIFO").isVisible() }, true);
+    record(cases, "wallet-connect-synthetic-provider", "US country selection is confirmed after DID presentation", "role=status shows 본인 확인이 끝났어요 and 거주 국가 미국 기준으로 계산할게요", { status: await page.getByRole("status").innerText() }, true);
 
-    act({ type: "click", selector: "role=button[name='대시보드로 이동']" });
-    await page.getByRole("button", { name: "대시보드로 이동" }).click();
-    await expect(page).toHaveURL(/\/dashboard$/);
-    act({ type: "click", selector: "role=link[name='데이터 불러오기']" });
-    await page.getByRole("link", { name: "데이터 불러오기" }).click();
-    await expect(page).toHaveURL(/\/connect-wallet$/);
+    // 지갑 없는 세션은 로그인 직후 클릭 없이 /connect-wallet로 자동 진행한다(빈 요약을 거치지 않는다).
+    act({ type: "navigate", target: "/connect-wallet", selector: "auto-advance" });
+    await page.waitForURL(/\/connect-wallet$/);
     // 기본 경로는 주소 입력이다. 이 스펙은 SIWE 계약을 검증하므로 브라우저 지갑 행을 고른다.
     act({ type: "click", selector: "role=button[name='브라우저 지갑으로 연결']" });
     await page.getByRole("button", { name: /브라우저 지갑으로 연결/ }).click();

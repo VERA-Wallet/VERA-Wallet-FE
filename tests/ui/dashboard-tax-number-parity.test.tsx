@@ -99,7 +99,7 @@ describe("P1-5 화면 간 숫자 통일", () => {
   });
 });
 
-describe("P1-9 대시보드 신뢰도 칩", () => {
+describe("요약은 신뢰도 칩을 달지 않는다", () => {
   const period = { from: "2025-01-01T00:00:00.000Z", to: "2026-01-01T00:00:00.000Z" };
   const gainRow = {
     eventId: "g1", at: period.from, asset: "1:native", symbol: "ETH", quantity: "1", amount: "1000",
@@ -121,10 +121,10 @@ describe("P1-9 대시보드 신뢰도 칩", () => {
     judgments: [gainRow],
   };
 
-  it("칩 건수가 estimate의 미반영·원가0원·부분집계와 일치한다", async () => {
+  it("흔들리는 지점이 있어도 요약에는 칩이 없다 — 그 설명은 리포트 한 곳이 맡는다", async () => {
     ports.estimate.mockResolvedValue(estimate);
-    const confidence = estimateConfidence(estimate);
-    expect(confidence).toEqual({ notReflected: 2, zeroBasis: 1, partial: true });
+    // 파생 값 자체는 그대로 살아 있다(리포트가 쓴다). 요약 화면만 그것을 그리지 않는다.
+    expect(estimateConfidence(estimate)).toEqual({ notReflected: 2, zeroBasis: 1, partial: true });
 
     render(
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
@@ -134,30 +134,8 @@ describe("P1-9 대시보드 신뢰도 칩", () => {
       </QueryClientProvider>,
     );
 
-    const chip = await screen.findByLabelText("계산 신뢰도");
-    expect(chip.textContent).toContain(`미반영 ${confidence.notReflected}`);
-    expect(chip.textContent).toContain(`원가0원 ${confidence.zeroBasis}`);
-    expect(chip.textContent).toContain("부분집계");
-  });
-
-  it("흔들릴 게 없으면 신뢰도 칩을 달지 않는다", async () => {
-    ports.estimate.mockResolvedValue({
-      ...estimate,
-      status: "CONFIRMED",
-      limitations: [],
-      excludedEventIds: [],
-    });
-
-    render(
-      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <TaxYearProvider>
-          <DashboardView countryCode="KR" />
-        </TaxYearProvider>
-      </QueryClientProvider>,
-    );
-
-    // 헤드라인은 떠도(계산 대상 이벤트 건수) 신뢰도 칩은 없어야 한다.
     await screen.findByText("계산 대상 이벤트");
     await waitFor(() => expect(screen.queryByLabelText("계산 신뢰도")).toBeNull());
+    expect(document.querySelector('[data-surface="dashboard-confidence"]')).toBeNull();
   });
 });

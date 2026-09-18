@@ -44,7 +44,7 @@ export function WalletHome({ walletAddress }: { walletAddress: string }) {
     if (query.isError) {
       const failure = describeFailure(query.error);
       return (
-        <main data-surface="wallet-portfolio-error" className="min-h-dvh px-5 py-6">
+        <main data-surface="wallet-portfolio-error" className="min-h-dvh px-5 pb-6 pt-8">
           <Link href="/wallets" className="text-sm font-semibold text-zinc-500">← 지갑 목록</Link>
           <p className="mt-4 font-semibold text-zinc-900">보유 자산을 불러오지 못했습니다</p>
           <p className="mt-2 text-sm leading-6 text-zinc-600">{failure.message}</p>
@@ -92,13 +92,13 @@ export function WalletHome({ walletAddress }: { walletAddress: string }) {
 /** 조회 중. 이미 아는 것(주소·등록 방식)은 그대로 두고 값 자리만 스켈레톤이다. */
 function WalletDetailLoading({ walletAddress, verification }: { walletAddress: string; verification: string | null }) {
   return (
-    <main data-surface="wallet-portfolio-loading" className="min-h-dvh px-5 py-6" aria-busy="true">
+    <main data-surface="wallet-portfolio-loading" className="min-h-dvh px-5 pb-6 pt-8" aria-busy="true">
       <div className="-ml-2 flex items-center gap-2">
         <Link href="/wallets" aria-label="지갑 목록으로" className="flex h-9 w-9 items-center justify-center rounded-full text-zinc-600">
           <svg aria-hidden="true" width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="m15 6-6 6 6 6" strokeLinecap="round" strokeLinejoin="round" /></svg>
         </Link>
         <WalletMark size={28} />
-        <span className="font-semibold text-zinc-900">{walletLabel(verification)}</span>
+        <h1 className="text-3xl font-bold tracking-tight text-zinc-900">{walletLabel(verification)}</h1>
       </div>
       <p className="mt-3 inline-flex items-center gap-2 rounded-full bg-zinc-100 px-3 py-1.5 font-mono text-sm text-zinc-700">{shortHash(walletAddress)}</p>
       <Skeleton className="mt-5 block h-10 w-44" />

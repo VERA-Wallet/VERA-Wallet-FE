@@ -26,6 +26,9 @@
     지어낸 진행률은 끝나지 않은 조회를 끝났다고 말한다 — 둘 다 피하려면 진행률 없이 살아 있다는 사실만 말해야 한다.
   */
   --animate-import-sweep: import-sweep 1.4s ease-in-out infinite;
+  /* 인증 성공 후 자동 진행을 보여주는 막대. 실제 대기는 JS setTimeout이 재고, 이 애니메이션은 시각 힌트일 뿐이다 —
+     prefers-reduced-motion에서는 아래 미디어 쿼리가 duration을 0.01ms로 눌러 사실상 정지된 채로 같은 시간만 머문다. */
+  --animate-claimed-advance: claimed-advance 1000ms linear forwards;
   --radius-card: 1.25rem;
   --radius-sheet: 1.5rem;
   --shadow-card: 0 4px 16px rgb(24 24 27 / 0.06);
@@ -38,6 +41,15 @@
   }
   100% {
     transform: translateX(300%);
+  }
+}
+
+@keyframes claimed-advance {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
   }
 }
 

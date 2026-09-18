@@ -34,21 +34,23 @@ async function browserCompleteSession(page: import("@playwright/test").Page, act
     (window as Window & { ethereum?: unknown }).ethereum = ethereum;
   }, account.address);
   await page.goto("/login"); addAction("Open login", "url=/login");
+  // 거주국 버튼은 인증 모드와 무관하게 늘 주 버튼 아래 접힌 <details> 안에 있다(거주 국가는 사용자가 신고하는 값) — 먼저 펼쳐야 KR을 고를 수 있다.
+  await page.locator("details > summary").click(); addAction("Open dev country picker", "details > summary");
   await page.getByRole("button", { name: "KR", exact: true }).click(); addAction("Select country", "role=button[name=KR]");
   await page.getByRole("button", { name: "QR/딥링크 제시" }).click(); addAction("Present DID", "role=button[name=QR/딥링크 제시]");
   await page.getByRole("button", { name: "제시 완료" }).click(); addAction("Confirm DID", "role=button[name=제시 완료]");
-  await page.getByRole("button", { name: "대시보드로 이동" }).click();
-  await page.waitForURL("**/dashboard"); addAction("Open dashboard (empty shell)", "url=/dashboard");
-  await page.getByRole("link", { name: "데이터 불러오기" }).click();
-  await page.waitForURL("**/connect-wallet"); addAction("Open wallet connection", "url=/connect-wallet");
+  await expect(page.getByRole("status")).toContainText("본인 확인이 끝났어요");
+  // 지갑 없는 세션은 로그인 직후 클릭 없이 /connect-wallet로 자동 진행한다(빈 요약을 거치지 않는다).
+  await page.waitForURL("**/connect-wallet"); addAction("Auto-advance to wallet connection (no wallet yet)", "url=/connect-wallet");
   // 기본 경로는 주소 입력이다. 이 흐름은 SIWE 소유 증명을 검증하므로 브라우저 지갑 행을 고른다.
   await page.getByRole("button", { name: /브라우저 지갑으로 연결/ }).click(); addAction("Choose browser wallet method", "role=button[name=브라우저 지갑으로 연결]");
   await page.getByRole("button", { name: "지갑 연결하기" }).click(); addAction("Connect synthetic wallet", "role=button[name=지갑 연결하기]");
   await expect(page.getByRole("button", { name: "서명하고 추가" })).toBeVisible();
   await page.getByRole("button", { name: "서명하고 추가" }).click(); addAction("Sign SIWE", "role=button[name=서명하고 추가]");
   await page.waitForURL("**/dashboard");
-  const dashboard = await page.getByText("거래 요약").isVisible();
-  assertions.push({ description: "DID to SIWE browser journey reaches dashboard", selector: "text=거래 요약", status: dashboard ? "passed" : "failed", timestamp: new Date().toISOString() });
+  // "거래 요약"→"요약"으로 바뀌었고, 하단 탭바에도 같은 글자("요약")가 있어 getByText는 모호해진다.
+  const dashboard = await page.getByRole("heading", { name: "요약", exact: true }).isVisible();
+  assertions.push({ description: "DID to SIWE browser journey reaches dashboard", selector: "role=heading[name='요약']", status: dashboard ? "passed" : "failed", timestamp: new Date().toISOString() });
 }
 
 // 이 스펙은 ON(하이브리드 프록시) 모드의 계약만 검증한다. OFF 모드에는 BE 자체가 없어 같은 전제를 재현할 수 없고,
@@ -81,7 +83,8 @@ onModeOnly("G002 hybrid cutover adversarial browser QA", () => {
     const cursorPage = cursor ? await page.context().request.get(`/api/events?limit=100&cursor=${encodeURIComponent(cursor)}`) : undefined;
     const cursorBody = cursorPage ? await cursorPage.json() as { data?: { items?: Array<{ event: { id: string } }> } } : undefined;
     add(results, "query-preserved", `GET /api/events?limit=100&cursor=${cursor}`, "BE receives cursor and returns the page after it", { status: cursorPage?.status(), firstId: cursorBody?.data?.items?.[0]?.event.id, cursor }, cursorPage?.status() === 200 && cursorBody?.data?.items?.length === items.length - 1 && cursorBody.data.items[0]?.event.id !== cursor);
-    await expect(page.getByText("거래 요약")).toBeVisible();
+    // "거래 요약"→"요약"으로 바뀌었고, 하단 탭바에도 같은 글자가 있어 getByRole(heading)으로 좁힌다.
+    await expect(page.getByRole("heading", { name: "요약", exact: true })).toBeVisible();
     // 어댑터 정규화가 빠지면 자산 이름이 통째로 빈다. 화면에서 직접 확인한다.
     // 티커 줄 포맷은 "±수량 티커"(스왑은 "→", 브릿지만 "·"를 씀)다 — 자산 이름이 비면 티커 대문자가 사라진다.
     const renderedLabels = await page.locator("[data-event-label]").allInnerTexts();

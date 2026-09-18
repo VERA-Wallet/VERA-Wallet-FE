@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ReportView } from "@/components/report/report-view";
+import { ReportPages } from "@/tests/ui/helpers/report-pages";
 import { FIXTURE_TAX_YEAR } from "@/tests/fixtures/tax-year";
 import { createTaxScenarioEvents, scenarioScaleFor } from "@/lib/tax/scenarios";
 import { computeTaxEstimate } from "@/lib/tax/engine";
@@ -65,7 +65,7 @@ async function renderSimulator() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const view = render(
     <QueryClientProvider client={client}>
-      <ReportView currentYear={FIXTURE_TAX_YEAR} />
+      <ReportPages currentYear={FIXTURE_TAX_YEAR} />
     </QueryClientProvider>,
   );
   await selectTaxYear(2025);
@@ -75,20 +75,19 @@ async function renderSimulator() {
   return view;
 }
 
+/** 과세연도 칩은 계산 설정 화면의 "계산 조건 바꾸기" 안에 있다(더 이상 접힘이 아니라 펼친 섹션이다). */
 async function selectTaxYear(year: number) {
-  const details = (await screen.findByText("계산 조건 바꾸기")).closest("details")!;
-  details.open = true;
-  fireEvent.click(screen.getByRole("button", { name: String(year) }));
+  const conditions = (await screen.findByText("계산 조건 바꾸기")).closest("section")!;
+  fireEvent.click(within(conditions).getByRole("button", { name: String(year) }));
 }
 
 /**
- * 나라 칩은 이제 "다른 나라였다면" 접힘 안에 있다 — 거주국 리포트가 답이고 나라 전환은 비교이기 때문이다.
- * 펼치는 것까지가 사용자의 동선이므로 테스트도 그대로 따라간다.
+ * 나라 칩은 이제 "다른 나라였다면" 화면에 있다 — 거주국 리포트가 답이고 나라 전환은 비교이기 때문이다.
+ * 칩 묶음의 aria-label은 그대로이므로 그 안에서 고른다.
  */
 async function selectCountry(name: RegExp) {
-  const details = (await screen.findByText("다른 나라였다면")).closest("details")!;
-  details.open = true;
-  fireEvent.click(within(details).getByRole("button", { name }));
+  const chips = await screen.findByLabelText("국가 선택");
+  fireEvent.click(within(chips).getByRole("button", { name }));
 }
 
 // 어떤 테스트가 도중에 실패해도 다음 테스트의 전제를 오염시키지 않게 한다.
@@ -120,7 +119,8 @@ describe("리포트 계산 표면", () => {
 
     await screen.findByText("인도 · 2025");
     expect(await screen.findByText("상계 불가로 무시된 손실")).toBeInTheDocument();
-    expect(screen.getByText(/실효 31.2%/)).toBeInTheDocument();
+    // 실효세율은 메인의 답 옆과 비교 화면 두 곳에 같은 estimate에서 나온다 — 답 쪽을 본다.
+    expect(within(screen.getByLabelText("계산 요약")).getByText(/실효 31.2%/)).toBeInTheDocument();
   });
 
   it("가정을 끄면 시행 전 국가는 금액 대신 과세 대상 아님과 판단 필요 항목을 제시한다", async () => {
@@ -167,8 +167,6 @@ describe("리포트 계산 표면", () => {
   it("시행 예정 룰셋은 시행 연도를 미리 골라 실제 부담을 본다", async () => {
     await renderSimulator();
     await screen.findByText("독일 · 2025");
-    const details = screen.getByText("계산 조건 바꾸기").closest("details")!;
-    details.open = true;
     // 미래 연도를 시계로 만들지는 않는다 — 시행 예정 연도가 없는 국가에는 없어야 한다.
     expect(screen.queryByRole("button", { name: /2027/ })).not.toBeInTheDocument();
 
@@ -222,7 +220,7 @@ describe("리포트 계산 표면", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <ReportView currentYear={2025} />
+        <ReportPages currentYear={2025} />
       </QueryClientProvider>,
     );
     await screen.findByText("독일 · 2025");
@@ -264,7 +262,7 @@ describe("리포트 제외 배너", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const view = render(
       <QueryClientProvider client={client}>
-        <ReportView currentYear={2025} />
+        <ReportPages currentYear={2025} />
       </QueryClientProvider>,
     );
     // 기본 출처(내 지갑)를 그대로 둔다.
@@ -272,25 +270,28 @@ describe("리포트 제외 배너", () => {
     return view;
   }
 
-  it("답 → 왜 → 신뢰도 → 세부 → 설정 순서를 지킨다", async () => {
-    // "답이 설정보다 앞"만 보면 중간 순서가 뒤집혀도 통과한다.
-    // 흔들리는 지점이 계산 내역 뒤로 밀리면 신뢰도보다 세부가 먼저 오는 화면이 된다.
-    // 판정 행과 한계가 모두 있는 상태여야 순서를 잴 수 있다.
+  it("답 → 왜 → 신뢰도 → 세부 → 설정 순서를 메뉴가 지킨다", async () => {
+    // 세부와 설정이 각자 화면으로 나가면서 이 순서는 한 화면의 세로 순서가 아니라
+    // "메인의 답 다음에 오는 메뉴 줄의 순서"가 됐다. 순서를 안 재면 메뉴가 설정부터 내미는
+    // 화면이 되어도 통과한다.
     await renderWithWallet(createNormalizedEventFixtures(FIXTURE_TAX_YEAR));
     await screen.findByLabelText("흔들리는 것");
     await screen.findByLabelText("판정 그룹");
 
-    const order = [
-      screen.getByTestId("estimated-charge"),
-      screen.getByLabelText("판정 그룹"),
-      screen.getByLabelText("흔들리는 것"),
-      screen.getByLabelText("계산 내역"),
-      screen.getByText("계산 조건 바꾸기"),
-    ];
-    for (let i = 0; i < order.length - 1; i += 1) {
-      const relation = order[i].compareDocumentPosition(order[i + 1]);
-      expect(relation & Node.DOCUMENT_POSITION_FOLLOWING, `${i} → ${i + 1} 순서`).toBeTruthy();
-    }
+    const main = document.querySelector('[data-surface="report"]')!.closest("main")!;
+    const menu = within(main).getByLabelText("리포트 메뉴");
+    // 답이 메뉴보다 앞에 있어야 한다 — 메뉴가 먼저면 사용자는 답까지 스크롤해야 한다.
+    expect(
+      screen.getByTestId("estimated-charge").compareDocumentPosition(menu) & Node.DOCUMENT_POSITION_FOLLOWING,
+      "답이 메뉴보다 앞",
+    ).toBeTruthy();
+    // 왜(계산 근거) → 신뢰도(확인할 것) → 설정 → 비교.
+    expect([...menu.querySelectorAll("a[data-menu]")].map((node) => node.getAttribute("data-menu"))).toEqual([
+      "basis",
+      "issues",
+      "settings",
+      "compare",
+    ]);
   });
 
   it("화면이 고른 출처와 결과의 출처가 같다", async () => {
@@ -337,9 +338,15 @@ describe("리포트 제외 배너", () => {
     const section = await screen.findByLabelText("흔들리는 것");
 
     expect(section.textContent).toContain("이 답이 흔들리는 지점");
-    // 답에서 빠진 것이 근사보다 먼저 온다 — 영향 순.
-    const labels = [...section.querySelectorAll("li span:first-child")].map((node) => node.textContent);
-    expect(labels.indexOf("답에서 빠짐")).toBeLessThan(labels.indexOf("근사"));
+    // 답에서 빠진 것이 근사보다 먼저 온다 — 영향 순. 이제 종류별로 묶이므로 묶음의 순서를 잰다.
+    const kinds = [...section.querySelectorAll("[data-limitation-group]")].map((node) =>
+      node.getAttribute("data-limitation-group"),
+    );
+    expect(kinds.indexOf("excluded")).toBeLessThan(kinds.indexOf("approximation"));
+    // 묶음 제목이 그 종류의 라벨과 건수를 말한다.
+    const excluded = section.querySelector('[data-limitation-group="excluded"]')!;
+    expect(excluded.textContent).toContain("답에서 빠짐");
+    expect(excluded.textContent).toMatch(/\d+건/);
     // 얼마나 달라지는지는 계산하지 않았다. 금액을 쓰면 지어낸 추정이 된다.
     expect(section.textContent).not.toMatch(/[€$₩][\d,]/);
     // 고치러 갈 동선이 있다.
@@ -403,8 +410,7 @@ describe("리포트 제외 배너", () => {
 
     await renderSimulator();
     await screen.findByTestId("estimated-charge");
-    const conditions = screen.getByText("계산 조건 바꾸기").closest("details")!;
-    conditions.open = true;
+    const conditions = screen.getByText("계산 조건 바꾸기").closest("section")!;
     fireEvent.click(within(conditions).getByRole("button", { name: "내 지갑 이벤트" }));
 
     await waitFor(() => {
@@ -435,13 +441,11 @@ describe("리포트가 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <ReportView currentYear={2025} />
+        <ReportPages currentYear={2025} />
       </QueryClientProvider>,
     );
     await screen.findByText("독일 · 2025");
 
-    const details = screen.getByText("계산 조건 바꾸기").closest("details")!;
-    details.open = true;
     // 선택된 버튼이 주어진 연도여야 한다.
     expect(screen.getByRole("button", { name: "2025" })).toHaveAttribute("aria-pressed", "true");
     // 창도 같은 연도 기준이다 — 다음 해 버튼이 있으면 두 시계를 읽고 있다는 뜻.
@@ -453,7 +457,7 @@ describe("리포트가 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <ReportView currentYear={2026} />
+        <ReportPages currentYear={2026} />
       </QueryClientProvider>,
     );
     // 리포트 제목은 고정이고, 어느 해를 보는지는 칩이 말한다.
@@ -474,7 +478,7 @@ describe("리포트가 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <ReportView currentYear={2026} latestActivityYear={2025} />
+        <ReportPages currentYear={2026} latestActivityYear={2025} />
       </QueryClientProvider>,
     );
 
@@ -484,8 +488,6 @@ describe("리포트가 답 우선 3계층인가", () => {
     expect(screen.getByText("2025년으로 열림")).toBeInTheDocument();
     expect(screen.getByText(/2026년에는 계산할 거래가 없어/)).toBeInTheDocument();
 
-    const details = screen.getByText("계산 조건 바꾸기").closest("details")!;
-    details.open = true;
     expect(screen.getByRole("button", { name: "2025" })).toHaveAttribute("aria-pressed", "true");
     // 올해로 돌아갈 문은 남아 있어야 한다.
     expect(screen.getByRole("button", { name: "2026" })).toBeInTheDocument();
@@ -496,12 +498,11 @@ describe("리포트가 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <ReportView currentYear={2026} latestActivityYear={2020} />
+        <ReportPages currentYear={2026} latestActivityYear={2020} />
       </QueryClientProvider>,
     );
 
-    const details = (await screen.findByText("계산 조건 바꾸기")).closest("details")!;
-    details.open = true;
+    await screen.findByText("계산 조건 바꾸기");
     expect(screen.getByRole("button", { name: "2020" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: "2026" })).toBeInTheDocument();
   });
@@ -510,7 +511,7 @@ describe("리포트가 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <ReportView countryCode="DE" currentYear={2025} />
+        <ReportPages countryCode="DE" currentYear={2025} />
       </QueryClientProvider>,
     );
     await screen.findByText("독일 · 2025");
@@ -535,7 +536,7 @@ describe("리포트가 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <ReportView countryCode="DE" currentYear={2025} />
+        <ReportPages countryCode="DE" currentYear={2025} />
       </QueryClientProvider>,
     );
     // 기본은 내 지갑이다.
@@ -543,8 +544,6 @@ describe("리포트가 답 우선 3계층인가", () => {
     expect(screen.getByText(/지갑 이력에 거주국 룰셋을 적용한 결과/)).toBeInTheDocument();
 
     // 데모 시나리오로 바꾸면 헤더도 따라간다.
-    const details = screen.getByText("계산 조건 바꾸기").closest("details")!;
-    details.open = true;
     fireEvent.click(screen.getByRole("button", { name: "데모 시나리오" }));
     await waitFor(() => expect(screen.getByText(/데모 시나리오에 거주국 룰셋을 적용한 결과/)).toBeInTheDocument());
     expect(screen.queryByText(/지갑 이력에 거주국 룰셋을 적용한 결과/)).not.toBeInTheDocument();
@@ -555,7 +554,7 @@ describe("리포트가 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <ReportView countryCode="DE" currentYear={2025} />
+        <ReportPages countryCode="DE" currentYear={2025} />
       </QueryClientProvider>,
     );
     await screen.findByText("적용할 룰셋을 확인하는 중입니다. 아직 계산하지 않았습니다.");
@@ -569,7 +568,7 @@ describe("리포트가 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <ReportView countryCode="DE" currentYear={2025} />
+        <ReportPages countryCode="DE" currentYear={2025} />
       </QueryClientProvider>,
     );
     await screen.findByText("독일 · 2025");
@@ -577,8 +576,6 @@ describe("리포트가 답 우선 3계층인가", () => {
 
     // 새 출처의 계산을 붙잡아 둔다.
     ports.estimate.mockImplementation(() => new Promise((resolve) => { release = () => resolve(undefined as never); }));
-    const details = screen.getByText("계산 조건 바꾸기").closest("details")!;
-    details.open = true;
     fireEvent.click(screen.getByRole("button", { name: "데모 시나리오" }));
 
     // 헤더가 새 출처를 말하는 순간 금액은 이미 사라져 있어야 한다.
@@ -626,7 +623,7 @@ describe("리포트가 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <ReportView countryCode="DE" currentYear={2025} />
+        <ReportPages countryCode="DE" currentYear={2025} />
       </QueryClientProvider>,
     );
     await screen.findByText(/룰셋을 적용하지 못했습니다/);
@@ -651,7 +648,7 @@ describe("리포트가 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <ReportView countryCode="DE" currentYear={2025} />
+        <ReportPages countryCode="DE" currentYear={2025} />
       </QueryClientProvider>,
     );
     await screen.findByText("적용할 룰셋을 확인하지 못해 아직 계산하지 않았습니다.");
@@ -663,13 +660,17 @@ describe("리포트가 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <ReportView currentYear={FIXTURE_TAX_YEAR} />
+        <ReportPages currentYear={FIXTURE_TAX_YEAR} />
       </QueryClientProvider>,
     );
     await screen.findByText("계산 조건 바꾸기");
-    // 12개 입력이 펼쳐져 있으면 첫 화면이 설정으로 찬다.
-    const details = screen.getByText("계산 조건 바꾸기").closest("details")!;
-    expect(details.open).toBe(false);
+    // 12개 입력이 펼쳐져 있으면 첫 화면이 설정으로 찬다 — 그래서 설정은 이제 메인에 없고 별도 화면이다.
+    // 접힘을 세던 자리를 "메인에 없다"로 바꾼다: 접혀 있든 펼쳐져 있든, 메인에 있으면 첫 화면이 길어진다.
+    const main = document.querySelector('[data-surface="report"]')!.closest("main")!;
+    expect(within(main).queryByText("계산 조건 바꾸기")).toBeNull();
+    expect(within(main).queryByLabelText("계산 조건")).toBeNull();
+    // 대신 메뉴 줄이 그 화면으로 가는 문을 연다.
+    expect(within(main).getByRole("link", { name: /계산 설정/ })).toHaveAttribute("href", "/export/settings");
   });
 
   it("건수를 금액처럼 그리지 않는다", async () => {
@@ -754,8 +755,6 @@ describe("리포트가 답 우선 3계층인가", () => {
   it("국가를 바꿨다 돌아와도 슬라이더 입력이 남는다", async () => {
     await renderSimulator();
     await screen.findByText("독일 · 2025");
-    const details = screen.getByText("계산 조건 바꾸기").closest("details")!;
-    details.open = true;
 
     fireEvent.change(screen.getByLabelText(/한계세율/), { target: { value: "45" } });
     await selectCountry(/미국/);
@@ -763,7 +762,6 @@ describe("리포트가 답 우선 3계층인가", () => {
     await selectCountry(/독일/);
     await screen.findByText("독일 · 2025");
 
-    details.open = true;
     // 사용자가 넣은 값을 국가 전환이 조용히 지우면 답이 달라진 걸 모른다.
     expect(screen.getByLabelText(/한계세율/)).toHaveValue("45");
   });
@@ -790,8 +788,6 @@ describe("리포트가 답 우선 3계층인가", () => {
   it("이 국가가 쓰는 입력만 살리고 나머지는 그렇게 말한다", async () => {
     await renderSimulator();
     await screen.findByText("독일 · 2025");
-    const details = screen.getByText("계산 조건 바꾸기").closest("details")!;
-    details.open = true;
 
     // 독일은 한계세율·이월결손금을 쓴다. 신고 구분은 쓰지 않는다.
     expect(screen.getByLabelText(/한계세율/)).toBeInTheDocument();
@@ -809,12 +805,11 @@ describe("리포트가 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <ReportView currentYear={FIXTURE_TAX_YEAR} />
+        <ReportPages currentYear={FIXTURE_TAX_YEAR} />
       </QueryClientProvider>,
     );
 
-    const details = (await screen.findByText("계산 조건 바꾸기")).closest("details")!;
-    details.open = true;
+    await screen.findByText("계산 조건 바꾸기");
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("룰셋 목록을 불러오지 못했습니다."));
     // 오류만 띄우고 나가는 문을 안 주면 막다른 화면이다.
     expect(screen.getByRole("button", { name: "다시 시도" })).toBeInTheDocument();
@@ -836,7 +831,7 @@ describe("리포트가 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <ReportView currentYear={2025} />
+        <ReportPages currentYear={2025} />
       </QueryClientProvider>,
     );
 
@@ -851,15 +846,13 @@ describe("리포트가 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <ReportView countryCode="UK" currentYear={FIXTURE_TAX_YEAR} />
+        <ReportPages countryCode="UK" currentYear={FIXTURE_TAX_YEAR} />
       </QueryClientProvider>,
     );
     await selectTaxYear(2025);
     await screen.findByText(/영국 · 2025/);
     expect(screen.getByRole("button", { name: /영국/ })).toHaveAttribute("aria-pressed", "true");
 
-    const details = screen.getByText("계산 조건 바꾸기").closest("details")!;
-    details.open = true;
     // GB는 지갑 외 소득과 디파이 소유권을 쓴다 — 룰셋을 찾았다는 증거.
     expect(screen.getByLabelText("지갑 외 과세소득")).toBeInTheDocument();
     expect(document.body.textContent).not.toContain("룰셋 확인 중");
@@ -871,12 +864,11 @@ describe("리포트가 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <ReportView currentYear={FIXTURE_TAX_YEAR} />
+        <ReportPages currentYear={FIXTURE_TAX_YEAR} />
       </QueryClientProvider>,
     );
 
-    const details = (await screen.findByText("계산 조건 바꾸기")).closest("details")!;
-    details.open = true;
+    await screen.findByText("계산 조건 바꾸기");
     const body = document.body.textContent ?? "";
     expect(body).toContain("룰셋 확인 중");
     expect(body).not.toContain("이 국가에서 쓰지 않음");
@@ -897,7 +889,7 @@ describe("리포트가 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <ReportView currentYear={2025} />
+        <ReportPages currentYear={2025} />
       </QueryClientProvider>,
     );
     // 요청을 보낸 적이 없다 — "불러오는 중"이 아니라 "아직 계산하지 않았다"고 말해야 한다.
@@ -922,7 +914,7 @@ describe("리포트가 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <ReportView currentYear={2025} />
+        <ReportPages currentYear={2025} />
       </QueryClientProvider>,
     );
     await screen.findByText("독일 · 2025");
@@ -946,7 +938,7 @@ describe("리포트가 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <ReportView currentYear={2025} />
+        <ReportPages currentYear={2025} />
       </QueryClientProvider>,
     );
     await screen.findByText("독일 · 2025");
@@ -996,8 +988,6 @@ describe("리포트가 답 우선 3계층인가", () => {
     await selectCountry(/미국/);
     await screen.findByText(/미국 · 2025/);
 
-    const details = screen.getByText("계산 조건 바꾸기").closest("details")!;
-    details.open = true;
     expect(screen.getByRole("button", { name: "부부합산" })).toBeInTheDocument();
     // 반대로 독일이 쓰던 한계세율은 미국에서 쓰지 않는다.
     const rate = screen.getByText("한계세율").closest("div")!;
@@ -1007,8 +997,6 @@ describe("리포트가 답 우선 3계층인가", () => {
   it("이월결손금이 계산에 반영된다", async () => {
     await renderSimulator();
     await screen.findByText("독일 · 2025");
-    const details = screen.getByText("계산 조건 바꾸기").closest("details")!;
-    details.open = true;
 
     fireEvent.change(screen.getByLabelText("전년 이월결손금"), { target: { value: "5000" } });
     await waitFor(() => expect(ports.estimate.mock.calls.at(-1)?.[0].profile.carriedLosses).toBe("5000"));
@@ -1107,7 +1095,7 @@ describe("리포트가 답 우선 3계층인가", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <ReportView currentYear={FIXTURE_TAX_YEAR} />
+        <ReportPages currentYear={FIXTURE_TAX_YEAR} />
       </QueryClientProvider>,
     );
     await selectTaxYear(2025);

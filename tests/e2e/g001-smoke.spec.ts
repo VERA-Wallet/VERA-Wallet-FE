@@ -119,7 +119,9 @@ test.describe.serial("G001 contract red team", () => {
       );
     };
 
-    await checkPage("/login", "DID로 안전하게 로그인하세요", "거주국 선택");
+    // 로그인 화면 개편(2026-09-17)으로 제목·"거주국 선택" 문구는 화면에서 빠졌다(mock 전용 접힌 줄의
+    // summary 문구로만 남는다). h1·설명문의 상시 노출 텍스트로 대체한다.
+    await checkPage("/login", "지갑 거래를 정리하고", "모바일신분증으로 본인 확인을 해요");
 
     // DID 단계 세션에서만 지갑 연결 화면에 접근할 수 있다.
     const didResponse = await request.post("/api/auth/did/present", { data: { country: "KR" } });
@@ -133,7 +135,9 @@ test.describe.serial("G001 contract red team", () => {
     const bootstrapped = await request.get("/api/auth/session");
     const bootstrappedBody = await bootstrapped.json() as { data: { walletAddress: string | null } };
     record(cases, "auth-bootstrap-session", "completed session is established for the active mode", true, bootstrappedBody.data.walletAddress !== null, bootstrappedBody.data.walletAddress !== null);
-    await checkPage("/dashboard", "거래 요약", "전체 거래");
+    // 요약 화면 개편으로 제목은 "거래 요약"→"요약", 최근 거래 링크는 "전체 거래"→"전체 N건 보기"로 바뀌었다.
+    // 링크 문구는 건수를 품고 있어 고정 문자열로 못 잡으니, 로딩 여부와 무관하게 항상 그려지는 섹션 제목으로 옮긴다.
+    await checkPage("/dashboard", "요약", "최근 거래");
     // 여백이 많은 fullPage 대신 콘텐츠 밀집 영역을 캡처해 비균일 증거를 보존한다.
     transcript.act({ type: "screenshot", selector: "main", target: dashboardPath });
     await page.locator("main").first().screenshot({ path: dashboardPath, type: "jpeg", quality: 85 });

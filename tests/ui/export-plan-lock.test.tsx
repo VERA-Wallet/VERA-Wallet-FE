@@ -1,5 +1,4 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FREE_EXPORT_EVENT_LIMIT, planDefinition, type Plan } from "@/lib/plan/use-plan";
@@ -23,7 +22,7 @@ vi.mock("@/lib/plan/use-plan", async (importOriginal) => {
   return { ...actual, usePlan: () => ({ plan: state.plan, activate: vi.fn(), deactivate: vi.fn() }) };
 });
 
-import { ReportView } from "@/components/report/report-view";
+import { renderReportPages } from "@/tests/ui/helpers/report-pages";
 
 // 리포트 카드(금액·CTA 판정)를 그리려면 estimate가 필요하다. 값 자체는 검증 대상이 아니고,
 // 미구독이어도 금액이 그대로 보이는지(=잠기는 것은 다운로드뿐인지)만 본다.
@@ -89,11 +88,8 @@ function renderWith(computableEventCount: number, plan: Plan | null) {
   ports.getSummary.mockResolvedValue(summaryWith(computableEventCount));
   ports.estimate.mockResolvedValue(estimate);
   ports.listRuleSets.mockImplementation(async () => listRuleSetSummaries());
-  return render(
-    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-      <ReportView countryCode="KR" currentYear={2026} latestActivityYear={2026} />
-    </QueryClientProvider>,
-  );
+  // 잠금·내려받기는 메인 화면의 일이다 — 근거·확인할 것·설정·비교는 각자의 화면으로 갔다.
+  return renderReportPages({ pages: ["main"], countryCode: "KR", currentYear: 2026, latestActivityYear: 2026 });
 }
 
 beforeEach(() => {
@@ -140,11 +136,7 @@ describe("리포트 플랜 잠금", () => {
     ports.getSummary.mockReturnValue(new Promise(() => {}));
     ports.estimate.mockReturnValue(new Promise(() => {}));
     ports.listRuleSets.mockImplementation(async () => listRuleSetSummaries());
-    render(
-      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <ReportView countryCode="KR" currentYear={2026} latestActivityYear={2026} />
-      </QueryClientProvider>,
-    );
+    renderReportPages({ pages: ["main"], countryCode: "KR", currentYear: 2026, latestActivityYear: 2026 });
 
     expect(screen.queryByRole("link", { name: /플랜 보기/ })).toBeNull();
   });

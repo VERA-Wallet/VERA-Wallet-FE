@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ReportView } from "@/components/report/report-view";
+import { ReportPages } from "@/tests/ui/helpers/report-pages";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
 import { TaxYearProvider, useTaxYear } from "@/lib/tax/tax-year-context";
 import { FIXTURE_TAX_YEAR } from "@/tests/fixtures/tax-year";
@@ -115,7 +115,8 @@ describe("전역 귀속연도 단일 소스", () => {
     render(
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
         <TaxYearProvider>
-          <ReportView currentYear={FIXTURE_TAX_YEAR} />
+          {/* 과세연도 셀렉터는 계산 설정 화면에 있다. 메인도 함께 세워 같은 선택을 두 화면이 공유하는지 본다. */}
+          <ReportPages pages={["main", "settings"]} currentYear={FIXTURE_TAX_YEAR} />
           <DashboardView />
         </TaxYearProvider>
       </QueryClientProvider>,
@@ -134,10 +135,9 @@ describe("전역 귀속연도 단일 소스", () => {
       ports.estimate.mock.calls.some(([input]) => input.country === "KR" && input.taxYear === 2022),
     ).toBe(false);
 
-    // 세금 화면의 과세연도 셀렉터를 2022로 바꾼다.
-    const details = (await screen.findByText("계산 조건 바꾸기")).closest("details")!;
-    details.open = true;
-    fireEvent.click(within(details).getByRole("button", { name: "2022" }));
+    // 계산 설정 화면의 과세연도 셀렉터를 2022로 바꾼다(더 이상 접힘 안이 아니다 — 페이지가 곧 그 주제다).
+    const conditions = (await screen.findByText("계산 조건 바꾸기")).closest("section")!;
+    fireEvent.click(within(conditions).getByRole("button", { name: "2022" }));
 
     // 대시보드도 같은 소스를 구독하므로 KR/2022로 다시 조회해야 한다(desync 해소).
     await waitFor(() =>
@@ -155,7 +155,7 @@ describe("거주자 전제·잠정 배지", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const view = render(
       <QueryClientProvider client={client}>
-        <ReportView currentYear={FIXTURE_TAX_YEAR} />
+        <ReportPages pages={["main", "settings", "compare"]} currentYear={FIXTURE_TAX_YEAR} />
       </QueryClientProvider>,
     );
     await screen.findByText("독일 · 2025");
@@ -172,14 +172,11 @@ describe("거주자 전제·잠정 배지", () => {
   it("한국(부분확정) 세액 근처에 거주자·총평균 전제와 잠정 표기를 함께 보인다", async () => {
     await renderSimulator();
 
-    // 나라 칩은 "다른 나라였다면" 접힘 안으로 들어갔다 — 거주국 리포트가 답이고 나라 전환은 비교다.
-    const countries = screen.getByText("다른 나라였다면").closest("details")!;
-    countries.open = true;
-    fireEvent.click(within(countries).getByRole("button", { name: /한국/ }));
+    // 나라 칩은 "다른 나라였다면" 화면으로 나갔다 — 거주국 리포트가 답이고 나라 전환은 비교다.
+    fireEvent.click(within(screen.getByLabelText("국가 선택")).getByRole("button", { name: /한국/ }));
     await screen.findByText("한국 · 2025");
-    const details = screen.getByText("계산 조건 바꾸기").closest("details")!;
-    details.open = true;
-    fireEvent.click(await screen.findByRole("button", { name: /2027/ }));
+    const conditions = screen.getByText("계산 조건 바꾸기").closest("section")!;
+    fireEvent.click(within(conditions).getByRole("button", { name: /2027/ }));
     await screen.findByText("한국 · 2027");
 
     // 전제 배지는 엔진 method에서 파생한다 — 하드코딩이 아니라 "거주자별 총평균법"을 그대로 읽는다.

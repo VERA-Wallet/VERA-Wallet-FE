@@ -1,7 +1,6 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ReportView } from "@/components/report/report-view";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { renderReportPages } from "@/tests/ui/helpers/report-pages";
 import { listRuleSetSummaries } from "@/lib/tax/rulesets";
 import { vi } from "vitest";
 
@@ -31,11 +30,7 @@ describe("빈 지갑 리포트", () => {
     ports.listRuleSets.mockImplementation(async () => listRuleSetSummaries());
     // 추정이 실패해도 원장 부속명세는 온체인 값만으로 만들 수 있다 — 그때 기간은 요약 기간으로 물러난다.
     ports.estimate.mockRejectedValue(new Error("engine down"));
-    render(
-      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <ReportView currentYear={2026} />
-      </QueryClientProvider>,
-    );
+    renderReportPages({ pages: ["main"], currentYear: 2026 });
     expect(await screen.findByText(/기간 미정/)).toBeInTheDocument();
     expect(document.body.textContent ?? "").not.toMatch(/^\s*~\s/m);
 

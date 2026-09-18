@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ReportView } from "@/components/report/report-view";
+import { ReportPages } from "@/tests/ui/helpers/report-pages";
 import { createTaxScenarioEvents, scenarioScaleFor } from "@/lib/tax/scenarios";
 import { computeTaxEstimate } from "@/lib/tax/engine";
 import { listRuleSetSummaries } from "@/lib/tax/rulesets";
@@ -62,13 +62,15 @@ describe("P0-4 연말 시가 입력 → 의제취득가액 반영", () => {
   });
 
   it("UI: 연말 시가 폼 입력이 deemedFmv로 흘러가 의제취득가액 한계가 사라진다", async () => {
+    // 답(메인)·한계(확인할 것)·입력 폼(계산 설정)이 서로 다른 화면에 살지만 estimate는 하나다 —
+    // 세 화면을 한 프로바이더 아래 세워 그 하나가 실제로 다시 계산되는지 본다.
     render(
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <ReportView countryCode="KR" currentYear={2027} walletConnected={false} />
+        <ReportPages pages={["main", "issues", "settings"]} countryCode="KR" currentYear={2027} walletConnected={false} />
       </QueryClientProvider>,
     );
 
-    // 시행 후(2027) 한국 계산이 도착하면 의제취득가액 한계가 답 옆에 떠 있다.
+    // 시행 후(2027) 한국 계산이 도착하면 의제취득가액 한계가 "확인할 것"에 떠 있다.
     await screen.findByText("한국 · 2027");
     await screen.findByText(DEEMED_LIMITATION);
 

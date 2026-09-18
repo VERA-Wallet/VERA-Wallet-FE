@@ -32,4 +32,24 @@ describe("플랜 화면", () => {
     expect(within(plus!).queryByText("활성 · 2026년")).toBeNull();
     expect(within(plus!).getByRole("button", { name: "데모 결제로 시작 (실제 결제 아님)" })).toBeInTheDocument();
   });
+
+  it("과세연도별 결제는 활성 플랜 1행만 실데이터로 보여준다", async () => {
+    // 결제 이력의 집은 리포트가 아니라 이 화면이다(2026-09-18 리포트 분리 때 옮겨 왔다).
+    const { container } = render(<PlanView taxYear={2026} />);
+
+    // 결제 전에는 이력 자체가 없다 — 빈 표를 세워 놓고 "아직 없음"이라 하지 않는다.
+    expect(container.querySelector("[data-surface='plan-payments']")).toBeNull();
+
+    const [, plus] = planCards();
+    await userEvent.click(within(plus!).getByRole("button", { name: "데모 결제로 시작 (실제 결제 아님)" }));
+
+    const payments = container.querySelector("[data-surface='plan-payments']") as HTMLElement | null;
+    expect(payments).not.toBeNull();
+    expect(within(payments!).getByText("과세연도별 결제")).toBeInTheDocument();
+    // 연도·플랜명·활성화 날짜는 usePlan의 활성 플랜에서만 파생한다 — 하드코딩이 아니다.
+    expect(within(payments!).getByText(/2026년 귀속 · 플러스 플랜 · 활성화/)).toBeInTheDocument();
+    expect(
+      within(payments!).getByText(/지난 연도 결제 이력과 내보내기 스냅샷 보관은 아직 제공하지 않습니다/),
+    ).toBeInTheDocument();
+  });
 });

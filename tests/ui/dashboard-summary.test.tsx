@@ -42,13 +42,46 @@ function estimateWith(period: { from: string; to: string }): TaxEstimate {
 }
 
 describe("dashboard summary", () => {
-  it("shows a dash instead of zero while the summary is loading", () => {
+  /**
+   * 로딩에는 두 단계가 있고, 이유가 다르다(대시보드 주석 참고):
+   * 거래 목록 자체가 아직 없으면 무엇을 셀지조차 모르는 상태라 스켈레톤을 보인다 — "0건"·"—"은
+   * 둘 다 "무언가 안다"는 인상을 준다. 거래는 왔고 판정(estimate)만 다시 도는 중이면
+   * 옛 값을 최신인 척 단정하지 않으려 "—"를 그대로 쓴다. 이 스위트는 그 둘을 갈라 본다.
+   */
+  it("이벤트 목록 자체가 로딩 중이면 0건이라 말하지 않고 스켈레톤을 보인다", () => {
+    // 어느 것도 정착하지 않는다 — events.isLoading이 계속 true인 순간을 붙잡는다.
+    ports.list.mockReturnValue(new Promise(() => {}));
+    ports.getSummary.mockReturnValue(new Promise(() => {}));
+    ports.estimate.mockReturnValue(new Promise(() => {}));
+    renderDashboard();
+    // "불러오는 중"이라는 사실은 role="status" 한 줄이 말한다.
+    expect(screen.getByRole("status")).toHaveTextContent("거래를 불러오는 중입니다");
+    // 모르는 건수를 0이라 말하는 링크·배지가 없어야 한다.
+    expect(screen.queryByRole("link", { name: /전체 .*건 보기/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/0건/)).not.toBeInTheDocument();
+    // 값 자리는 스켈레톤(장식, aria-hidden)이지 "—"가 아니다 — "—"도 "무언가 안다"는 인상을 준다.
+    expect(screen.getByText("예상 손익").parentElement).not.toHaveTextContent("—");
+    expect(document.querySelectorAll('[data-surface="recent-transaction-skeleton"]')).toHaveLength(3);
+  });
+
+  it("판정만 늦게 도착하면(거래는 왔음) 값 자리는 대시로 남는다", async () => {
     ports.list.mockResolvedValue({ items: [], nextCursor: null });
     ports.getSummary.mockReturnValue(new Promise(() => {}));
     ports.estimate.mockReturnValue(new Promise(() => {}));
     renderDashboard();
+    // 거래 목록이 도착했다는 신호(0건도 이제는 실제 사실이라 링크가 생긴다).
+    await screen.findByRole("link", { name: "전체 0건 보기" });
     expect(screen.getByText("예상 손익").parentElement).toHaveTextContent("—");
     expect(screen.getByText("예상 손익").parentElement).not.toHaveTextContent("₩0");
+  });
+
+  it("실제로 0건이면 로딩과 구분해 0건이라고 말한다", async () => {
+    ports.list.mockResolvedValue({ items: [], nextCursor: null });
+    ports.getSummary.mockReturnValue(new Promise(() => {}));
+    ports.estimate.mockReturnValue(new Promise(() => {}));
+    renderDashboard();
+    const link = await screen.findByRole("link", { name: "전체 0건 보기" });
+    expect(link).toHaveAttribute("href", "/transactions");
   });
 
   it("shows taxable and pending-review counts together", async () => {

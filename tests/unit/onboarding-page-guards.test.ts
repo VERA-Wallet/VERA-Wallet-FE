@@ -22,7 +22,9 @@ vi.mock("@/lib/composition-root.server", () => ({
 
 import ConnectWalletPage from "@/app/connect-wallet/page";
 import DashboardPage from "@/app/dashboard/page";
-import ExportPage from "@/app/export/page";
+// 리포트는 다섯 화면이 됐고, 세션 가드는 그 전부를 덮는 layout 하나로 올라갔다.
+// 그래서 계약도 layout을 세운다 — page를 세우면 하위 경로(`/export/settings` 등)의 가드는 검증되지 않는다.
+import ExportLayout from "@/app/export/layout";
 import WalletsPage from "@/app/wallets/page";
 import HomePage from "@/app/page";
 import LoginPage from "@/app/login/page";
@@ -57,7 +59,9 @@ const states: Array<{ name: string; snapshot: SessionSnapshot; destinations: [st
   { name: "BE complete", snapshot: { source: "be", didVerified: true, countryCode: "US", walletAddress: "0x123" }, destinations: [null, null, null, null, "/dashboard", "/dashboard", null] },
 ];
 
-const pages = [ConnectWalletPage, DashboardPage, ExportPage, WalletsPage, HomePage, LoginPage, PlanPage];
+// layout은 children을 받는다. 가드는 children을 보기 전에 끝나므로 빈 children으로 세운다.
+const exportEntry = () => ExportLayout({ children: null });
+const pages = [ConnectWalletPage, DashboardPage, exportEntry, WalletsPage, HomePage, LoginPage, PlanPage];
 
 async function expectDestination(page: () => Promise<unknown>, destination: string | null) {
   mocks.redirect.mockClear();

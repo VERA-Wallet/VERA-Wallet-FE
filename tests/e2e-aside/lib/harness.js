@@ -93,8 +93,12 @@ async function ensureLogin(p, country) {
   let s = await session(p);
   if (s && s.didVerified) return s;
   await go(p, '/login', 2000);
+  // 거주국 버튼은 주 버튼 아래 접힌 details("거주 국가: 한국 · 바꾸기") 안에 있다(인증 모드와 무관).
+  // 닫힌 details 안의 버튼도 el.click()은 발화하지만, 사람이 하듯 먼저 연다.
+  await p.evaluate(() => { const g = document.querySelector('[aria-label="거주국 선택"]'); const d = g && g.closest('details'); if (d) d.open = true; });
   await domClick(p, '[aria-label="거주국 선택"] button', new RegExp('^' + (country || 'KR') + '$')); await wait(300);
-  await domClick(p, 'button', /모바일신분증으로 인증/);
+  await domClick(p, 'button', /모바일신분증으로 시작하기|QR\/딥링크 제시/);
+  await wait(600); await domClick(p, 'button', /^제시 완료$/);
   s = await until(p, async () => { const x = await session(p); return x && x.didVerified ? x : null; }, 15000, 700);
   return s;
 }

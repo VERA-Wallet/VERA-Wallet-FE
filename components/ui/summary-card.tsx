@@ -1,8 +1,10 @@
+import type { ReactNode } from "react";
 import { Card } from "./card";
 
 type SummaryCardProps = {
   label: string;
-  value: string;
+  /** 문자열이 보통이지만, 값을 아직 모르는 동안에는 스켈레톤 막대를 그대로 끼워 넣는다. */
+  value: ReactNode;
   supportingText?: string;
   /**
    * 지금 이 순간에만 해당하는 한 줄(예: 불러오는 중이라 아직 반영 전). `supportingText`와 나누는 이유:

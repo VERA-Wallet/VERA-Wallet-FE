@@ -6,8 +6,11 @@ else if (!s.walletAddress) {
   section('20 대시보드(DID-only 빈 상태)');
   await run('빈 상태', async () => {
     await go(p, '/dashboard', 2500);
-    ok('"데이터 불러오기" CTA → /connect-wallet', (await domCount(p, 'a[href^="/connect-wallet"]', /데이터 불러오기/)) >= 1);
-    ok('거래 목록 훅이 붙지 않음(요약 표면 없음)', (await count(p, '[data-surface=dashboard-summary]')) === 0);
+    ok('제목 "요약" + 사용자 말의 거주 국가("클레임" 없음)', (await domCount(p, 'h1', /^요약$/)) === 1 && await has(p, /거주 국가/) && !(await has(p, /클레임/)));
+    ok('주 버튼은 하는 일을 말한다: "지갑 연결하기" → /connect-wallet', (await domCount(p, '[data-surface=dashboard-empty-cta] a[href^="/connect-wallet"]', /^지갑 연결하기$/)) === 1);
+    ok('보조 버튼 "데모 데이터로 둘러보기" → /export', (await domCount(p, '[data-surface=dashboard-empty-cta] a[href="/export"]', /데모 데이터로 둘러보기/)) === 1);
+    // 빈 요약은 데이터 훅을 붙이지 않는다 — 지갑이 없으면 /api/events 가 404라 네트워크를 건드리지 않는 껍데기다.
+    ok('거래 목록 훅이 붙지 않음(그래프·최근 거래 표면 없음)', (await count(p, '[data-surface=dashboard-flow]')) === 0 && (await count(p, '[data-surface=recent-transactions]')) === 0);
   });
 } else {
   section('20 대시보드 렌더');
@@ -17,7 +20,7 @@ else if (!s.walletAddress) {
     ok('헤더 "요약"(옛 "거래 요약" 아님) + 기간 버튼("기간 바꾸기")', (await domCount(p, 'h1', /^요약$/)) === 1 && !(await has(p, /거래 요약/)) && (await domCount(p, 'button', /기간 바꾸기/)) === 1);
     ok('누적 순유입 그래프(data-surface=dashboard-flow, testid flow-total/flow-line)', (await count(p, '[data-surface=dashboard-flow]')) === 1 && (await count(p, '[data-testid=flow-total]')) === 1 && (await count(p, '[data-testid=flow-line]')) === 1);
     ok('기간 프리셋 5개(1개월·3개월·6개월·1년·전체)', (await domCount(p, 'button', /^(1개월|3개월|6개월|1년|전체)$/)) >= 5);
-    ok('계산 신뢰도 블록(aria-label=계산 신뢰도)', (await count(p, '[data-surface=dashboard-confidence]')) === 1);
+    ok('신뢰도 칩 없음(요약에서 뺐다)', (await count(p, '[data-surface=dashboard-confidence]')) === 0);
     ok('예상 손익·계산 대상 이벤트 문구', await has(p, /예상 손익/) && await has(p, /계산 대상 이벤트/));
     ok('금지 용어 없음(세액·납부할 세금·신고서)', !(await has(p, /세액|납부할 세금|신고서/)));
     await shot(p, 'dashboard');
@@ -33,16 +36,8 @@ else if (!s.walletAddress) {
     const mainH = await p.evaluate(() => Math.round(document.querySelector('main').getBoundingClientRect().height));
     ok('요약 화면 전체 높이 ≤ 1,400px', mainH <= 1400, 'mainH=' + mainH);
   });
-  await run('확인 필요 카드 → 거래 탭 확인 필요', async () => {
-    const nudge = await count(p, '[data-surface=review-nudge]');
-    if (nudge === 0) { skip('확인 필요 카드', '확인 필요 0건이라 카드가 뜨지 않는다(설계)'); return; }
-    ok('카드 문구 "확인 필요 N건"', await domHas(p, '[data-surface=review-nudge]', /확인 필요 [\d,]+건/));
-    await p.locator('[data-surface=review-nudge]').click();
-    const arrived = await until(p, async () => ((await path(p)) === '/transactions?tab=review' ? true : null), 8000);
-    ok('클릭 → /transactions?tab=review', !!arrived, await path(p));
-    const selected = await until(p, async () => ((await domCount(p, '[role=tab][aria-selected=true]', /확인 필요/)) === 1 ? true : null), 8000);
-    ok('도착하면 확인 필요 탭이 선택돼 있다', !!selected);
-    await go(p, '/dashboard', 3500);
+  await run('확인 필요 카드 없음', async () => {
+    ok('요약에 확인 필요 카드가 없다(큐는 거래 탭이 맡는다)', (await count(p, '[data-surface=review-nudge]')) === 0);
   });
   await run('최근 거래 행 → 상세 시트', async () => {
     ok('최근 거래 첫 행 클릭', await domClick(p, '[data-surface=recent-transactions] button[data-event-id]')); await wait(1200);

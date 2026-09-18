@@ -257,3 +257,21 @@ describe("필터는 칩 한 줄이다", () => {
     expect(document.querySelector('button[data-filter="wallet"]')).toBeNull();
   });
 });
+
+describe("로딩 중에는 0건을 말하지 않는다", () => {
+  it("거래 목록이 아직 오지 않았으면 헤더 건수·탭 배지가 0을 말하지 않는다", () => {
+    // 정착하지 않는다 — events.isLoading이 계속 true인 순간을 붙잡는다(요약 화면과 같은 규칙).
+    ports.list.mockReturnValue(new Promise(() => {}));
+    ports.getSummary.mockReturnValue(new Promise(() => {}));
+    ports.estimate.mockReturnValue(new Promise(() => {}));
+    renderTransactions();
+
+    // 기준 기간을 못 정해 판정을 계산하지 않는다는 고지도 role="status"라 같은 롤로 두 개가 뜬다 —
+    // 텍스트로 짚어 그중 "불러오는 중" 고지가 role="status"임을 확인한다.
+    expect(screen.getByText("거래를 불러오는 중입니다")).toHaveAttribute("role", "status");
+    // 제목 옆 건수, "전체 거래"·"확인 필요" 탭 배지 어디에도 "0"이 사실인 척 나오면 안 된다.
+    expect(screen.queryByText("0건")).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "전체 거래" }).textContent).not.toMatch(/0/);
+    expect(screen.getByRole("tab", { name: "확인 필요" }).textContent).not.toMatch(/0/);
+  });
+});

@@ -2,7 +2,8 @@
 
 import { Card } from "@/components/ui/card";
 import { MockProvenanceChip } from "@/components/ui/mock-provenance-chip";
-import { PLANS, usePlan } from "@/lib/plan/use-plan";
+import { formatDate } from "@/lib/format";
+import { PLANS, planDefinition, usePlan } from "@/lib/plan/use-plan";
 import { useTaxYear } from "@/lib/tax/tax-year-context";
 
 /**
@@ -81,6 +82,21 @@ export function PlanView({ taxYear: fallbackTaxYear }: { taxYear: number }) {
           );
         })}
       </ul>
+
+      {/* 과세연도별 결제 — 결제 이력의 집은 이 화면이다(리포트에서 이사했다).
+          BE 계약(영수증 조회·연도 귀속 검증·스냅샷 보관,
+          `docs/be-contract-draft-plan-receipts-snapshots.md`) 전까지는 현재 활성 플랜 1행만 실데이터로 그린다. */}
+      {plan !== null && (
+        <Card data-surface="plan-payments" className="mt-8">
+          <p className="font-semibold text-zinc-900">과세연도별 결제</p>
+          <p className="mt-3 text-sm text-zinc-700">
+            {plan.taxYear}년 귀속 · {planDefinition(plan.tier).name} 플랜 · 활성화 {formatDate(plan.activatedAt)}
+          </p>
+          <p className="mt-3 text-xs text-zinc-400">
+            지난 연도 결제 이력과 내보내기 스냅샷 보관은 아직 제공하지 않습니다.
+          </p>
+        </Card>
+      )}
 
       <p className="mt-8 text-sm leading-6 text-zinc-600">
         플랜은 계산 결과를 바꾸지 않습니다 — 잠기는 것은 다운로드뿐입니다.

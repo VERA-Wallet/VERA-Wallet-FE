@@ -89,6 +89,20 @@ export function cxLoginEnabled(): boolean {
   return cxMockEnabled() || authBase().length > 0;
 }
 
+/**
+ * 실제 라온시큐어 CX 모달이 열리는지 여부. `cxLoginEnabled()`는 AUTH_URL 존재만 보므로
+ * `NEXT_PUBLIC_OMNIONE_CX_MOCK=true`인 로컬 dev(AUTH_URL도 같이 설정돼 있다)에서도 true가 되어
+ * "실제 인증인가"를 구분하지 못한다.
+ *
+ * 쓰임은 **mock 출처 칩을 달지 말지** 하나뿐이다. 거주 국가 선택 UI를 이 함수로 감추면 안 된다 —
+ * 거주 국가는 신분증이 증명하는 값이 아니라 사용자가 신고하는 값이고, BE는 실제 인증 토큰이 있어도
+ * 요청의 country를 그대로 세션 거주국으로 쓴다. 실제 인증에서 선택지를 감추면 모든 사용자가 KR로 굳는다
+ * (2026-09-18에 실제로 그렇게 구현했다가 독립 검증에서 잡혀 되돌렸다).
+ */
+export function realCxAuthEnabled(): boolean {
+  return cxLoginEnabled() && !cxMockEnabled();
+}
+
 let overlayFrame: HTMLIFrameElement | null = null;
 
 /** 전면 고정 오버레이 iframe을 만든다. SDK의 position:fixed 모달이 이 iframe 뷰포트를 기준으로 배치된다. */
