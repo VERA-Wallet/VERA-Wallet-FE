@@ -80,11 +80,3 @@ input,
     transition-duration: 0.01ms !important;
   }
 }
-
-/* 가로 스트립의 스크롤바 숨김. 넘침 신호는 ChipStrip이 양끝 페이드로 대신 준다. */
-@utility scrollbar-none {
-  scrollbar-width: none;
-  &::-webkit-scrollbar {
-    display: none;
-  }
-}

@@ -10,7 +10,7 @@ import type { PeriodSelection, PeriodWindow } from "@/lib/portfolio/period-selec
 import type { FreshState } from "@/lib/queries/fresh";
 import type { NormalizedEvent } from "@/lib/schema/normalized-event";
 import { abs, isNegative, isZero } from "@/lib/tax/decimal";
-import { ChipStrip } from "@/components/ui/chip-strip";
+import { ChipScroller } from "@/components/ui/chip-scroller";
 
 /**
  * 지갑 이력의 누적 순유입 그래프.
@@ -277,7 +277,7 @@ export function FlowChart({
         </p>
       )}
 
-      <ChipStrip label="기간 선택" surface="card" gap="gap-1" className="mt-3">
+      <ChipScroller className="mt-3" aria-label="기간 선택">
         {FLOW_RANGES.map((item) => (
           <button
             key={item.id}
@@ -294,7 +294,7 @@ export function FlowChart({
         {activeSelection.kind === "custom" ? (
           <span className={`${rangeClass(true)} whitespace-nowrap`}>직접 지정</span>
         ) : null}
-      </ChipStrip>
+      </ChipScroller>
 
       {slice && slice.points.length > 0 ? (
         <p className="mt-2 text-xs text-zinc-400">
