@@ -1,5 +1,7 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { listRuleSetSummaries } from "@/lib/tax/rulesets";
 import type { TaxEstimate } from "@/lib/tax/types";
 import { TaxYearProvider, useTaxYear } from "@/lib/tax/tax-year-context";
 
@@ -18,16 +20,15 @@ vi.mock("@/lib/composition-root.client", () => ({
   taxEngine: { estimate: ports.estimate, listRuleSets: ports.listRuleSets },
 }));
 
-// 리포트 금액(₩183,333.34 등) 노출은 이제 구독 전제다 — 활성 플랜을 심어 마스킹을 걷는다.
 vi.mock("@/lib/plan/use-plan", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/plan/use-plan")>();
   const plusPlan = { tier: "plus" as const, taxYear: 2027, activatedAt: "2027-01-01T00:00:00.000Z" };
   return { ...actual, usePlan: () => ({ plan: plusPlan, activate: vi.fn(), deactivate: vi.fn() }) };
 });
 
-import { ExportView } from "@/components/export/export-view";
+import { ReportView } from "@/components/report/report-view";
 
-// 데이터(요약 기간)는 2025년이라 fallback = 2025. 시행연도(2027)는 룰셋에서 온다.
+// 데이터(요약 기간)는 2025년이라 진입 귀속연도 = 2025. 시행연도(2027)는 룰셋에서 온다.
 function estimateFor(taxYear: number, assumeEffective = false): TaxEstimate {
   // 시행 후(2027~) 또는 "시행 가정"을 켠 시행 전 연도는 실제 총평균 값을 낸다.
   const effective = taxYear >= 2027 || assumeEffective;
@@ -82,7 +83,7 @@ function estimateFor(taxYear: number, assumeEffective = false): TaxEstimate {
   };
 }
 
-// 데이터가 있는 해는 2025다 — 요약 기간 시작 연도가 곧 fallback 귀속연도.
+// 데이터가 있는 해는 2025다 — 서버가 그 해를 진입 귀속연도로 내려준다.
 const summary = {
   periodPnl: "3000000",
   computableEventCount: 1,
@@ -91,6 +92,14 @@ const summary = {
   currency: "KRW",
   period: { from: "2025-01-01T00:00:00.000Z", to: "2026-01-01T00:00:00.000Z" },
 };
+
+function renderReport() {
+  return render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <ReportView countryCode="KR" currentYear={2025} latestActivityYear={2025} />
+    </QueryClientProvider>,
+  );
+}
 
 beforeEach(() => {
   ports.list.mockReset();
@@ -105,9 +114,7 @@ beforeEach(() => {
     estimateFor(input.taxYear, input.assumeEffective ?? false),
   );
   // 룰셋이 시행연도(2027)를 선언한다 — 화면이 하드코딩하지 않고 여기서 받는다.
-  ports.listRuleSets.mockResolvedValue([
-    { code: "KR", label: "한국", effectiveTaxYear: 2027 },
-  ]);
+  ports.listRuleSets.mockImplementation(async () => listRuleSetSummaries());
 });
 
 /** 전역 소스가 실제로 공유되는지 보는 최소 소비자. */
@@ -116,11 +123,11 @@ function YearProbe() {
   return <div data-testid="probe">probe:{year}</div>;
 }
 
-describe("내보내기 귀속연도 선택기", () => {
+describe("리포트 귀속연도 선택기", () => {
   it("귀속연도 칩을 탭하면 연도 목록(시행연도 2027 포함)이 열린다", async () => {
-    render(<ExportView countryCode="KR" />);
+    renderReport();
 
-    // 처음엔 데이터 연도(2025)를 fallback 귀속연도로 요청한다.
+    // 처음엔 데이터 연도(2025)를 귀속연도로 요청한다.
     await waitFor(() => expect(ports.estimate).toHaveBeenCalledWith(expect.objectContaining({ country: "KR", taxYear: 2025, source: "wallet" })));
     const chip = await screen.findByRole("button", { name: /2025년 귀속/ });
 
@@ -133,53 +140,66 @@ describe("내보내기 귀속연도 선택기", () => {
   });
 
   it("연도를 바꾸면 그 연도로 estimate를 재요청하고 시행 후 계산을 노출한다", async () => {
-    render(<ExportView countryCode="KR" />);
+    renderReport();
     const chip = await screen.findByRole("button", { name: /2025년 귀속/ });
 
-    // 시행 전(2025)은 정직하게 부담을 산출하지 않는다(SCHEDULED).
     fireEvent.click(chip);
     fireEvent.click(await screen.findByRole("button", { name: /2027년 귀속/ }));
 
-    // 선택 연도(2027)로 estimate를 다시 부른다 — 시행 후 계산.
-    await waitFor(() => expect(ports.estimate).toHaveBeenCalledWith(expect.objectContaining({ country: "KR", taxYear: 2027, source: "wallet" })));
+    // 선택 연도(2027)로 estimate를 다시 부른다 — 시행 후 계산이라 가정이 실리지 않는다.
+    await waitFor(() =>
+      expect(ports.estimate).toHaveBeenCalledWith({
+        country: "KR",
+        taxYear: 2027,
+        source: "wallet",
+        profile: expect.anything(),
+      }),
+    );
     // 헤더 칩도 선택 연도를 따른다.
     expect(await screen.findByRole("button", { name: /2027년 귀속/ })).toBeInTheDocument();
     // 시행 후(PARTIAL) 계산이 리포트에 실린다 — 예상 부담 실제값.
-    expect(await screen.findByText("₩183,333.34")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId("estimated-charge").textContent).toContain("₩183,333.34"));
+    // 시행 후를 보는 중에는 "가정"이 성립하지 않으므로 배너도 없다.
+    expect(document.querySelector("[data-surface='assume-effective']")).toBeNull();
   });
 
-  it("시행 가정 토글을 켜면 assumeEffective로 재요청하고 총평균 실제 값을 '가정'으로 노출한다", async () => {
-    render(<ExportView countryCode="KR" />);
+  it("시행 예정 룰셋의 시행 전 연도는 시행 가정을 켠 채로 열고, 끄면 사실로 돌아간다", async () => {
+    renderReport();
 
-    // 처음엔 시행 전(2025) — 정직하게 SCHEDULED(부담 0)로 온다.
-    await waitFor(() =>
-      expect(ports.estimate).toHaveBeenCalledWith(expect.objectContaining({ country: "KR", taxYear: 2025, source: "wallet" })),
-    );
-    // 시행 전 연도라 "시행 가정으로 보기" 토글이 뜬다.
-    const toggle = await screen.findByRole("button", { name: "시행 가정으로 보기" });
-    fireEvent.click(toggle);
-
-    // 같은 연도(2025)를 assumeEffective를 실어 재요청한다.
+    // 시행 전(2025)이어도 첫 요청부터 assumeEffective가 실린다(2026-09-17 사용자 결정).
     await waitFor(() =>
       expect(ports.estimate).toHaveBeenCalledWith(
         expect.objectContaining({ country: "KR", taxYear: 2025, source: "wallet", assumeEffective: true }),
       ),
     );
-    // 가정임을 배너로 계속 말하고, 총평균 실제 부담(=시행 후 PARTIAL 계산값)이 리포트에 실린다.
-    expect(await screen.findByText(/시행 가정으로 보는 중/)).toBeInTheDocument();
-    expect(await screen.findByText("₩183,333.34")).toBeInTheDocument();
+    // 가정임을 배너로 계속 말하고, 총평균 실제 부담(=시행 후 계산값)이 리포트에 실린다.
+    expect(await screen.findByText(/시행 가정으로 보는 중입니다/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId("estimated-charge").textContent).toContain("₩183,333.34"));
+    // 시행 전이라는 사실은 지워지지 않고 접힘 안에 남는다.
+    expect(screen.getByText("시행 전인 지금 실제 부담은")).toBeInTheDocument();
 
-    // 끄면 다시 사실(시행 전)로 돌아가 토글이 "시행 가정으로 보기"로 복귀한다.
+    // 끄면 사실(시행 전)로 돌아간다 — 같은 연도를 가정 없이 재요청한다.
     fireEvent.click(screen.getByRole("button", { name: "가정 끄기" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "시행 가정으로 보기" })).toBeInTheDocument());
+    await waitFor(() =>
+      expect(ports.estimate).toHaveBeenCalledWith({
+        country: "KR",
+        taxYear: 2025,
+        source: "wallet",
+        profile: expect.anything(),
+      }),
+    );
+    await waitFor(() => expect(screen.getByTestId("estimated-charge").textContent).toBe("과세 대상 아님"));
+    expect(screen.getByRole("button", { name: "시행 가정으로 보기" })).toBeInTheDocument();
   });
 
-  it("선택 연도를 전역 소스에 써서 세금 화면과 같은 소스를 공유한다", async () => {
+  it("선택 연도를 전역 소스에 써서 요약·거래 화면과 같은 소스를 공유한다", async () => {
     render(
-      <TaxYearProvider>
-        <ExportView countryCode="KR" />
-        <YearProbe />
-      </TaxYearProvider>,
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <TaxYearProvider>
+          <ReportView countryCode="KR" currentYear={2025} latestActivityYear={2025} />
+          <YearProbe />
+        </TaxYearProvider>
+      </QueryClientProvider>,
     );
 
     // 아직 아무도 고르지 않았다 — fallback은 소비자별이라 전역으로 새지 않는다(probe는 자기 기본값 0).
@@ -189,7 +209,7 @@ describe("내보내기 귀속연도 선택기", () => {
     fireEvent.click(await screen.findByRole("button", { name: /2025년 귀속/ }));
     fireEvent.click(await screen.findByRole("button", { name: /2027년 귀속/ }));
 
-    // 내보내기 화면에서 고른 연도는 전역 소스에 써져, 별개 소비자(=대시보드·세금 화면 대역)도 즉시 본다.
+    // 리포트에서 고른 연도는 전역 소스에 써져, 별개 소비자(=요약·거래 화면 대역)도 즉시 본다.
     await waitFor(() => expect(screen.getByTestId("probe").textContent).toBe("probe:2027"));
   });
 });

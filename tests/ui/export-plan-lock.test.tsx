@@ -1,17 +1,19 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FREE_EXPORT_EVENT_LIMIT, planDefinition, type Plan } from "@/lib/plan/use-plan";
+import { listRuleSetSummaries } from "@/lib/tax/rulesets";
 import type { TaxEstimate } from "@/lib/tax/types";
 
 const state = vi.hoisted(() => ({ plan: null as Plan | null }));
-const ports = vi.hoisted(() => ({ list: vi.fn(), getSummary: vi.fn(), getProof: vi.fn(), estimate: vi.fn() }));
+const ports = vi.hoisted(() => ({ list: vi.fn(), getSummary: vi.fn(), getProof: vi.fn(), estimate: vi.fn(), listRuleSets: vi.fn() }));
 
 vi.mock("@/lib/composition-root.client", () => ({
   eventRepository: { list: ports.list },
   summaryProvider: { getSummary: ports.getSummary },
   anchorProofProvider: { getProof: ports.getProof },
-  taxEngine: { estimate: ports.estimate },
+  taxEngine: { estimate: ports.estimate, listRuleSets: ports.listRuleSets },
 }));
 
 // 저장소 읽기만 대신한다 — 한도표와 잠금 판정은 실제 모듈을 그대로 태운다.
@@ -21,10 +23,10 @@ vi.mock("@/lib/plan/use-plan", async (importOriginal) => {
   return { ...actual, usePlan: () => ({ plan: state.plan, activate: vi.fn(), deactivate: vi.fn() }) };
 });
 
-import { ExportView } from "@/components/export/export-view";
+import { ReportView } from "@/components/report/report-view";
 
-// 리포트 카드(금액 마스킹·CTA 판정)를 그리려면 estimate가 필요하다. 값 자체는 검증 대상이 아니고,
-// 미구독일 때 라인이 마스킹되는지(구독일 때 실제 값이 보이는지)만 본다.
+// 리포트 카드(금액·CTA 판정)를 그리려면 estimate가 필요하다. 값 자체는 검증 대상이 아니고,
+// 미구독이어도 금액이 그대로 보이는지(=잠기는 것은 다운로드뿐인지)만 본다.
 const estimate: TaxEstimate = {
   country: "KR",
   countryLabel: "한국",
@@ -86,7 +88,12 @@ function renderWith(computableEventCount: number, plan: Plan | null) {
   ports.getProof.mockResolvedValue(null);
   ports.getSummary.mockResolvedValue(summaryWith(computableEventCount));
   ports.estimate.mockResolvedValue(estimate);
-  return render(<ExportView countryCode="KR" />);
+  ports.listRuleSets.mockImplementation(async () => listRuleSetSummaries());
+  return render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <ReportView countryCode="KR" currentYear={2026} latestActivityYear={2026} />
+    </QueryClientProvider>,
+  );
 }
 
 beforeEach(() => {
@@ -94,22 +101,26 @@ beforeEach(() => {
   ports.getSummary.mockReset();
   ports.getProof.mockReset();
   ports.estimate.mockReset();
+  ports.listRuleSets.mockReset();
   state.plan = null;
 });
 
-describe("내보내기 플랜 잠금", () => {
-  it("미구독이면 한도 안이라도 금액을 잠그고 CTA를 띄우며 다운로드를 막는다", async () => {
+describe("리포트 플랜 잠금", () => {
+  it("미구독이어도 계산은 전부 보이고 다운로드만 잠긴다", async () => {
     renderWith(FREE_EXPORT_EVENT_LIMIT, null);
 
-    // 리포트 카드는 뜨되 금액 라인은 마스킹된다 — 라벨은 그대로 보여 무엇이 담기는지는 알 수 있다.
+    // 리포트 카드가 뜨고 금액도 그대로 보인다 — Koinly식(2026-09-17 사용자 결정).
     expect(await screen.findByText("기타소득 계산")).toBeInTheDocument();
     expect(screen.getByText("총수입금액")).toBeInTheDocument();
-    expect(screen.getAllByLabelText("구독 후 공개").length).toBeGreaterThan(0);
-    // 실제 금액은 마스킹되어 보이지 않는다.
-    expect(screen.queryByText("₩5,000,000")).toBeNull();
-    // 플랜 CTA 배너가 리포트 위에 뜨고 /plan으로 보낸다.
-    const cta = screen.getByText("플랜을 구독하면 리포트가 열립니다").closest("a");
-    expect(cta).toHaveAttribute("href", "/plan");
+    expect(await screen.findByText("₩5,000,000")).toBeInTheDocument();
+    // 금액·신뢰도 블러는 사라졌다. 남아 있으면 `/plan`의 "잠기는 것은 다운로드뿐"이 다시 거짓이 된다.
+    expect(screen.queryAllByLabelText("구독 후 공개")).toHaveLength(0);
+    expect(document.querySelectorAll('[data-locked="amount"], [data-locked="confidence"]')).toHaveLength(0);
+    // "금액과 다운로드는 구독 후 공개됩니다" 배너도 없다 — 하지 않는 잠금을 광고하지 않는다.
+    expect(screen.queryByText("플랜을 구독하면 리포트가 열립니다")).toBeNull();
+    expect(document.querySelector("[data-surface='plan-cta']")).toBeNull();
+    // 대신 내려받기 카드가 무엇이 무료이고 무엇이 결제인지 한 줄로 말한다.
+    expect(screen.getByText("계산은 무료예요. 파일로 내려받을 때만 결제해요.")).toBeInTheDocument();
     // 다운로드 두 버튼은 잠긴다(자물쇠 아이콘 + data-locked).
     const csv = screen.getByRole("button", { name: /직접 신고용 내려받기/ });
     await waitFor(() => expect(csv).toBeDisabled());
@@ -128,7 +139,12 @@ describe("내보내기 플랜 잠금", () => {
     ports.getProof.mockResolvedValue(null);
     ports.getSummary.mockReturnValue(new Promise(() => {}));
     ports.estimate.mockReturnValue(new Promise(() => {}));
-    render(<ExportView countryCode="KR" />);
+    ports.listRuleSets.mockImplementation(async () => listRuleSetSummaries());
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <ReportView countryCode="KR" currentYear={2026} latestActivityYear={2026} />
+      </QueryClientProvider>,
+    );
 
     expect(screen.queryByRole("link", { name: /플랜 보기/ })).toBeNull();
   });
@@ -145,14 +161,12 @@ describe("내보내기 플랜 잠금", () => {
     expect(screen.getByText(/건수는 계산 대상 이벤트 기준입니다/)).toBeInTheDocument();
   });
 
-  it("플랜이 활성이면 금액이 열리고 한도까지 다운로드가 다시 열린다", async () => {
+  it("플랜이 활성이면 한도까지 다운로드가 열리고 결제 안내 문구가 빠진다", async () => {
     renderWith(250, plusPlan);
 
-    // 구독하면 마스킹이 걷히고 실제 금액이 보인다.
     expect(await screen.findByText("₩5,000,000")).toBeInTheDocument();
-    expect(screen.queryByLabelText("구독 후 공개")).toBeNull();
-    // CTA 배너는 구독자에겐 뜨지 않는다.
-    expect(screen.queryByText("플랜을 구독하면 리포트가 열립니다")).toBeNull();
+    // 구독자에게 "계산은 무료예요" 줄은 필요 없다 — 이미 결제했다.
+    expect(screen.queryByText("계산은 무료예요. 파일로 내려받을 때만 결제해요.")).toBeNull();
     const csv = screen.getByRole("button", { name: /직접 신고용 내려받기/ });
     await waitFor(() => expect(csv).not.toBeDisabled());
     expect(csv).not.toHaveAttribute("data-locked");
@@ -166,7 +180,7 @@ describe("내보내기 플랜 잠금", () => {
 
     expect(await screen.findByText(/플러스 플랜 1,000건까지 · 현재 1,001건 — 상위 플랜이 필요합니다/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "직접 신고용 내려받기" })).toBeDisabled();
-    // 한도 초과여도 구독자는 금액을 본다 — 잠기는 것은 다운로드다.
+    // 한도 초과여도 금액은 보인다 — 잠기는 것은 다운로드다.
     expect(await screen.findByText("₩5,000,000")).toBeInTheDocument();
   });
 });

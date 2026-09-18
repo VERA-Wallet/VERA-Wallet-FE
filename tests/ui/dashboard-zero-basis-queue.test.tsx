@@ -1,7 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
-import { DashboardView } from "@/components/dashboard/dashboard-view";
+// 탭·목록이 요약에서 떠난 뒤로 취득가 0원 큐가 서는 자리는 거래 화면 하나뿐이다.
+import { TransactionsView } from "@/components/transactions/transactions-view";
 import { assetTicker, chainLabel, formatSignedTokenAmount } from "@/lib/format";
 import { createNormalizedEventFixtures } from "@/tests/fixtures/generated/normalized-events";
 import type { NormalizedEvent } from "@/lib/schema/normalized-event";
@@ -22,7 +23,7 @@ function label(event: NormalizedEvent) {
 }
 
 /**
- * 취득가 0원 해결 큐 = 대시보드 "확인 필요" 탭.
+ * 취득가 0원 해결 큐 = 거래 화면 "확인 필요" 탭.
  * 가격 미확정 취득은 여기에 나오고(취득가 0원의 원인), 금액 override를 채우면
  * `taxExclusionReason`이 계산 대상으로 인정해 큐에서 빠진다(review.ts 단일 판정).
  */
@@ -63,7 +64,7 @@ it("가격 미확정 취득은 확인 필요 큐에 나오고, 금액 override�
   };
   ports.list.mockResolvedValue({ items: [open, filled].map((event, index) => ({ event, version: index + 1 })), nextCursor: null });
   ports.getSummary.mockResolvedValue({ periodPnl: "1", computableEventCount: 1, taxableEventCount: 1, pendingReviewCount: 1, currency: "KRW", period: { from: "a", to: "b" } });
-  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><DashboardView /></QueryClientProvider>);
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TransactionsView /></QueryClientProvider>);
 
   await screen.findByText(label(open));
   fireEvent.click(screen.getByRole("tab", { name: "확인 필요" }));

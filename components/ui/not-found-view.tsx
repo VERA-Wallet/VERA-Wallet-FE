@@ -20,7 +20,7 @@ export function NotFoundView({
       <h1 className="mt-3 text-2xl font-bold tracking-tight text-zinc-900">{title}</h1>
       <p className="mt-3 text-base leading-6 text-zinc-600">{body}</p>
       <p className="mt-2 font-mono text-xs text-zinc-400">code: 404{code ? ` · ${code}` : ""}</p>
-      <Link href="/dashboard" className="mt-6 inline-flex w-full items-center justify-center rounded-xl bg-primary-500 py-3.5 font-semibold text-white">
+      <Link href="/transactions" className="mt-6 inline-flex w-full items-center justify-center rounded-xl bg-primary-500 py-3.5 font-semibold text-white">
         거래로 이동
       </Link>
       <Link href="/wallets" className="mt-3 inline-flex w-full items-center justify-center rounded-xl border border-zinc-200 bg-white py-3.5 font-semibold text-zinc-900">

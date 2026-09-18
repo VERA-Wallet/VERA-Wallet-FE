@@ -17,8 +17,13 @@ import { eventQueryKey } from "@/lib/queries/events";
  * 마지막 하나가 깨지면 "다 불러왔다"는 말과 함께 빠진 체인이 조용히 사라진다.
  */
 
-/** 지금 보고 있는 화면. 마커를 걷는 경계는 컴포넌트 수명이 아니라 이 값의 변화에만 있다. */
-const nav = vi.hoisted(() => ({ pathname: "/dashboard" as string | null }));
+/**
+ * 지금 보고 있는 화면. 마커를 걷는 경계는 컴포넌트 수명이 아니라 이 값의 변화에만 있다.
+ * 전체 거래 목록이 `/dashboard`에서 `/transactions`로 옮겨 가 원장 경로도 이 화면이다.
+ */
+const nav = vi.hoisted(() => ({ pathname: "/transactions" as string | null }));
+/** 원장(전체 거래 목록)이 사는 경로. 마커는 이 화면에서만 뜻이 있다. */
+const LEDGER_PATH = "/transactions";
 vi.mock("next/navigation", () => ({ usePathname: () => nav.pathname }));
 
 const ADDRESS = "0x71C7656EC7ab88b098defB751B7401B5f6d8976F";
@@ -139,7 +144,7 @@ function seedLedger(queryClient: QueryClient, ids: string[]) {
 
 beforeEach(() => {
   vi.useFakeTimers();
-  nav.pathname = "/dashboard";
+  nav.pathname = LEDGER_PATH;
   window.sessionStorage.removeItem(IMPORT_JOB_STORAGE_KEY);
 });
 
@@ -449,6 +454,7 @@ describe("새 거래 마커의 수명", () => {
   it("원장을 떠나면 마커를 걷는다", async () => {
     const { rerenderInTracker } = await completeImport(false);
 
+    // 원장이 아닌 화면으로 옮겨 간다 — 걷는 근거는 "원장을 떠났다"는 사실뿐이다.
     nav.pathname = "/wallets";
     await act(async () => {
       rerenderInTracker(<Host showLedger={false} />);
@@ -463,7 +469,7 @@ describe("새 거래 마커의 수명", () => {
     nav.pathname = "/wallets";
     const { rerenderInTracker } = await completeImport(false);
 
-    nav.pathname = "/dashboard";
+    nav.pathname = LEDGER_PATH;
     await act(async () => {
       rerenderInTracker(<Host showLedger />);
     });

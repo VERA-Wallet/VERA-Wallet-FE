@@ -72,15 +72,17 @@ function recorder() {
     await page.goto("/dashboard");
     await verifyBadge("dashboard-summary", "dashboard-view");
 
+    // 세금 화면은 리포트와 합쳐졌다 — `/tax`는 `/export`로 리다이렉트되고, 두 화면의 표면이 한 곳에 있다.
     transcript.action("goto", "/export");
     await page.goto("/export");
     await expect(page.getByText("앵커링 증명")).toBeVisible();
-    await verifyBadge("anchor-proof", "export-view");
+    await verifyBadge("anchor-proof", "report-view");
+    await verifyBadge("report", "report-view");
+    await expect(page.getByText("항목별 확정 상태")).toBeVisible();
 
     transcript.action("goto", "/tax");
     await page.goto("/tax");
-    await verifyBadge("tax-simulator", "tax-simulator");
-    await expect(page.getByText("항목별 확정 상태")).toBeVisible();
+    await expect(page).toHaveURL(/\/export$/);
 
     await writeFile(
       transcriptPath,

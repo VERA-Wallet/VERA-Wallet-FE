@@ -3,16 +3,23 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { DashboardView } from "@/components/dashboard/dashboard-view";
-import { formatDate } from "@/lib/format";
 import type { NormalizedEvent } from "@/lib/schema/normalized-event";
 import type { TaxEstimate } from "@/lib/tax/types";
 
 /**
- * 거래 요약이 보고 있는 **기간**을 사용자가 정한다.
+ * 요약 화면이 보고 있는 **기간**을 사용자가 정한다.
  *
  * 이 파일이 지키는 것은 기간이 한 곳에서만 정해진다는 사실이다 — 헤더에서 고르든
- * 그래프 버튼으로 고르든 헤더·선·목록이 **같은 기간**을 말해야 한다.
- * 셋 중 하나만 따라 움직이면 한 화면이 두 기간을 동시에 주장하게 된다.
+ * 그래프 버튼으로 고르든 헤더 문구와 선이 **같은 기간**을 말해야 한다.
+ * 둘 중 하나만 따라 움직이면 한 화면이 두 기간을 동시에 주장하게 된다.
+ *
+ * 전체 거래 목록은 거래 탭(`/transactions`)으로 떠났고, 기간 선택은 더 이상 목록을 좁히지 않는다 —
+ * 목록을 좁히는 문은 그쪽 연도 필터 하나뿐이다. 그래서 "좁아졌다"는 사실을 예전처럼 목록 날짜
+ * 머리글로 보지 않고, 그래프가 말하는 **그 기간의 순유입**(testid `flow-change`)으로 본다.
+ *
+ * 픽스처는 1/10 +100만 → 2/10 −40만 → 3/10 +20만이라 기간마다 합이 갈린다:
+ * 전체(1/10~3/10)는 +80만, 1/1~2/28은 +60만, 1개월(2/8~3/10)은 1/10까지의 누적(+100만)을
+ * 기준선으로 두고 그 뒤 −40만 +20만만 재므로 −20만이다.
  */
 
 function event(overrides: Partial<NormalizedEvent> & { id: string }): NormalizedEvent {
@@ -127,20 +134,27 @@ function renderDashboard() {
 
 /** 헤더의 기간 문. 접근 가능한 이름에 지금 기간이 그대로 들어 있다. */
 const periodButton = () => screen.getByRole("button", { name: /기간 바꾸기/ });
-const dayHeading = (timestamp: string) => screen.queryByRole("heading", { name: formatDate(timestamp) });
+/** 그래프가 말하는 **이 기간의 순유입**. 기간이 좁아졌는지는 이 수가 갈리는 것으로 안다. */
+const flowChange = () => screen.getByTestId("flow-change").textContent ?? "";
 
-describe("거래 요약 기간 고르기", () => {
+/** 첫 그림이 다 그려진 상태 — 헤더는 요약 기간을, 선은 세 달 전부(+80만)를 말한다. */
+async function waitForFullPeriod() {
+  await waitFor(() => expect(periodButton()).toHaveTextContent("2025-01-10 ~ 2025-03-10"));
+  await waitFor(() => expect(flowChange()).toContain("+₩800,000"));
+}
+
+describe("요약 기간 고르기", () => {
   it("고르기 전에는 요약이 말하는 기간을 그대로 보인다", async () => {
     renderDashboard();
-    await waitFor(() => expect(periodButton()).toHaveTextContent("2025-01-10 ~ 2025-03-10"));
-    // 좁히지 않았으므로 세 달이 모두 목록에 있다.
-    expect(dayHeading("2025-01-10T00:00:00.000Z")).toBeInTheDocument();
-    expect(dayHeading("2025-03-10T00:00:00.000Z")).toBeInTheDocument();
+    await waitForFullPeriod();
+    // 좁히지 않았으므로 세 달이 모두 선에 들어간다: +100만 −40만 +20만 = +80만.
+    expect(periodButton()).toHaveTextContent("2025-01-10 ~ 2025-03-10");
+    expect(flowChange()).toContain("+₩800,000");
   });
 
-  it("직접 지정한 날짜로 헤더·목록·선이 함께 좁아진다", async () => {
+  it("직접 지정한 날짜로 헤더와 그래프가 함께 좁아진다", async () => {
     renderDashboard();
-    await waitFor(() => expect(periodButton()).toHaveTextContent("2025-01-10 ~ 2025-03-10"));
+    await waitForFullPeriod();
 
     fireEvent.click(periodButton());
     fireEvent.change(screen.getByLabelText("시작일"), { target: { value: "2025-01-01" } });
@@ -149,30 +163,27 @@ describe("거래 요약 기간 고르기", () => {
 
     // 헤더는 이제 요약 기간이 아니라 **고른 기간**을 말한다.
     expect(periodButton()).toHaveTextContent("2025-01-01 ~ 2025-02-28");
-    // 목록도 같은 기간이다 — 3월 건은 빠진다.
-    expect(dayHeading("2025-01-10T00:00:00.000Z")).toBeInTheDocument();
-    expect(dayHeading("2025-03-10T00:00:00.000Z")).not.toBeInTheDocument();
-    // 선도 같은 기간이다: 1/10 +100만 → 2/10 −40만 = +60만.
-    expect(screen.getByTestId("flow-change").textContent).toContain("+₩600,000");
+    // 선도 같은 기간이다: 1/10 +100만 → 2/10 −40만 = +60만. 3월 건은 선에서 빠졌다.
+    expect(flowChange()).toContain("+₩600,000");
     // 프리셋 어느 것도 아니라는 사실을 그래프가 숨기지 않는다.
     expect(screen.getByText("직접 지정")).toBeInTheDocument();
   });
 
-  it("그래프의 기간 버튼을 눌러도 헤더와 목록이 함께 따라온다", async () => {
+  it("그래프의 기간 버튼을 눌러도 헤더가 함께 따라온다", async () => {
     renderDashboard();
-    await waitFor(() => expect(periodButton()).toHaveTextContent("2025-01-10 ~ 2025-03-10"));
+    await waitForFullPeriod();
 
     fireEvent.click(screen.getByRole("button", { name: "1개월" }));
 
     // 마지막 거래(3/10)에서 30일 뒤로 = 2/8. 그래프만 좁아지고 헤더가 그대로면 두 기간이 된다.
     expect(periodButton()).toHaveTextContent("2025-02-08 ~ 2025-03-10");
-    expect(dayHeading("2025-01-10T00:00:00.000Z")).not.toBeInTheDocument();
-    expect(dayHeading("2025-03-10T00:00:00.000Z")).toBeInTheDocument();
+    // 1/10까지의 누적 +100만이 기준선이 되고 그 뒤 −40만 +20만만 재므로 −20만이다.
+    expect(flowChange()).toContain("-₩200,000");
   });
 
   it("기간이 될 수 없는 날짜는 왜 안 되는지 말하고 화면을 바꾸지 않는다", async () => {
     renderDashboard();
-    await waitFor(() => expect(periodButton()).toHaveTextContent("2025-01-10 ~ 2025-03-10"));
+    await waitForFullPeriod();
 
     fireEvent.click(periodButton());
     fireEvent.change(screen.getByLabelText("시작일"), { target: { value: "2025-03-31" } });
@@ -180,34 +191,37 @@ describe("거래 요약 기간 고르기", () => {
     fireEvent.click(screen.getByRole("button", { name: "적용" }));
 
     expect(screen.getByRole("alert")).toHaveTextContent("종료일이 시작일보다 앞섭니다.");
-    // 조용히 통과시키면 존재하지 않는 기간의 목록을 "그 기간의 전부"라고 말하게 된다.
+    // 조용히 통과시키면 존재하지 않는 기간의 선을 "그 기간의 전부"라고 말하게 된다.
     expect(periodButton()).toHaveTextContent("2025-01-10 ~ 2025-03-10");
-    expect(dayHeading("2025-03-10T00:00:00.000Z")).toBeInTheDocument();
+    expect(flowChange()).toContain("+₩800,000");
   });
 
   it("좁힌 기간은 되돌릴 문이 같은 자리에 있다", async () => {
     renderDashboard();
-    await waitFor(() => expect(periodButton()).toHaveTextContent("2025-01-10 ~ 2025-03-10"));
+    await waitForFullPeriod();
 
     fireEvent.click(screen.getByRole("button", { name: "1개월" }));
-    expect(dayHeading("2025-01-10T00:00:00.000Z")).not.toBeInTheDocument();
+    expect(flowChange()).toContain("-₩200,000");
 
     fireEvent.click(periodButton());
     fireEvent.click(screen.getByRole("button", { name: "전체 기간" }));
 
-    expect(dayHeading("2025-01-10T00:00:00.000Z")).toBeInTheDocument();
+    expect(flowChange()).toContain("+₩800,000");
     expect(periodButton()).toHaveTextContent("2025-01-10 ~ 2025-03-10");
   });
 
   it("기간을 좁혔다는 사실과 그 대가를 같은 자리에서 말한다", async () => {
     renderDashboard();
-    await waitFor(() => expect(periodButton()).toHaveTextContent("2025-01-10 ~ 2025-03-10"));
+    await waitForFullPeriod();
 
     fireEvent.click(screen.getByRole("button", { name: "1개월" }));
 
+    // 전에는 "고른 기간의 거래 2건 · 날짜를 모르는 m건은 빠집니다"가 이 사실을 말했다. 목록이
+    // 거래 탭으로 떠나면서 요약에는 좁힐 목록이 없어졌고, 그 고지도 함께 사라졌다.
+    // 그래서 좁혔다는 사실은 선이 말하고(전체 +80만 → 2/8~3/10 −20만),
+    // 기간을 좁혀도 **무엇이 안 따라오는지**는 고르는 자리(패널)가 그대로 말한다.
     // 기간을 좁혔는데 손익이 그대로면 사용자는 계산이 틀렸다고 읽는다 — 무엇이 안 바뀌는지 밝힌다.
-    // 2/8~3/10 안에 있는 건 2/10·3/10 두 건이다.
-    expect(screen.getByText(/고른 기간의 거래 2건/)).toBeInTheDocument();
+    expect(flowChange()).toContain("-₩200,000");
     fireEvent.click(periodButton());
     expect(screen.getByText(/손익·계산 대상 건수는 과세연도 기준이라 바뀌지 않습니다/)).toBeInTheDocument();
   });

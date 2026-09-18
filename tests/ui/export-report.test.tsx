@@ -1,17 +1,23 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { computeTaxEstimate } from "@/lib/tax/engine";
+import { listRuleSetSummaries } from "@/lib/tax/rulesets";
+import { createTaxScenarioEvents, scenarioScaleFor } from "@/lib/tax/scenarios";
+import { ruleSetListSchema, taxEstimateSchema } from "@/lib/http/tax-dto";
+import type { TaxEstimateRequest } from "@/lib/ports/tax-engine";
 import type { TaxEstimate } from "@/lib/tax/types";
 
-const ports = vi.hoisted(() => ({ list: vi.fn(), getSummary: vi.fn(), getProof: vi.fn(), estimate: vi.fn() }));
+const ports = vi.hoisted(() => ({ list: vi.fn(), getSummary: vi.fn(), getProof: vi.fn(), estimate: vi.fn(), listRuleSets: vi.fn() }));
 
 vi.mock("@/lib/composition-root.client", () => ({
   eventRepository: { list: ports.list },
   summaryProvider: { getSummary: ports.getSummary },
   anchorProofProvider: { getProof: ports.getProof },
-  taxEngine: { estimate: ports.estimate },
+  taxEngine: { estimate: ports.estimate, listRuleSets: ports.listRuleSets },
 }));
 
-// 리포트 금액 노출은 이제 구독을 전제로 한다 — 활성 플랜을 심어야 금액이 마스킹 없이 보인다.
+// 다운로드는 구독 전제다 — 활성 플랜을 심어야 버튼이 열려 파일명 검증까지 도달한다.
 // 한도표·잠금 판정은 실제 모듈을 그대로 태운다(usePlan만 더블로 바꾼다).
 vi.mock("@/lib/plan/use-plan", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/plan/use-plan")>();
@@ -19,7 +25,7 @@ vi.mock("@/lib/plan/use-plan", async (importOriginal) => {
   return { ...actual, usePlan: () => ({ plan: plusPlan, activate: vi.fn(), deactivate: vi.fn() }) };
 });
 
-import { ExportView } from "@/components/export/export-view";
+import { ReportView } from "@/components/report/report-view";
 
 const estimate: TaxEstimate = {
   country: "KR",
@@ -72,26 +78,36 @@ const summary = {
   period: { from: "2027-01-01T00:00:00.000Z", to: "2028-01-01T00:00:00.000Z" },
 };
 
+function renderReport() {
+  return render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <ReportView countryCode="KR" currentYear={2027} latestActivityYear={2027} />
+    </QueryClientProvider>,
+  );
+}
+
 beforeEach(() => {
   ports.list.mockReset();
   ports.getSummary.mockReset();
   ports.getProof.mockReset();
   ports.estimate.mockReset();
+  ports.listRuleSets.mockReset();
   ports.list.mockResolvedValue({ items: [], nextCursor: null });
   ports.getProof.mockResolvedValue(null);
   ports.getSummary.mockResolvedValue(summary);
   ports.estimate.mockResolvedValue(estimate);
+  ports.listRuleSets.mockImplementation(async () => ruleSetListSchema.parse(listRuleSetSummaries()));
 });
 
-describe("내보내기 estimate 배선", () => {
+describe("리포트 estimate 배선", () => {
   it("거주국·귀속연도로 estimate를 요청해 그룹형 리포트를 estimate에서 파생한다", async () => {
-    render(<ExportView countryCode="KR" />);
+    renderReport();
 
     expect(await screen.findByText("기타소득 계산")).toBeInTheDocument();
-    // 요약 기간의 시작 연도(2027)를 귀속연도로, 거주국(KR)을 그대로 요청한다.
+    // 서버가 내려준 진입 귀속연도(2027)와 거주국(KR)을 그대로 요청한다.
     await waitFor(() => expect(ports.estimate).toHaveBeenCalledWith(expect.objectContaining({ country: "KR", taxYear: 2027, source: "wallet" })));
     // 귀속연도 칩과 PARTIAL 잠정 배지.
-    expect(screen.getByText("2027년 귀속")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /2027년 귀속/ })).toBeInTheDocument();
     expect(screen.getByText("잠정")).toBeInTheDocument();
     // 그룹형 라인은 buildFilingSummary(estimate)에서 파생한다 — 하드코딩이 아니다.
     expect(screen.getByText("총수입금액")).toBeInTheDocument();
@@ -100,7 +116,10 @@ describe("내보내기 estimate 배선", () => {
     expect(screen.getByText("예상 부담")).toBeInTheDocument();
     // 총수입금액 = Σ양도가액(5,000,000), 예상 부담 = 소득세+지방소득세(183,333.34).
     expect(screen.getByText("₩5,000,000")).toBeInTheDocument();
-    expect(screen.getByText("₩183,333.34")).toBeInTheDocument();
+    // 답(L1)과 리포트 카드의 "예상 부담"은 같은 estimate에서 나오므로 같은 금액이 두 자리에 선다.
+    // 두 estimate였다면 여기서 두 숫자가 갈린다.
+    expect(screen.getByTestId("estimated-charge").textContent).toContain("₩183,333.34");
+    expect(screen.getAllByText("₩183,333.34").length).toBeGreaterThanOrEqual(2);
     // 세무사 전달용 카드가 4시트가 무엇을 담는지 말한다(취득가액 명세·예외는 이 카드에만 있다).
     expect(screen.getByText(/취득가액 명세/)).toBeInTheDocument();
     expect(screen.getByText(/판단보류·미반영/)).toBeInTheDocument();
@@ -109,22 +128,23 @@ describe("내보내기 estimate 배선", () => {
   });
 
   it("확인 필요 신호가 없으면 넛지 배너를 그리지 않는다", async () => {
-    render(<ExportView countryCode="KR" />);
+    renderReport();
     await screen.findByText("기타소득 계산");
     // 기본 fixture는 excludedEventIds·zero_basis가 비어 있어 확인 필요 배너가 뜨지 않는다.
     expect(screen.queryByRole("link", { name: /확인 필요/ })).toBeNull();
   });
 
-  it("미반영 이벤트가 있으면 확인 필요 배너로 대시보드 큐를 가리킨다", async () => {
+  it("미반영 이벤트가 있으면 확인 필요 배너로 거래 탭의 검토 큐를 가리킨다", async () => {
     ports.estimate.mockResolvedValue({ ...estimate, excludedEventIds: ["evt-a", "evt-b"] });
-    render(<ExportView countryCode="KR" />);
+    renderReport();
 
     const banner = await screen.findByRole("link", { name: /확인 필요 2건/ });
-    expect(banner).toHaveAttribute("href", "/dashboard");
+    // 거래 목록이 /transactions로 이사했다 — 확인 필요 넛지도 그 라우트의 검토 탭을 가리킨다.
+    expect(banner).toHaveAttribute("href", "/transactions?tab=review");
   });
 
   it("세무사 전달용 다운로드가 estimate 기반 근거자료 파일을 만든다", async () => {
-    render(<ExportView countryCode="KR" />);
+    renderReport();
     await screen.findByText("기타소득 계산");
 
     const clicked: string[] = [];
@@ -135,12 +155,52 @@ describe("내보내기 estimate 배선", () => {
     URL.createObjectURL = () => "blob:stub";
     URL.revokeObjectURL = () => {};
     try {
-      fireEvent.click(screen.getByRole("button", { name: /세무사 전달용 내려받기/ }));
+      const xlsx = screen.getByRole("button", { name: /세무사 전달용 내려받기/ });
+      await waitFor(() => expect(xlsx).not.toBeDisabled());
+      fireEvent.click(xlsx);
       await waitFor(() => expect(clicked.length).toBeGreaterThan(0));
       expect(clicked[0]).toContain("신고근거");
       expect(clicked[0]).toMatch(/\.xlsx$/);
     } finally {
       HTMLAnchorElement.prototype.click = realClick;
     }
+  });
+});
+
+describe("리포트는 estimate 하나에서 나온다", () => {
+  // 실제 엔진을 통과시켜야 "입력이 답을 바꾼다"가 진짜로 검증된다.
+  // 더블이 입력을 무시하면 카드와 근거가 함께 바뀌지 않아도 테스트는 통과한다.
+  beforeEach(() => {
+    ports.estimate.mockImplementation(async (input: TaxEstimateRequest) =>
+      taxEstimateSchema.parse(
+        computeTaxEstimate({
+          ...input,
+          events: createTaxScenarioEvents(input.taxYear, scenarioScaleFor(input.country)),
+        }),
+      ),
+    );
+  });
+
+  it("연말 시가를 입력하면 리포트 카드의 예상 부담과 답이 함께 바뀐다", async () => {
+    renderReport();
+    await screen.findByText("기타소득 계산");
+
+    const chargeBefore = screen.getByTestId("estimated-charge").textContent;
+    const cardTotalBefore = within(screen.getByText("예상 부담").closest("div")!).getByText(/₩/).textContent;
+    // 카드의 총합과 답이 같은 계산에서 나온다는 사실은, 한쪽만 바뀌면 곧바로 깨진다.
+    expect(chargeBefore).toBeTruthy();
+
+    // 처분 자산마다 연말 시가(의제취득가액)를 넣는다 — 취득가액이 올라가 손익이 줄어야 한다.
+    const section = screen.getByLabelText("연말 시가 입력");
+    const inputs = within(section).getAllByPlaceholderText("예: 4000000");
+    expect(inputs.length).toBeGreaterThan(0);
+    for (const input of inputs) fireEvent.change(input, { target: { value: "999999999" } });
+
+    await waitFor(() =>
+      expect(ports.estimate.mock.calls.some(([input]) => input?.deemedFmv && Object.keys(input.deemedFmv).length > 0)).toBe(true),
+    );
+    // 답(L1)과 리포트 카드 총합이 **함께** 움직인다 — 두 estimate였다면 한쪽만 바뀐다.
+    await waitFor(() => expect(screen.getByTestId("estimated-charge").textContent).not.toBe(chargeBefore));
+    expect(within(screen.getByText("예상 부담").closest("div")!).getByText(/₩/).textContent).not.toBe(cardTotalBefore);
   });
 });

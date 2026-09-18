@@ -26,8 +26,7 @@ export function WalletsView({
   return (
     <main className="min-h-dvh px-5 py-8">
       <header data-surface="wallets-summary">
-        <p className="text-sm font-semibold text-primary-500">데이터 소스</p>
-        <h1 className="mt-2 text-3xl font-bold tracking-tight text-zinc-900">지갑·거래소 연결</h1>
+        <h1 className="text-3xl font-bold tracking-tight text-zinc-900">지갑·거래소 연결</h1>
         <p className="mt-1 text-sm text-zinc-500">여기 있는 소스의 거래만 목록과 계산에 들어갑니다.</p>
       </header>
 

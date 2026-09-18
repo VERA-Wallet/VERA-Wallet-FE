@@ -26,18 +26,24 @@ export function useEventList(maxPages: number = MAX_PAGES) {
       const collected = await collectBoundedEvents(eventRepository, { maxPages, pageLimit: PAGE_LIMIT });
       // 스팸은 원장에서 뺀다 — 실지갑에서 절반이 넘어 그대로 두면 목록도 확인 필요 큐도 스팸이 덮는다.
       // 지우는 게 아니라 숨기는 것이므로 몇 건인지 함께 넘겨 화면이 그 사실을 말하게 한다.
+      // 걸러낸 항목 자체도 버리지 않고 넘긴다: "스팸 n건"이라고만 말하고 무엇이었는지 못 보이면
+      // 사용자는 자기 거래가 잘못 걸렸는지 확인할 길이 없다(거래 탭의 스팸 보기가 이 배열을 그린다).
       const items = collected.items.filter((item) => !isSpam(item.event));
-      return { ...collected, items, spam: collected.items.length - items.length };
+      const spamItems = collected.items.filter((item) => isSpam(item.event));
+      return { ...collected, items, spamItems, spam: spamItems.length };
     },
     // "더 불러오기"로 상한이 바뀌면 키가 달라진다. 이전 목록을 유지해 화면이 빈 상태로 튀지 않게 한다.
     placeholderData: (previous) => previous,
   });
 }
 
-export function useEventSummary() {
+export function useEventSummary(enabled: boolean = true) {
   return useQuery({
     queryKey: eventSummaryQueryKey,
     queryFn: () => summaryProvider.getSummary(),
+    // 하단 내비 배지처럼 화면이 보이지 않을 때도 걸려 있는 호출부가 있다.
+    // enabled=false면 요청 자체가 나가지 않는다 — 지갑 미연결 404를 재시도로 키우지 않는다.
+    enabled,
   });
 }
 

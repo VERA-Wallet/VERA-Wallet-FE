@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DashboardView } from "@/components/dashboard/dashboard-view";
+import { TransactionsView } from "@/components/transactions/transactions-view";
 import { formatFiat } from "@/lib/format";
 import type { NormalizedEvent } from "@/lib/schema/normalized-event";
 import { TaxEngineService } from "@/lib/tax/tax-engine-service.server";
@@ -123,7 +123,7 @@ describe("스왑 두 다리는 한 행으로 묶인다", () => {
   it("목록은 양쪽 수량을 말하고 IN 다리를 별도 행으로 렌더하지 않는다 — 상대는 상세에서만", async () => {
     render(
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <DashboardView countryCode="KR" />
+        <TransactionsView countryCode="KR" />
       </QueryClientProvider>,
     );
 
@@ -161,7 +161,7 @@ describe("스왑 두 다리는 한 행으로 묶인다", () => {
 
     render(
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <DashboardView countryCode="KR" />
+        <TransactionsView countryCode="KR" />
       </QueryClientProvider>,
     );
     const row = await waitFor(() => {

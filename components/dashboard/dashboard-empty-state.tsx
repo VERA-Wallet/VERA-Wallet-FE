@@ -15,8 +15,7 @@ export function DashboardEmptyState({ countryCode }: { countryCode?: string }) {
     <main className="min-h-dvh px-5 py-8">
       <header data-surface="dashboard-summary" className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold text-primary-500">VeraWallet</p>
-          <h1 className="mt-2 text-3xl font-bold tracking-tight text-zinc-900">거래 요약</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-zinc-900">거래 요약</h1>
           <p className="mt-1 text-sm text-zinc-500">
             {countryCode ? `거주국 ${countryCode} 클레임이 확인된 상태입니다.` : "거주국 클레임이 확인된 상태입니다."}
           </p>
@@ -46,12 +45,12 @@ export function DashboardEmptyState({ countryCode }: { countryCode?: string }) {
         </Link>
         {/* 보조 CTA — 주 CTA(채움)보다 시각적 우선순위가 낮은 외곽선 스타일. */}
         <Link
-          href="/tax"
+          href="/export"
           className="mt-3 inline-flex w-full items-center justify-center rounded-xl border border-primary-500 py-3.5 font-semibold text-primary-600"
         >
           데모 데이터로 둘러보기
         </Link>
-        <p className="mt-2 text-xs text-zinc-400">룰셋 비교와 데모 계산은 지갑 없이도 쓸 수 있습니다.</p>
+        <p className="mt-2 text-xs text-zinc-400">리포트의 데모 계산은 지갑 없이도 쓸 수 있습니다.</p>
       </section>
 
       {/* 채워질 자리를 보여주는 플레이스홀더. 값은 대시보드 빈 상태와 같은 "—". */}

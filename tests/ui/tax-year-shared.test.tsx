@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { TaxSimulator } from "@/components/tax/tax-simulator";
+import { ReportView } from "@/components/report/report-view";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
 import { TaxYearProvider, useTaxYear } from "@/lib/tax/tax-year-context";
 import { FIXTURE_TAX_YEAR } from "@/tests/fixtures/tax-year";
@@ -21,11 +21,14 @@ const ports = vi.hoisted(() => ({
   getById: vi.fn(),
   listRuleSets: vi.fn(),
   estimate: vi.fn(),
+  // 리포트 화면은 앵커 증명 카드도 그린다 — 포트가 없으면 데이터 로딩이 통째로 실패로 넘어간다.
+  getProof: vi.fn(async () => null),
 }));
 
 vi.mock("@/lib/composition-root.client", () => ({
   eventRepository: { list: ports.list, reclassify: ports.reclassify, getById: ports.getById },
   summaryProvider: { getSummary: ports.getSummary },
+  anchorProofProvider: { getProof: ports.getProof },
   taxEngine: { listRuleSets: ports.listRuleSets, estimate: ports.estimate },
 }));
 
@@ -112,7 +115,7 @@ describe("전역 귀속연도 단일 소스", () => {
     render(
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
         <TaxYearProvider>
-          <TaxSimulator currentYear={FIXTURE_TAX_YEAR} />
+          <ReportView currentYear={FIXTURE_TAX_YEAR} />
           <DashboardView />
         </TaxYearProvider>
       </QueryClientProvider>,
@@ -152,7 +155,7 @@ describe("거주자 전제·잠정 배지", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const view = render(
       <QueryClientProvider client={client}>
-        <TaxSimulator currentYear={FIXTURE_TAX_YEAR} />
+        <ReportView currentYear={FIXTURE_TAX_YEAR} />
       </QueryClientProvider>,
     );
     await screen.findByText("독일 · 2025");
@@ -169,7 +172,10 @@ describe("거주자 전제·잠정 배지", () => {
   it("한국(부분확정) 세액 근처에 거주자·총평균 전제와 잠정 표기를 함께 보인다", async () => {
     await renderSimulator();
 
-    fireEvent.click(screen.getByRole("button", { name: /한국/ }));
+    // 나라 칩은 "다른 나라였다면" 접힘 안으로 들어갔다 — 거주국 리포트가 답이고 나라 전환은 비교다.
+    const countries = screen.getByText("다른 나라였다면").closest("details")!;
+    countries.open = true;
+    fireEvent.click(within(countries).getByRole("button", { name: /한국/ }));
     await screen.findByText("한국 · 2025");
     const details = screen.getByText("계산 조건 바꾸기").closest("details")!;
     details.open = true;

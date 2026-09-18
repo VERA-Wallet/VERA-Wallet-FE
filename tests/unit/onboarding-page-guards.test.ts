@@ -11,8 +11,13 @@ vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
 vi.mock("next/headers", () => ({
   cookies: vi.fn(async () => ({ get: () => undefined })),
 }));
+// `/export`(리포트)는 완료 세션에서 진입 귀속연도를 서버에서 파생한다(`latestActivityTaxYear`).
+// 그 편의값 때문에 가드 계약 테스트가 깨지지 않도록 요약 포트도 함께 세운다 — 목적지 판정은 그대로다.
 vi.mock("@/lib/composition-root.server", () => ({
   sessionReader: { cookieMode: "access-token", read: mocks.read },
+  summaryProvider: {
+    getSummary: async () => ({ period: { from: "2026-01-01T00:00:00.000Z", to: "2026-03-01T00:00:00.000Z" } }),
+  },
 }));
 
 import ConnectWalletPage from "@/app/connect-wallet/page";
@@ -36,8 +41,8 @@ const complete = {
 
 // destinations 순서: [ConnectWallet, Dashboard, Export, Wallets, Home, Login, Plan].
 // Home/Login은 진입 페이지 — 인증된 세션이면 /dashboard로 보내고, 아니면 로그인으로(또는 로그인 렌더).
-// Export는 온보딩 완료를 더 이상 강제하지 않는다 — DID-only는 /connect-wallet로 튕기지 않고
-// 연결 유도 빈 상태를 그 자리에서 렌더한다(null = 리다이렉트 없음).
+// Export(리포트)는 온보딩 완료를 더 이상 강제하지 않는다 — DID-only는 /connect-wallet로 튕기지 않고
+// 데모 시나리오 계산을 그 자리에서 렌더한다(null = 리다이렉트 없음). 내려받기만 "지갑 연결 필요"다.
 // Wallets는 requireDidSession만 요구한다 — DID-only도 "아직 연결된 지갑이 없다"는 정보를 그대로 보여준다.
 // Plan도 requireDidSession만 요구한다 — 무엇을 결제하는지 보려고 지갑부터 연결하게 만들지 않는다.
 // ConnectWallet도 requireDidSession만 요구한다 — 지갑 등록은 기존 지갑에 더해지는 것이라 이미 지갑이 있는

@@ -2,6 +2,7 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DashboardView } from "@/components/dashboard/dashboard-view";
+import { TransactionsView } from "@/components/transactions/transactions-view";
 import { TOAST_AUTO_DISMISS_MS } from "@/components/ui/toast";
 import { ImportCompleteToast } from "@/components/wallet/import-complete-toast";
 import { ImportStatusChip } from "@/components/wallet/import-status-chip";
@@ -25,7 +26,8 @@ import type { NormalizedEvent } from "@/lib/schema/normalized-event";
 
 const push = vi.fn();
 const replace = vi.fn();
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push, replace }), usePathname: () => "/dashboard" }));
+// 목록이 `/transactions`로 옮겨 가 마커도 그 화면에 있다 — 여기서 보는 화면은 원장이다.
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push, replace }), usePathname: () => "/transactions" }));
 
 const ports = vi.hoisted(() => ({
   list: vi.fn(),
@@ -300,7 +302,8 @@ describe("완료 토스트", () => {
       fireEvent.click(screen.getByRole("button", { name: "보러 가기" }));
     });
     // 원장 화면이 아니면 그리로 데려간다 — 알림만 주고 길을 안 주면 들어온 거래를 찾아 헤맨다.
-    expect(push).toHaveBeenCalledWith("/dashboard");
+    // 목록이 `/transactions`로 옮겨 갔으므로 데려갈 곳도 그 화면이다.
+    expect(push).toHaveBeenCalledWith("/transactions");
   });
 
   it("작업이 0건이라 말해도 원장에 새로 들어온 만큼을 센다", async () => {
@@ -343,7 +346,13 @@ describe("완료 토스트", () => {
   });
 });
 
-describe("대시보드 새 거래 마커", () => {
+/**
+ * 불러오기가 끝난 뒤 두 화면이 각자 말하는 것.
+ *
+ * 목록이 `/transactions`로 옮겨 가면서 "새로 들어온 거래" 날짜 배지와 `[data-new-event]` 닻은 거래 화면에만 있고,
+ * 요약 화면에는 "아직 새 지갑을 모른다"는 단서만 남았다. 두 사실을 한 화면에서 찾으면 둘 중 하나는 반드시 없다.
+ */
+describe("불러오기 뒤 원장 표시", () => {
   // 폴링 시계를 쓰지 않으려 구 계약(POST가 결과를 바로 돌려줌)을 쓴다 — 마커의 근거는 완료 사실이지 폴링이 아니다.
   const displayable = createNormalizedEventFixtures(FIXTURE_TAX_YEAR, new Date(Date.UTC(FIXTURE_TAX_YEAR + 1, 0, 1)))
     .filter((event) => !isSpam(event));
@@ -377,43 +386,49 @@ describe("대시보드 새 거래 마커", () => {
     vi.stubGlobal("fetch", vi.fn(async () => json({ data: syncResult }, 201)));
   });
 
-  it("이번에 들어온 거래만 날짜 묶음에 표시하고 첫 건에 닻을 남긴다", async () => {
-    const { container } = renderWithImportTracker(
-      <>
-        <StartButton />
-        <DashboardView countryCode="KR" />
-      </>,
-    );
+  describe("거래 탭 새 거래 마커", () => {
+    it("이번에 들어온 거래만 날짜 묶음에 표시하고 첫 건에 닻을 남긴다", async () => {
+      // 목록이 `/transactions`로 옮겨 갔으므로 마커를 볼 화면도 거래 화면이다.
+      const { container } = renderWithImportTracker(
+        <>
+          <StartButton />
+          <TransactionsView countryCode="KR" />
+        </>,
+      );
 
-    // 불러오기 전 원장. 이 시점의 목록이 "원래 있던 거래"의 정의다.
-    await waitFor(() => expect(container.querySelector(`[data-event-id="${older[0].id}"]`)).toBeTruthy());
-    expect(screen.queryByText(/새로 들어온 거래/)).toBeNull();
+      // 불러오기 전 원장. 이 시점의 목록이 "원래 있던 거래"의 정의다.
+      await waitFor(() => expect(container.querySelector(`[data-event-id="${older[0].id}"]`)).toBeTruthy());
+      expect(screen.queryByText(/새로 들어온 거래/)).toBeNull();
 
-    // 불러오기가 끝나면 원장이 갱신되고, 그때 새로 나타난 거래만 새 거래다.
-    serve(displayable);
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "start" }));
+      // 불러오기가 끝나면 원장이 갱신되고, 그때 새로 나타난 거래만 새 거래다.
+      serve(displayable);
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "start" }));
+      });
+
+      await waitFor(() => expect(screen.getByText("새로 들어온 거래 1")).toBeTruthy());
+      const anchor = container.querySelector("[data-new-event]");
+      // 토스트의 "보러 가기"가 찾아올 자리 — 새로 들어온 첫 거래여야 한다.
+      expect(anchor?.getAttribute("data-event-id")).toBe(newest.id);
     });
-
-    await waitFor(() => expect(screen.getByText("새로 들어온 거래 1")).toBeTruthy());
-    const anchor = container.querySelector("[data-new-event]");
-    // 토스트의 "보러 가기"가 찾아올 자리 — 새로 들어온 첫 거래여야 한다.
-    expect(anchor?.getAttribute("data-event-id")).toBe(newest.id);
   });
 
-  it("불러오는 중에는 이 건수가 아직 새 지갑을 모른다고 밝힌다", async () => {
-    // 응답이 끝나지 않는 동안에도 화면은 계속 쓸 수 있어야 하고, 숫자가 왜 그대로인지 말해야 한다.
-    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
-    renderWithImportTracker(
-      <>
-        <StartButton />
-        <DashboardView countryCode="KR" />
-      </>,
-    );
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "start" }));
-    });
+  describe("요약의 불러오는 중 단서", () => {
+    it("불러오는 중에는 이 건수가 아직 새 지갑을 모른다고 밝힌다", async () => {
+      // 응답이 끝나지 않는 동안에도 화면은 계속 쓸 수 있어야 하고, 숫자가 왜 그대로인지 말해야 한다.
+      // 이 문장은 요약이 자기 숫자에 붙이는 단서라 거래 화면이 아니라 요약 화면에 남았다.
+      vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+      renderWithImportTracker(
+        <>
+          <StartButton />
+          <DashboardView countryCode="KR" />
+        </>,
+      );
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "start" }));
+      });
 
-    await waitFor(() => expect(screen.getByText("새 지갑 거래는 불러온 뒤 반영돼요")).toBeTruthy());
+      await waitFor(() => expect(screen.getByText("새 지갑 거래는 불러온 뒤 반영돼요")).toBeTruthy());
+    });
   });
 });

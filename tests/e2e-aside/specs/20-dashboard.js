@@ -1,4 +1,4 @@
-// 20: 대시보드 /dashboard
+// 20: 요약 /dashboard — 거래 목록·필터·상세는 25-transactions.js 가 맡는다.
 const p = await newPage();
 const s = await ensureLogin(p);
 if (!s) { ok('로그인', false, '세션 확보 실패'); }
@@ -14,7 +14,7 @@ else if (!s.walletAddress) {
   await run('요약·그래프·신뢰도', async () => {
     await go(p, '/dashboard', 4000);
     ok('data-surface=dashboard-summary', (await count(p, '[data-surface=dashboard-summary]')) === 1);
-    ok('헤더 "거래 요약" + 기간 버튼("기간 바꾸기")', await has(p, /거래 요약/) && (await domCount(p, 'button', /기간 바꾸기/)) === 1);
+    ok('헤더 "요약"(옛 "거래 요약" 아님) + 기간 버튼("기간 바꾸기")', (await domCount(p, 'h1', /^요약$/)) === 1 && !(await has(p, /거래 요약/)) && (await domCount(p, 'button', /기간 바꾸기/)) === 1);
     ok('누적 순유입 그래프(data-surface=dashboard-flow, testid flow-total/flow-line)', (await count(p, '[data-surface=dashboard-flow]')) === 1 && (await count(p, '[data-testid=flow-total]')) === 1 && (await count(p, '[data-testid=flow-line]')) === 1);
     ok('기간 프리셋 5개(1개월·3개월·6개월·1년·전체)', (await domCount(p, 'button', /^(1개월|3개월|6개월|1년|전체)$/)) >= 5);
     ok('계산 신뢰도 블록(aria-label=계산 신뢰도)', (await count(p, '[data-surface=dashboard-confidence]')) === 1);
@@ -22,14 +22,32 @@ else if (!s.walletAddress) {
     ok('금지 용어 없음(세액·납부할 세금·신고서)', !(await has(p, /세액|납부할 세금|신고서/)));
     await shot(p, 'dashboard');
   });
-  await run('거래 목록', async () => {
-    const rows = await domCount(p, 'button', /^(수신|송금|이동|브릿지|스왑|미분류)/);
-    ok('거래 행 ≥ 10(버튼, 방향 라벨로 시작)', rows >= 10, 'rows=' + rows);
-    ok('행마다 data-event-id + data-event-label', (await count(p, 'button[data-event-id] [data-event-label]')) >= 10);
-    ok('탭 "전체 거래 N" · "확인 필요 N"(role=tablist 거래 필터)', (await count(p, '[role=tablist][aria-label="거래 필터"] [role=tab]')) === 2);
-    ok('지갑 필터 select(#dashboard-wallet-filter) 옵션 ≥ 2(전체 + 지갑)', (await count(p, '#dashboard-wallet-filter option')) >= 2);
-    ok('연도·체인·판정 필터 그룹 존재', (await count(p, '[aria-label="연도 필터"]')) === 1 && (await count(p, '[aria-label="체인 필터"]')) === 1 && (await count(p, '[aria-label="판정 필터"]')) === 1);
-    ok('목록에 판정 도장 배지 없음(상세에서만 말한다)', !(await domHas(p, 'button', /^(수신|송금|이동|브릿지|스왑|미분류).*(취득|양도|비과세|계산 제외)/)));
+  await run('목록은 요약에 없다 — 문만 남는다', async () => {
+    ok('거래 필터 탭·지갑 select·필터 그룹이 요약에 없음', (await count(p, '[role=tablist][aria-label="거래 필터"]')) === 0 && (await count(p, '#dashboard-wallet-filter')) === 0 && (await count(p, '[data-surface=transaction-filters]')) === 0);
+    const recent = await count(p, '[data-surface=recent-transactions] button[data-event-id]');
+    ok('최근 거래 1~3건(data-surface=recent-transactions)', recent >= 1 && recent <= 3, 'recent=' + recent);
+    ok('"전체 N건 보기" → /transactions', (await domCount(p, '[data-surface=recent-transactions] a[href="/transactions"]', /^전체 [\d,]+건 보기$/)) === 1);
+    ok('설정 톱니(aria-label=설정) → /settings', (await attr(p, '[data-surface=dashboard-summary] a[aria-label="설정"]', 'href')) === '/settings');
+    // 계획은 1,100px를 적었지만 실제 그래프 블록이 428px라 실측은 1,307px다(2026-09-17). 기준을 실측에 맞춰 적고,
+    // 목록이 다시 요약으로 새어 들어오면(행 하나 ≈ 76px × 수백) 바로 넘도록 여유는 100px만 둔다.
+    const mainH = await p.evaluate(() => Math.round(document.querySelector('main').getBoundingClientRect().height));
+    ok('요약 화면 전체 높이 ≤ 1,400px', mainH <= 1400, 'mainH=' + mainH);
+  });
+  await run('확인 필요 카드 → 거래 탭 확인 필요', async () => {
+    const nudge = await count(p, '[data-surface=review-nudge]');
+    if (nudge === 0) { skip('확인 필요 카드', '확인 필요 0건이라 카드가 뜨지 않는다(설계)'); return; }
+    ok('카드 문구 "확인 필요 N건"', await domHas(p, '[data-surface=review-nudge]', /확인 필요 [\d,]+건/));
+    await p.locator('[data-surface=review-nudge]').click();
+    const arrived = await until(p, async () => ((await path(p)) === '/transactions?tab=review' ? true : null), 8000);
+    ok('클릭 → /transactions?tab=review', !!arrived, await path(p));
+    const selected = await until(p, async () => ((await domCount(p, '[role=tab][aria-selected=true]', /확인 필요/)) === 1 ? true : null), 8000);
+    ok('도착하면 확인 필요 탭이 선택돼 있다', !!selected);
+    await go(p, '/dashboard', 3500);
+  });
+  await run('최근 거래 행 → 상세 시트', async () => {
+    ok('최근 거래 첫 행 클릭', await domClick(p, '[data-surface=recent-transactions] button[data-event-id]')); await wait(1200);
+    ok('role=dialog aria-label="거래 상세" 열림', (await count(p, '[role=dialog][aria-label="거래 상세"]')) === 1);
+    ok('바텀시트 닫기', await domClick(p, '[aria-label="바텀시트 닫기"]')); await wait(600);
   });
   section('20 상호작용');
   await run('금액 가리기 토글', async () => {
@@ -43,38 +61,10 @@ else if (!s.walletAddress) {
     await domClick(p, 'button', /^금액 표시$/); await wait(500);
     ok('다시 표시 → 원복', (await label()) === '금액 가리기' && await flowHasAmount());
   });
-  await run('확인 필요 탭', async () => {
-    await domClick(p, '[role=tablist][aria-label="거래 필터"] [role=tab]', /확인 필요/); await wait(1500);
-    ok('확인 필요 탭 aria-selected', (await domCount(p, '[role=tab][aria-selected=true]', /확인 필요/)) === 1);
-    await domClick(p, '[role=tablist][aria-label="거래 필터"] [role=tab]', /전체 거래/); await wait(1000);
-  });
-  await run('체인 필터', async () => {
-    const clicked = await domClick(p, '[aria-label="체인 필터"] button', /^(Optimism|Base|Arbitrum)/); await wait(1500);
-    ok('체인 필터 버튼 클릭', clicked);
-    const other = await p.evaluate(() => { const pressed = document.querySelector('[aria-label="체인 필터"] button[aria-pressed=true], [aria-label="체인 필터"] button[aria-selected=true]'); return pressed ? pressed.textContent.trim() : null; });
-    ok('선택 상태가 표시된다(aria-pressed/selected)', other !== null, other);
-    await domClick(p, '[aria-label="체인 필터"] button', /^전체 체인/); await wait(800);
-  });
-  await run('지갑 필터', async () => {
-    const changed = await p.evaluate(() => { const sel = document.querySelector('#dashboard-wallet-filter'); if (!sel || sel.options.length < 2) return null; sel.value = sel.options[1].value; sel.dispatchEvent(new Event('change', { bubbles: true })); return sel.options[1].textContent; });
-    await wait(1500);
-    ok('두 번째 지갑 선택 → 목록 유지', changed !== null && (await domCount(p, 'button', /^(수신|송금|이동|브릿지|스왑|미분류)/)) >= 1, changed);
-    await p.evaluate(() => { const sel = document.querySelector('#dashboard-wallet-filter'); sel.value = sel.options[0].value; sel.dispatchEvent(new Event('change', { bubbles: true })); }); await wait(800);
-  });
-  await run('거래 상세 바텀시트', async () => {
-    ok('첫 거래 행 클릭', await domClick(p, 'button', /^(수신|송금|이동|브릿지|스왑|미분류)/)); await wait(1200);
-    ok('role=dialog aria-label="거래 상세" 열림', (await count(p, '[role=dialog][aria-label="거래 상세"]')) === 1);
-    ok('상세에 분류 select(#classification)·사유 입력(#reason)', (await count(p, '#classification')) === 1 && (await count(p, '#reason')) === 1);
-    ok('금액 덮어쓰기 details(data-surface=value-override)', (await count(p, '[data-surface=value-override]')) === 1);
-    ok('탐색기 링크(외부 tx URL)', (await count(p, '[role=dialog] a[href*="scan"]')) >= 1);
-    await shot(p, 'dashboard_detail');
-    ok('바텀시트 닫기', await domClick(p, '[aria-label="바텀시트 닫기"]')); await wait(600);
-    ok('닫힘', (await count(p, '[role=dialog][aria-label="거래 상세"]')) === 0);
-  });
   await run('기간 선택', async () => {
     ok('기간 바꾸기 클릭', await domClick(p, 'button', /기간 바꾸기/)); await wait(800);
     ok('기간 선택 패널(data-surface=dashboard-period-picker) + 시작일/종료일 입력', (await count(p, '[data-surface=dashboard-period-picker]')) === 1 && (await count(p, 'input[aria-label="시작일"]')) === 1 && (await count(p, 'input[aria-label="종료일"]')) === 1);
-    ok('안내 "목록과 그래프만 이 기간으로 좁힙니다"', await has(p, /목록과 그래프만 이 기간으로 좁힙니다/));
+    ok('안내가 목록을 말하지 않는다("그래프만 … 좁힙니다")', await has(p, /그래프만 이 기간으로 좁힙니다/) && !(await has(p, /목록과 그래프만/)));
     await p.keyboard.press('Escape').catch(() => null); await wait(400);
     await domClick(p, '[aria-label="바텀시트 닫기"]'); await wait(400);
   });
