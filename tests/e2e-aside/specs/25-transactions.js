@@ -8,7 +8,7 @@ else if (!s.walletAddress) {
   await run('빈 상태', async () => {
     await go(p, '/transactions', 2500);
     ok('거래 목록 훅이 붙지 않음(헤더 표면 없음)', (await count(p, '[data-surface=transactions-header]')) === 0);
-    ok('"데이터 불러오기" CTA → /connect-wallet', (await domCount(p, 'a[href^="/connect-wallet"]', /데이터 불러오기/)) >= 1);
+    ok('"지갑 연결하기" CTA → /connect-wallet', (await domCount(p, 'a[href^="/connect-wallet"]', /^지갑 연결하기$/)) >= 1);
   });
 } else {
   section('25 거래 렌더');

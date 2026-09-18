@@ -30,20 +30,25 @@ offModeOnly("G001 session gate OFF-mode browser red team", () => {
     const entries: Entry[] = [];
     await page.context().clearCookies();
     await page.goto("/");
-    await capture(page, "anonymous-login", "/login", entries, "main > div:has-text('거주국 선택')");
+    await capture(page, "anonymous-login", "/login", entries);
 
     await page.getByRole("button", { name: "QR/딥링크 제시" }).click();
     await page.getByRole("button", { name: "제시 완료" }).click();
-    await page.getByRole("button", { name: "대시보드로 이동" }).click();
-    // 클라이언트 네비게이션이 끝나기 전에 URL을 읽으면 직전 경로가 잡힌다. 전이를 기다린 뒤 기록한다.
-    await page.waitForURL("**/dashboard");
-    entries.push({ action: "complete DID presentation through browser UI", expected: "/dashboard", actual: new URL(page.url()).pathname, verdict: new URL(page.url()).pathname === "/dashboard" ? "passed" : "failed", timestamp: new Date().toISOString() });
-    await capture(page, "did-dashboard-empty", "/dashboard", entries);
-    // DID-only 대시보드의 "데이터 불러오기" CTA로 지갑 연결 화면으로 이동한다.
-    await page.getByRole("link", { name: "데이터 불러오기" }).click();
+    // 성공 뒤 클릭 없이 자동 진행한다 — "본인 확인이 끝났어요"를 약 1초 보인 뒤 목적지로 이동한다.
+    await expect(page.getByRole("status")).toContainText("본인 확인이 끝났어요");
+    // DID-only 세션(지갑 없음)은 로그인 직후 빈 요약을 건너뛰고 곧장 /connect-wallet에 도착한다.
     await page.waitForURL("**/connect-wallet");
-    entries.push({ action: "follow 데이터 불러오기 CTA to wallet connect", expected: "/connect-wallet", actual: new URL(page.url()).pathname, verdict: new URL(page.url()).pathname === "/connect-wallet" ? "passed" : "failed", timestamp: new Date().toISOString() });
-    await capture(page, "did-connect-wallet", "/connect-wallet", entries);
+    entries.push({ action: "complete DID presentation through browser UI (auto-advance, no wallet)", expected: "/connect-wallet", actual: new URL(page.url()).pathname, verdict: new URL(page.url()).pathname === "/connect-wallet" ? "passed" : "failed", timestamp: new Date().toISOString() });
+    await capture(page, "did-connect-wallet-auto", "/connect-wallet", entries);
+    // 빈 요약은 건너뛴 사용자가 돌아올 집으로 남는다 — DID-only 세션으로 /dashboard에 직접 가면
+    // 빈 요약과 "지갑 연결하기" CTA를 봐야 한다.
+    await page.goto("/dashboard");
+    entries.push({ action: "navigate directly to /dashboard with a DID-only session", expected: "/dashboard", actual: new URL(page.url()).pathname, verdict: new URL(page.url()).pathname === "/dashboard" ? "passed" : "failed", timestamp: new Date().toISOString() });
+    await capture(page, "did-dashboard-empty", "/dashboard", entries);
+    await page.getByRole("link", { name: "지갑 연결하기" }).click();
+    await page.waitForURL("**/connect-wallet");
+    entries.push({ action: "follow 지갑 연결하기 CTA to wallet connect", expected: "/connect-wallet", actual: new URL(page.url()).pathname, verdict: new URL(page.url()).pathname === "/connect-wallet" ? "passed" : "failed", timestamp: new Date().toISOString() });
+    await capture(page, "did-connect-wallet-cta", "/connect-wallet", entries);
 
     const completedResponse = await page.context().request.post("/api/auth/test-login");
     const completedCookie = completedResponse.headers()["set-cookie"]?.match(/vw_session=([^;]+)/)?.[1];

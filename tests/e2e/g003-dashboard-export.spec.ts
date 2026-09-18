@@ -78,7 +78,8 @@ test.describe.serial("G003 dashboard and export contract red team", () => {
 
     transcript.act({ type: "goto", url: "/dashboard" });
     await page.goto("/dashboard");
-    await expect(page.getByText("거래 요약")).toBeVisible();
+    // "거래 요약"→"요약"으로 바뀌었고, 하단 탭바에도 같은 글자가 있어 getByRole(heading)으로 좁힌다.
+    await expect(page.getByRole("heading", { name: "요약", exact: true })).toBeVisible();
     const expectedPnlText = new Intl.NumberFormat("ko-KR", { style: "currency", currency: "KRW", maximumFractionDigits: 0 }).format(expectedPnl);
     const dashboardPnlCard = page.getByText("예상 손익").locator(".. ");
     const dashboardReady = await expect(dashboardPnlCard).toContainText(expectedPnlText).then(() => true).catch(() => false);

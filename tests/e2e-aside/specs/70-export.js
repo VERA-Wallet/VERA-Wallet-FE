@@ -31,10 +31,13 @@ else if (!s.walletAddress) {
       ok('미구독: 내려받기 버튼 2개가 잠김(data-locked=download, disabled)', lockedButtons === 2 && await p.evaluate(() => [...document.querySelectorAll('button[data-locked=download]')].every((b) => b.disabled)), 'locked=' + lockedButtons);
       ok('"계산은 무료예요. 파일로 내려받을 때만 결제해요."', await has(p, /계산은 무료예요\. 파일로 내려받을 때만 결제해요/));
       ok('플랜 줄 → /plan("무료 플랜 100건까지 · 현재 N건")', await has(p, /무료 플랜 100건까지 · 현재 [\d,]+건/) && (await count(p, 'a[href="/plan"]')) >= 1);
-      ok('과세연도별 결제 섹션은 미구독이면 없다', (await count(p, '[data-surface=plan-payments]')) === 0);
+      ok('과세연도별 결제는 리포트에 없다(플랜 화면으로 이사)', (await count(p, '[data-surface=plan-payments]')) === 0);
     } else {
       ok('구독 중: 구독 상태 카드 + 사용량 게이지(role=progressbar)', (await count(p, '[data-surface=plan-status] [role=progressbar]')) === 1);
-      ok('구독 중: 과세연도별 결제 1행', (await count(p, '[data-surface=plan-payments]')) === 1);
+      ok('구독 중에도 과세연도별 결제는 리포트에 없다(플랜 화면으로 이사)', (await count(p, '[data-surface=plan-payments]')) === 0);
+      await go(p, '/plan', 2500);
+      ok('구독 중: /plan 에 과세연도별 결제 1행', (await count(p, '[data-surface=plan-payments]')) === 1);
+      await go(p, '/export', 3500);
       ok('구독 중: 한도 안이면 내려받기가 열린다', lockedButtons === 0 || await has(p, /상위 플랜이 필요합니다/), 'locked=' + lockedButtons);
     }
   });
@@ -50,9 +53,12 @@ else if (!s.walletAddress) {
     await p.evaluate((y) => { const b = [...document.querySelectorAll('[role=dialog] button')].find((b) => b.textContent.trim().startsWith(y)); if (b) b.click(); }, (before || '').slice(0, 4)); await wait(1500);
     ok('원래 연도로 복귀', ((await label()) || '') === before, await label());
   });
-  await run('앵커링 증명', async () => {
-    if ((await count(p, '[data-surface=anchor-proof]')) === 0) { skip('앵커링 증명', '증명 없음'); return; }
-    ok('탐색기 링크', (await domCount(p, '[data-surface=anchor-proof] ~ a, [data-surface=anchor-proof] a, a', /탐색기에서 보기/)) >= 1);
+  await run('앵커링 증명은 계산 근거 화면에 있다', async () => {
+    ok('메인에는 없다', (await count(p, '[data-surface=anchor-proof]')) === 0);
+    await go(p, '/export/basis', 3500);
+    await until(p, async () => ((await count(p, 'section[aria-label="계산 내역"]')) === 1 ? true : null), 30000);
+    if ((await count(p, '[data-surface=anchor-proof]')) === 0) { skip('앵커링 증명', '증명 없음(이 계정에 앵커링 기록이 없다)'); return; }
+    ok('탐색기 링크', (await domCount(p, 'main a', /탐색기에서 보기/)) >= 1);
   });
 }
 await closePage(p);

@@ -69,14 +69,14 @@ await run('푸터 고정', async () => {
 });
 
 section('80 가로 오버플로(전 화면)');
-for (const r of ['/dashboard', '/transactions', '/settings', '/wallets', '/plan', '/export', '/connect-wallet']) {
+for (const r of ['/dashboard', '/transactions', '/settings', '/wallets', '/plan', '/export', '/export/basis', '/export/issues', '/export/settings', '/export/compare', '/connect-wallet']) {
   await run(r, async () => {
     await go(p, r, 3000);
     const v = await viewport(p);
     ok(r + ' 문서 폭이 뷰포트를 넘지 않음', v.scrollW <= v.w + 1, 'scrollW=' + v.scrollW + ' w=' + v.w);
     // 데이터가 뜬 뒤에 재야 한다 — 목록이 비어 있으면 넘칠 것도 없다. 거래·세금은 수천 건이라 늦게 뜬다.
     if (r === '/transactions') await until(p, async () => ((await count(p, 'button[data-event-id]')) >= 1 ? true : null), 20000);
-    if (r === '/export') await until(p, async () => ((await count(p, 'main li')) >= 3 ? true : null), 40000);
+    if (r.startsWith('/export')) await until(p, async () => ((await count(p, '[data-testid=estimated-charge], main section[aria-label], [data-testid=compare-charge]')) >= 1 ? true : null), 40000);
     const o = await shellOverflow(p);
     ok(r + ' 껍데기(448px) 밖으로 넘치는 요소 없음', o.count === 0, 'count=' + o.count + ' worst=' + o.worst);
   });
