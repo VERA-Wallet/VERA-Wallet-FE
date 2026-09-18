@@ -310,3 +310,4 @@ export function explorerTxUrl(chainId: number, txHash: string): string | null {
 export function shortHash(hash: string): string {
   return hash.length > 14 ? `${hash.slice(0, 8)}…${hash.slice(-6)}` : hash;
 }
+

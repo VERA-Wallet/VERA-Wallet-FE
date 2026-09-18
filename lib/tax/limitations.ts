@@ -122,3 +122,19 @@ export function limitationOf(message: string, eventIds: string[]): Limitation {
 export function sortLimitations(rows: Limitation[]): Limitation[] {
   return [...rows].sort((a, b) => LIMITATION_ORDER.indexOf(a.kind) - LIMITATION_ORDER.indexOf(b.kind));
 }
+
+/**
+ * 한계 문구에서 앞에 붙은 이벤트 id를 떼어낸다.
+ *
+ * 생산자에 따라 문구가 id로 시작한다(`estimate.ts`의 제외, FX 환율 미상). 화면이 id를 칩으로
+ * 따로 보여주므로 문장에도 남겨 두면 100자짜리 해시가 한 카드에 두 번 나온다.
+ * 사유로 묶은 문구(`derive.ts`)처럼 id가 문장에 없는 경우는 건드리지 않는다 —
+ * 문장에서 id를 정규식으로 되뜯지 않고, **정확히 그 접두사일 때만** 떼어낸다.
+ */
+export function limitationBody(limitation: Limitation): string {
+  if (limitation.eventIds.length === 0) return limitation.message;
+  const prefix = limitation.eventIds.join(", ");
+  if (!limitation.message.startsWith(prefix)) return limitation.message;
+  // 생산자가 `${id}:${SUFFIX}`로 잇고 접미사는 공백으로 시작한다 — 남는 구분자를 함께 턴다.
+  return limitation.message.slice(prefix.length).replace(/^[:\s]+/, "");
+}

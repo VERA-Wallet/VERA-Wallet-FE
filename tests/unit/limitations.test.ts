@@ -6,14 +6,7 @@ import { createTaxScenarioEvents } from "@/lib/tax/scenarios";
 import { deriveTaxEvents } from "@/lib/tax/derive";
 import type { TaxEvent } from "@/lib/tax/types";
 import { computeTaxEstimate } from "@/lib/tax/engine";
-import {
-  COST_METHOD_SUFFIX,
-  DEEMED_COST_SUFFIX,
-  LIMITATION_MESSAGE,
-  LIMITATION_ORDER,
-  RECEIPT_COST_SUFFIX,
-  classifyLimitation,
-} from "@/lib/tax/limitations";
+import { COST_METHOD_SUFFIX, DEEMED_COST_SUFFIX, LIMITATION_MESSAGE, LIMITATION_ORDER, RECEIPT_COST_SUFFIX, classifyLimitation, limitationBody, limitationOf } from "@/lib/tax/limitations";
 import { TaxEngineService } from "@/lib/tax/tax-engine-service.server";
 import { RULE_SET_ORDER } from "@/lib/tax/rulesets";
 
@@ -126,3 +119,30 @@ describe("이벤트 id를 문장에서 되뜯지 않는다", () => {
     }
   });
 })
+
+describe("limitationBody", () => {
+  const EXCLUDED = "42161:0xfb49579b936386eaf15615b308e3bb20e66a43dd292fc11570280d61bff44f3a:log:199";
+
+  // 카드가 id를 칩으로 따로 그리므로, 문장에 또 남으면 100자 해시가 한 카드에 두 번 나온다.
+  it("strips the id prefix that the producer glued onto the message", () => {
+    const row = limitationOf(`${EXCLUDED}: 확인이 필요해 계산에서 제외했습니다.`, [EXCLUDED]);
+    expect(limitationBody(row)).toBe("확인이 필요해 계산에서 제외했습니다.");
+  });
+
+  it("strips a multi-id prefix", () => {
+    const second = "1:0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:log:2";
+    const row = limitationOf(`${EXCLUDED}, ${second}: 확인이 필요해 계산에서 제외했습니다.`, [EXCLUDED, second]);
+    expect(limitationBody(row)).toBe("확인이 필요해 계산에서 제외했습니다.");
+  });
+
+  // derive는 사유로 묶어 문장에 id를 넣지 않는다. 그런 문장을 건드리면 뜻이 잘린다.
+  it("leaves a message that does not start with its ids alone", () => {
+    const row = limitationOf("가격 미확인 상태인 이벤트는 계산에서 제외했습니다.", [EXCLUDED]);
+    expect(limitationBody(row)).toBe("가격 미확인 상태인 이벤트는 계산에서 제외했습니다.");
+  });
+
+  it("leaves a message with no ids alone", () => {
+    const row = limitationOf("취득가액 통산 — 이동평균법으로 계산했습니다.", []);
+    expect(limitationBody(row)).toBe("취득가액 통산 — 이동평균법으로 계산했습니다.");
+  });
+});

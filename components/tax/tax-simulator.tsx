@@ -4,8 +4,10 @@ import Link from "next/link";
 import { useState } from "react";
 import { MockProvenanceChip } from "@/components/ui/mock-provenance-chip";
 import { AMOUNT_KIND_LABEL, GROUP_SHORT_LABEL, JudgmentBadge } from "@/components/ui/judgment-badge";
+import { shortEventId } from "@/lib/event-id";
 import { formatFiat } from "@/lib/format";
 import { halfOpenPeriodLabel } from "@/lib/period";
+import { limitationBody } from "@/lib/tax/limitations";
 import { fresh } from "@/lib/queries/fresh";
 import { useRuleSets, useTaxEstimate } from "@/lib/queries/tax";
 import type { TaxEventSource } from "@/lib/ports/tax-engine";
@@ -114,6 +116,9 @@ const LIMITATION_LABEL: Record<LimitationKind, string> = {
   not_reflected: "반영 안 함",
   other: "그 밖의 한계",
 };
+
+/** 카드에 펼쳐 보일 이벤트 id 수. 넘으면 "외 N건"으로 접는다 — 한 한계가 수십 건을 달고 오기도 한다. */
+const LIMITATION_ID_PREVIEW = 4;
 
 const LIMITATION_STYLE: Record<LimitationKind, string> = {
   excluded: "bg-amber-100 text-amber-900",
@@ -641,16 +646,25 @@ export function TaxSimulator({
                     key={`${limitation.kind}-${index}`}
                     className="rounded-card border border-zinc-200 bg-white p-3 shadow-card"
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${LIMITATION_STYLE[limitation.kind]}`}>
-                        {LIMITATION_LABEL[limitation.kind]}
-                      </span>
-                      {limitation.eventIds.length > 0 ? (
-                        <span className="shrink-0 text-xs text-zinc-400">{limitation.eventIds.join(", ")}</span>
-                      ) : null}
-
-                    </div>
-                    <p className="mt-1 text-sm leading-6 text-zinc-700">{limitation.message}</p>
+                    {/* 배지와 id를 한 줄에 마주 세우면, 줄바꿈 기회가 없는 100자 해시가 배지를 0폭까지
+                        밀어 "답/에/서/빠/짐"으로 쪼갠다. 배지는 제 폭을 지키고 id는 아래 칩 줄로 내린다. */}
+                    <span className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${LIMITATION_STYLE[limitation.kind]}`}>
+                      {LIMITATION_LABEL[limitation.kind]}
+                    </span>
+                    <p className="mt-1.5 text-sm leading-6 text-zinc-700">{limitationBody(limitation)}</p>
+                    {limitation.eventIds.length > 0 ? (
+                      <ul className="mt-2 flex flex-wrap gap-1" aria-label="해당 이벤트">
+                        {limitation.eventIds.slice(0, LIMITATION_ID_PREVIEW).map((eventId) => (
+                          // 원문은 title에 남긴다 — 줄인 표기로는 거래를 특정할 수 없다.
+                          <li key={eventId} title={eventId} className="rounded-md bg-zinc-100 px-1.5 py-0.5 font-mono text-[11px] text-zinc-500">
+                            {shortEventId(eventId)}
+                          </li>
+                        ))}
+                        {limitation.eventIds.length > LIMITATION_ID_PREVIEW ? (
+                          <li className="px-1 py-0.5 text-[11px] text-zinc-400">외 {limitation.eventIds.length - LIMITATION_ID_PREVIEW}건</li>
+                        ) : null}
+                      </ul>
+                    ) : null}
                   </li>
                 ))}
               </ul>
