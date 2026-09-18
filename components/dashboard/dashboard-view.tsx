@@ -839,7 +839,8 @@ function EventRow({
     // 카드는 이벤트 id로 식별한다. 금액 라벨은 유효 분류에 따라 부호가 뒤집히므로(재분류 후 +0.01 → -0.01)
     // 그걸 식별자로 쓰면 "방금 고친 카드"를 다시 찾지 못한다.
     // 한 줄 레이아웃 — 왼쪽: 로고(체인은 코너 배지)·거래 타입·티커 / 오른쪽: 손익·수익률.
-    <button data-event-id={event.id} data-new-event={isFirstNew ? "true" : undefined} type="button" className="flex items-center gap-3 rounded-card border border-zinc-200 bg-white px-4 py-3 text-left shadow-card active:bg-zinc-50" onClick={onSelect}>
+    // 그리드 아이템은 min-width:auto라 스왑 행의 nowrap 티커 줄이 행 전체를 컬럼보다 넓게 키운다 — min-w-0로 트랙 폭에 맞춰 truncate가 실제로 일하게 한다.
+    <button data-event-id={event.id} data-new-event={isFirstNew ? "true" : undefined} type="button" className="flex min-w-0 items-center gap-3 rounded-card border border-zinc-200 bg-white px-4 py-3 text-left shadow-card active:bg-zinc-50" onClick={onSelect}>
       {/* 왼쪽 로고 클러스터. 체인 이름은 텍스트로 쓰지 않고 로고만 코너 배지로 얹는다.
           스왑은 두 자산 로고, 브릿지는 두 체인 배지로 그린다. */}
       <TransactionLogo event={event} swapInLeg={swapInLeg} />

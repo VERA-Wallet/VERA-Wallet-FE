@@ -640,7 +640,9 @@ export function TaxSimulator({
                 {result.limitations.map((limitation, index) => (
                   <li
                     key={`${limitation.kind}-${index}`}
-                    className="rounded-card border border-zinc-200 bg-white p-3 shadow-card"
+                    // 그리드 아이템은 min-width:auto라, 이벤트 id처럼 띄어쓰기 없는 긴 토큰이 있으면 카드가 컬럼 밖으로 자란다.
+                    // min-w-0로 그 바닥을 없애고, 본문은 어디서든 꺾이게(wrap-anywhere) 둔다.
+                    className="min-w-0 rounded-card border border-zinc-200 bg-white p-3 shadow-card"
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${LIMITATION_STYLE[limitation.kind]}`}>
@@ -651,7 +653,7 @@ export function TaxSimulator({
                       ) : null}
 
                     </div>
-                    <p className="mt-1 text-sm leading-6 text-zinc-700">{limitation.message}</p>
+                    <p className="mt-1 text-sm leading-6 wrap-anywhere text-zinc-700">{limitation.message}</p>
                   </li>
                 ))}
               </ul>
