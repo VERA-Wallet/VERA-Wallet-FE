@@ -129,3 +129,53 @@ export const setValueOverrideRequestSchema: z.ZodType<SetValueOverrideRequestDTO
   value_override: valueOverrideInputSchema.nullable(),
   expectedVersion: z.number().int().positive(),
 });
+
+// ── 지갑 홈 보유 자산 ────────────────────────────────────────────────────────
+// BE GET /api/wallet/holdings. 시세·평가액이 nullable인 건 "모른다"와 "0원"을 가르기 위해서다 —
+// 0으로 접으면 무가치하다는 다른 주장이 되고, 그 숫자가 합계에도 섞인다.
+
+export type HoldingDTO = {
+  key: string;
+  chainId: number;
+  contract: string | null;
+  symbol: string;
+  name: string;
+  amount: string;
+  priceUsd: string | null;
+  valueUsd: string | null;
+  spam: boolean;
+};
+
+export type HoldingsDTO = {
+  walletAddress: string;
+  holdings: HoldingDTO[];
+  totalUsd: string;
+  unpricedCount: number;
+  spamCount: number;
+  /** 읽지 못한 체인. 부분 실패를 잔액 0으로 둔갑시키지 않으려고 화면까지 들고 온다. */
+  skippedChainIds: number[];
+  /** 체인당 토큰 상한에 걸려 잘린 체인. */
+  truncatedChainIds: number[];
+};
+
+export const holdingsSchema: z.ZodType<HoldingsDTO> = z.object({
+  walletAddress: z.string().min(1),
+  holdings: z.array(
+    z.object({
+      key: z.string().min(1),
+      chainId: z.number().int(),
+      contract: z.string().nullable(),
+      symbol: z.string(),
+      name: z.string(),
+      amount: decimalString,
+      priceUsd: decimalString.nullable(),
+      valueUsd: decimalString.nullable(),
+      spam: z.boolean(),
+    }),
+  ),
+  totalUsd: decimalString,
+  unpricedCount: z.number().int().nonnegative(),
+  spamCount: z.number().int().nonnegative(),
+  skippedChainIds: z.array(z.number().int()),
+  truncatedChainIds: z.array(z.number().int()),
+});

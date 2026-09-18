@@ -19,9 +19,14 @@ export interface Holding {
   amount: string; // 사람이 읽는 수량(십진 문자열)
   priceUsd: string; // 단가(USD, 십진 문자열)
   valueUsd: string; // 평가액 = amount × priceUsd (USD, 십진 문자열)
-  // 취득 평가액(USD, 십진 문자열) — **데모 예시 mock**이다. 실시간 원가 추적이 아니다.
-  // 실 BE가 붙으면 원장 취득가로 교체한다. 화면은 이 값으로 평가손익·수익률을 **표시만** 한다.
-  costUsd: string;
+  /**
+   * 취득 평가액(USD, 십진 문자열). **모르면 null이다.**
+   *
+   * 온체인 잔액에는 원가가 없다 — 원가는 거래 이력과 원가법(FIFO/이동평균/…)에 달린 값이라
+   * "지금 얼마나 들고 있나"만으로는 만들 수 없다. null이면 화면이 평가손익 줄 자체를 내린다.
+   * 0을 넣으면 "전액이 이익"이라는 없던 주장이 생긴다.
+   */
+  costUsd: string | null;
 }
 
 // ── 십진 문자열 산술 ─────────────────────────────────────────────────────────
@@ -91,22 +96,26 @@ export function returnPercent(costUsd: string, gainUsd: string): string | null {
   return fromScaledInt(roundedDiv(gain * BigInt(10000), absCost), 2);
 }
 
-/** 보유 자산 한 줄의 평가손익(평가액 − 취득원가, USD). */
-export function holdingGainUsd(holding: Holding): string {
-  return subtractDecimal(holding.valueUsd, holding.costUsd);
+/** 보유 자산 한 줄의 평가손익(평가액 − 취득원가, USD). 원가를 모르면 null이다. */
+export function holdingGainUsd(holding: Holding): string | null {
+  return holding.costUsd === null ? null : subtractDecimal(holding.valueUsd, holding.costUsd);
 }
 
 /** 토큰 보유 묶음의 평가액·취득원가·평가손익·수익률(표시용 합산). */
 export interface HoldingsGainSummary {
   valueUsd: string;
-  costUsd: string;
-  gainUsd: string;
+  /** 한 줄이라도 원가를 모르면 묶음 원가도 null이다 — 아는 것만 더하면 손익이 과대해진다. */
+  costUsd: string | null;
+  gainUsd: string | null;
   returnPercent: string | null;
 }
 
 export function holdingsGainSummary(holdings: Holding[]): HoldingsGainSummary {
   const valueUsd = holdings.reduce((total, holding) => addDecimal(total, holding.valueUsd), "0");
-  const costUsd = holdings.reduce((total, holding) => addDecimal(total, holding.costUsd), "0");
+  // 부분 합산은 하지 않는다. ETH 원가만 알고 USDC 원가를 모르는 채 더하면, 모르는 쪽 평가액이
+  // 통째로 이익으로 잡혀 "+100%" 같은 숫자가 나온다. 하나라도 모르면 묶음 전체를 모른다고 말한다.
+  if (holdings.some((holding) => holding.costUsd === null)) return { valueUsd, costUsd: null, gainUsd: null, returnPercent: null };
+  const costUsd = holdings.reduce((total, holding) => addDecimal(total, holding.costUsd!), "0");
   const gainUsd = subtractDecimal(valueUsd, costUsd);
   return { valueUsd, costUsd, gainUsd, returnPercent: returnPercent(costUsd, gainUsd) };
 }
@@ -282,4 +291,39 @@ export function walletChains(tokens: Holding[], nfts: NftHolding[], defi: DefiPo
 /** 데모 지갑이 자산을 들고 있는 체인. 지갑 홈이 그리는 것과 같은 소스에서 파생한다. */
 export function demoWalletChains(): WalletChain[] {
   return walletChains(demoWalletHoldings(), demoNftHoldings(), demoDefiPositions());
+}
+
+// ── BE 응답 → 화면 모델 ──────────────────────────────────────────────────────
+
+/**
+ * `GET /api/wallet/holdings` 응답을 지갑 홈이 그리는 모양으로 옮긴다.
+ *
+ * 시세를 못 찾은 항목과 스팸은 목록에서 **뺀다**. 대신 몇 건인지 함께 돌려줘 화면이 그 사실을 말하게 한다 —
+ * 지우는 게 아니라 접는 것이다. 시세 없는 줄을 "$0"으로 끼워 넣으면 평가액 합계와 정렬이 동시에 거짓이 된다.
+ */
+export function holdingsFromDto(dto: {
+  holdings: ReadonlyArray<{ key: string; chainId: number; contract: string | null; symbol: string; name: string; amount: string; priceUsd: string | null; valueUsd: string | null; spam: boolean }>;
+}): { tokens: Holding[]; unpricedCount: number; spamCount: number } {
+  const tokens: Holding[] = [];
+  let unpricedCount = 0;
+  let spamCount = 0;
+  for (const item of dto.holdings) {
+    if (item.spam) { spamCount += 1; continue; }
+    if (item.priceUsd === null || item.valueUsd === null) { unpricedCount += 1; continue; }
+    tokens.push({
+      key: item.key,
+      symbol: item.symbol,
+      name: item.name,
+      chainId: item.chainId,
+      chainName: chainLabel(item.chainId),
+      contract: item.contract,
+      isNft: false,
+      amount: item.amount,
+      priceUsd: item.priceUsd,
+      valueUsd: item.valueUsd,
+      // 온체인 잔액에는 취득원가가 없다. 거래 이력 원장과 연결되기 전까지 화면은 평가손익을 말하지 않는다.
+      costUsd: null,
+    });
+  }
+  return { tokens, unpricedCount, spamCount };
 }

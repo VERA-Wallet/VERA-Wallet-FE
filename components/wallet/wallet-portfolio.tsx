@@ -10,35 +10,20 @@ import {
   compareDecimal,
   holdingGainUsd,
   holdingsGainSummary,
-  portfolioTotalUsd,
   returnPercent,
-  type DefiPosition,
+  totalValueUsd,
   type Holding,
-  type NftHolding,
   type WalletChain,
 } from "@/lib/wallet/holdings";
-
-type Tab = "token" | "nft" | "defi";
-
-const PALETTE = ["#4F46E5", "#0891B2", "#059669", "#D97706", "#DB2777", "#7C3AED", "#2563EB", "#DC2626"];
-
-/** 시드에서 결정론적으로 고른 목록 구분색. 브랜드 색이라고 주장하지 않는다. */
-function seededColor(seed: string, offset: number): string {
-  let hash = offset;
-  for (const character of seed) hash = (hash * 31 + character.codePointAt(0)!) % 997;
-  return PALETTE[hash % PALETTE.length];
-}
-
-function initials(text: string): string {
-  return text.replace(/[^A-Za-z0-9]/g, "").slice(0, 3).toUpperCase() || "?";
-}
 
 /**
  * 평가손익·수익률 한 조각. 상승은 브랜드 receive(녹색), 하락은 dispose(적색) 토큰을 쓰고,
  * 색만으로 구분하지 못하는 사용자를 위해 부호(`+`/`−`)를 늘 함께 둔다. 손익은 mock 취득원가로
  * 계산한 **표시 산술**이다(세무 엔진이 아니다).
  */
-function GainInline({ gainUsd, costUsd }: { gainUsd: string; costUsd: string }): React.JSX.Element {
+function GainInline({ gainUsd, costUsd }: { gainUsd: string | null; costUsd: string | null }): React.JSX.Element | null {
+  // 원가를 모르면 손익을 말하지 않는다. 0으로 뭉개면 "전액이 이익"이라는 없던 주장이 생긴다.
+  if (gainUsd === null || costUsd === null) return null;
   const direction = compareDecimal(gainUsd, "0");
   const tone = direction > 0 ? "text-receive" : direction < 0 ? "text-dispose" : "text-zinc-500";
   const percent = returnPercent(costUsd, gainUsd);
@@ -93,9 +78,11 @@ function TokenRow({ holding }: { holding: Holding }) {
       </div>
       <div className="shrink-0 text-right">
         <p className="font-semibold tabular-nums text-zinc-900">{formatFiat(holding.valueUsd, "USD")}</p>
-        <p className="mt-0.5 text-xs font-medium">
-          <GainInline gainUsd={holdingGainUsd(holding)} costUsd={holding.costUsd} />
-        </p>
+        {holding.costUsd === null ? null : (
+          <p className="mt-0.5 text-xs font-medium">
+            <GainInline gainUsd={holdingGainUsd(holding)} costUsd={holding.costUsd} />
+          </p>
+        )}
         <p className="mt-0.5 text-xs tabular-nums text-zinc-400">
           {holding.amount} {holding.symbol}
         </p>
@@ -109,84 +96,22 @@ function TokenRow({ holding }: { holding: Holding }) {
  * NFT·디파이는 mock 취득원가가 없어 이 요약은 **토큰 보유분**만 집계한다 —
  * 상단 큰 총액(portfolioTotalUsd)과 뜻이 갈리지 않도록 무엇을 집계했는지 라벨로 밝힌다.
  */
-function TokenHoldingsSummary({ holdings }: { holdings: Holding[] }): React.JSX.Element {
+function TokenHoldingsSummary({ holdings, chainId }: { holdings: Holding[]; chainId: number }): React.JSX.Element {
   const summary = holdingsGainSummary(holdings);
   return (
     <div data-surface="wallet-holdings-summary" className="mt-3 rounded-card border border-zinc-100 p-4 shadow-card">
-      <p className="text-xs text-zinc-500">보유 토큰 평가액</p>
+      <p className="text-xs text-zinc-500">{chainLabel(chainId)} 평가액</p>
       <p className="mt-1 text-2xl font-bold tabular-nums text-zinc-900">{formatFiat(summary.valueUsd, "USD")}</p>
-      <p className="mt-1 text-sm font-semibold">
-        <span className="text-zinc-500">평가손익 </span>
-        <GainInline gainUsd={summary.gainUsd} costUsd={summary.costUsd} />
-      </p>
+      {summary.gainUsd === null ? null : (
+        <p className="mt-1 text-sm font-semibold">
+          <span className="text-zinc-500">평가손익 </span>
+          <GainInline gainUsd={summary.gainUsd} costUsd={summary.costUsd} />
+        </p>
+      )}
     </div>
   );
 }
 
-/** NFT 썸네일. 아트워크를 흉내 내지 않고, 컬렉션에서 결정론적으로 만든 그라디언트 + 모노그램 플레이스홀더다. */
-function NftThumb({ nft }: { nft: NftHolding }) {
-  const from = seededColor(nft.shortName, 0);
-  const to = seededColor(nft.shortName, 7);
-  return (
-    <div
-      aria-hidden="true"
-      className="flex aspect-square w-full items-center justify-center rounded-xl text-lg font-bold text-white"
-      style={{ backgroundImage: `linear-gradient(135deg, ${from}, ${to})` }}
-    >
-      {initials(nft.shortName)}
-    </div>
-  );
-}
-
-function NftCard({ nft }: { nft: NftHolding }) {
-  return (
-    <li data-surface="nft-card" className="rounded-card border border-zinc-100 p-2 shadow-card">
-      <div className="relative">
-        <NftThumb nft={nft} />
-        <span className="absolute bottom-1.5 right-1.5 rounded-full bg-white ring-2 ring-white">
-          <ChainIcon chainId={nft.chainId} size={16} />
-        </span>
-      </div>
-      <p className="mt-2 truncate text-sm font-semibold text-zinc-900">
-        {nft.shortName} <span className="font-normal text-zinc-400">#{nft.tokenId}</span>
-      </p>
-      <p className="truncate text-xs text-zinc-500">{nft.collection}</p>
-      <p className="mt-1 text-sm font-semibold tabular-nums text-zinc-900">
-        {formatFiat(nft.floorUsd, "USD")} <span className="text-xs font-normal text-zinc-400">바닥가</span>
-      </p>
-    </li>
-  );
-}
-
-function ProtocolMark({ protocol }: { protocol: string }) {
-  return (
-    <svg aria-hidden="true" className="shrink-0" width={40} height={40} viewBox="0 0 40 40">
-      <circle cx="20" cy="20" r="20" fill={seededColor(protocol, 3)} />
-      <text x="20" y="25.5" textAnchor="middle" fontSize="14" fontWeight="700" fill="#ffffff">
-        {initials(protocol).slice(0, 2)}
-      </text>
-    </svg>
-  );
-}
-
-function DefiRow({ position }: { position: DefiPosition }) {
-  const meta = [position.kindLabel, position.asset, position.apy ? `APY ${position.apy}` : null].filter(Boolean).join(" · ");
-  return (
-    <li data-surface="defi-row" className="flex items-center gap-3 py-3">
-      <BadgedAvatar chainId={position.chainId} ariaLabel={`${position.protocol} · ${position.chainName}`}>
-        <ProtocolMark protocol={position.protocol} />
-      </BadgedAvatar>
-      <div className="min-w-0 flex-1">
-        <p className="min-w-0 truncate font-semibold text-zinc-900">{position.protocol}</p>
-        <p className="mt-0.5 truncate text-sm text-zinc-500">{meta}</p>
-      </div>
-      <div className="shrink-0 text-right">
-        <p className="font-semibold tabular-nums text-zinc-900">{formatFiat(position.valueUsd, "USD")}</p>
-        <p className="mt-0.5 text-xs text-zinc-400">{position.chainName}</p>
-      </div>
-    </li>
-  );
-}
 
 /**
  * 연결된 지갑의 지갑 홈(코인베이스형). 이 앱의 데이터/제약에 맞춘다:
@@ -200,37 +125,43 @@ export function WalletPortfolio({
   address,
   chains,
   tokens,
-  nfts,
-  defi,
+  unpricedCount = 0,
+  spamCount = 0,
+  skippedChainIds = [],
+  truncatedChainIds = [],
+  isLoading = false,
+  isError = false,
+  onRetry,
   onOpenAccount,
 }: {
   address: string;
   /** 자산이 있는 체인들(보유 자산 파생). 주소 칩이 "이 지갑이 걸쳐 있는 네트워크"를 이 목록으로 말한다. */
   chains: WalletChain[];
   tokens: Holding[];
-  nfts: NftHolding[];
-  defi: DefiPosition[];
+  /** 시세를 확인하지 못해 목록에서 접은 건수. 0원이 아니라 "모른다"이므로 숫자로만 말한다. */
+  unpricedCount?: number;
+  /** 스팸으로 접은 건수. */
+  spamCount?: number;
+  /** 잔액을 읽지 못한 체인. 부분 실패를 빈 지갑으로 보이게 두지 않는다. */
+  skippedChainIds?: number[];
+  /** 토큰 상한에 걸려 잘린 체인. */
+  truncatedChainIds?: number[];
+  isLoading?: boolean;
+  isError?: boolean;
+  onRetry?: () => void;
   onOpenAccount: () => void;
 }): React.JSX.Element {
-  const [tab, setTab] = useState<Tab>("token");
   const [network, setNetwork] = useState<number | "all">("all");
   const [copied, setCopied] = useState(false);
 
-  const total = useMemo(() => portfolioTotalUsd(tokens, nfts, defi), [tokens, nfts, defi]);
+  const total = useMemo(() => totalValueUsd(tokens), [tokens]);
 
-  const activeChainIds = useMemo(() => {
-    const source = tab === "nft" ? nfts : tab === "defi" ? defi : tokens;
-    return [...new Set(source.map((item) => item.chainId))].sort((left, right) => left - right);
-  }, [tab, tokens, nfts, defi]);
+  const activeChainIds = useMemo(
+    () => [...new Set(tokens.map((item) => item.chainId))].sort((left, right) => left - right),
+    [tokens],
+  );
 
   const shownTokens = useMemo(() => tokens.filter((item) => network === "all" || item.chainId === network), [tokens, network]);
-  const shownNfts = useMemo(() => nfts.filter((item) => network === "all" || item.chainId === network), [nfts, network]);
-  const shownDefi = useMemo(() => defi.filter((item) => network === "all" || item.chainId === network), [defi, network]);
-
-  function selectTab(next: Tab) {
-    setTab(next);
-    setNetwork("all"); // 탭마다 네트워크 구성이 달라 선택을 초기화한다.
-  }
 
   async function copyAddress() {
     try {
@@ -241,8 +172,6 @@ export function WalletPortfolio({
       // 클립보드 접근이 막혀도 화면을 깨뜨리지 않는다 — 주소는 칩에 그대로 보인다.
     }
   }
-
-  const shownCount = tab === "nft" ? shownNfts.length : tab === "defi" ? shownDefi.length : shownTokens.length;
 
   return (
     <main className="min-h-dvh px-5 py-6">
@@ -292,30 +221,20 @@ export function WalletPortfolio({
           {formatFiat(total, "USD")}
         </p>
         <p className="mt-1 text-xs text-zinc-400">
-          데모 예시 데이터(USD) 기준입니다 — 실시간 시세·잔액이 아닙니다.
+          온체인 잔액 × 현재 시세(USD) 기준입니다 — 세금 화면의 거래 시점 금액과는 다릅니다.
+        </p>
+        {/* 평가손익을 왜 안 그리는지 총액 바로 밑에서 말한다. 자리가 비어 있으면 "0"으로 읽힌다. */}
+        <p data-surface="wallet-cost-basis-note" className="mt-1 text-xs text-zinc-400">
+          평가손익은 취득원가가 있어야 계산됩니다 — 거래 이력의 원가와 연결되면 표시됩니다.
         </p>
       </header>
 
       <section className="mt-5">
-        <div role="tablist" aria-label="자산 종류" className="flex gap-4 border-b border-zinc-200">
-          {([
-            ["token", "토큰"],
-            ["nft", "NFT"],
-            ["defi", "디파이"],
-          ] as const).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              role="tab"
-              aria-selected={tab === value}
-              onClick={() => selectTab(value)}
-              className={`-mb-px border-b-2 pb-2 text-sm font-semibold transition-colors ${
-                tab === value ? "border-zinc-900 text-zinc-900" : "border-transparent text-zinc-400"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
+        {/* 토큰 탭만 남긴다. NFT·디파이는 실데이터 경로가 아직 없어, 데모 상수를 실잔액 옆에 두면
+            화면만 보고는 어느 쪽이 사실인지 구분할 수 없다. 경로가 생기면 탭으로 되돌린다. */}
+        <div className="flex items-center justify-between border-b border-zinc-200 pb-2">
+          <h2 className="text-sm font-semibold text-zinc-900">토큰</h2>
+          <span className="text-xs text-zinc-400">{tokens.length}종</span>
         </div>
 
         <div className="mt-3 flex items-center">
@@ -339,29 +258,21 @@ export function WalletPortfolio({
           </label>
         </div>
 
-        {shownCount === 0 ? (
-          <p data-surface="wallet-portfolio-filter-empty" className="mt-6 text-center text-sm text-zinc-500">
-            {tab === "nft"
-              ? "보유한 NFT가 없습니다."
-              : tab === "defi"
-                ? "디파이 포지션이 없습니다."
-                : "선택한 조건에 해당하는 자산이 없습니다."}
+        {isLoading ? (
+          <p className="mt-6 text-center text-sm text-zinc-500">잔액을 불러오는 중입니다</p>
+        ) : isError ? (
+          <p role="alert" className="mt-6 rounded-card border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+            잔액을 불러오지 못했습니다.{" "}
+            {onRetry ? <button type="button" className="font-semibold underline" onClick={onRetry}>다시 시도</button> : null}
           </p>
-        ) : tab === "nft" ? (
-          <ul className="mt-3 grid grid-cols-2 gap-3">
-            {shownNfts.map((nft) => (
-              <NftCard key={nft.key} nft={nft} />
-            ))}
-          </ul>
-        ) : tab === "defi" ? (
-          <ul className="mt-1 divide-y divide-zinc-100">
-            {shownDefi.map((position) => (
-              <DefiRow key={position.key} position={position} />
-            ))}
-          </ul>
+        ) : shownTokens.length === 0 ? (
+          <p data-surface="wallet-portfolio-filter-empty" className="mt-6 text-center text-sm text-zinc-500">
+            {tokens.length === 0 ? "보유한 토큰이 없습니다." : "선택한 조건에 해당하는 자산이 없습니다."}
+          </p>
         ) : (
           <>
-            <TokenHoldingsSummary holdings={shownTokens} />
+            {/* 필터가 없으면 이 카드는 위 총액과 같은 숫자다 — 같은 값을 두 번 크게 쓰지 않는다. */}
+            {network === "all" ? null : <TokenHoldingsSummary holdings={shownTokens} chainId={network} />}
             <ul className="mt-1 divide-y divide-zinc-100">
               {shownTokens.map((holding) => (
                 <TokenRow key={holding.key} holding={holding} />
@@ -369,6 +280,18 @@ export function WalletPortfolio({
             </ul>
           </>
         )}
+
+        {/* 접은 것과 못 읽은 것을 숫자로 말한다. 조용히 빼면 "내 토큰이 없어졌다"가 된다. */}
+        {!isLoading && !isError && (unpricedCount > 0 || spamCount > 0 || skippedChainIds.length > 0 || truncatedChainIds.length > 0) ? (
+          <p role="status" data-surface="wallet-holdings-notes" className="mt-3 border-l-2 border-zinc-200 pl-2 text-xs text-zinc-400">
+            {[
+              unpricedCount > 0 ? `시세를 확인하지 못한 ${unpricedCount}종은 목록에서 뺐습니다` : null,
+              spamCount > 0 ? `에어드랍 스팸으로 판정한 ${spamCount}종을 숨겼습니다` : null,
+              skippedChainIds.length > 0 ? `${skippedChainIds.map(chainLabel).join("·")} 잔액은 읽지 못했습니다` : null,
+              truncatedChainIds.length > 0 ? `${truncatedChainIds.map(chainLabel).join("·")}은 토큰이 너무 많아 일부만 읽었습니다` : null,
+            ].filter(Boolean).join(" · ")}
+          </p>
+        ) : null}
       </section>
     </main>
   );

@@ -20,6 +20,7 @@ const BACKEND_OWNED_PATHS = new Set([
   "/api/auth/session",
   "/api/auth/logout",
   "/api/anchor-proof",
+  "/api/wallet/holdings",
 ]);
 
 /**
@@ -76,5 +77,6 @@ export const config = {
     "/api/events",
     "/api/events/:path*",
     "/api/anchor-proof",
+    "/api/wallet/holdings",
   ],
 };
