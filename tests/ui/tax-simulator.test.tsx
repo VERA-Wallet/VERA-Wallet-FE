@@ -196,7 +196,7 @@ describe("TaxSimulator", () => {
     expect(ports.estimate.mock.calls.at(-1)?.[0].source).toBe("wallet");
 
     // 지갑 경로만 만들 수 있는 파생 한계가 실제로 도달한다.
-    const shaky = await screen.findByLabelText("흔들리는 것");
+    const shaky = await screen.findByLabelText("확인이 필요한 거래");
     expect(shaky.textContent).toContain("계산에서 제외했습니다");
     expect(shaky.textContent).toContain("가스비는");
   });
@@ -241,16 +241,16 @@ describe("TaxSimulator 제외 배너", () => {
 
   it("답 → 왜 → 신뢰도 → 세부 → 설정 순서를 지킨다", async () => {
     // "답이 설정보다 앞"만 보면 중간 순서가 뒤집혀도 통과한다.
-    // 흔들리는 지점이 계산 내역 뒤로 밀리면 신뢰도보다 세부가 먼저 오는 화면이 된다.
+    // 확인이 필요한 거래가 계산 내역 뒤로 밀리면 신뢰도보다 세부가 먼저 오는 화면이 된다.
     // 판정 행과 한계가 모두 있는 상태여야 순서를 잴 수 있다.
     await renderWithWallet(createNormalizedEventFixtures(FIXTURE_TAX_YEAR));
-    await screen.findByLabelText("흔들리는 것");
-    await screen.findByLabelText("판정 그룹");
+    await screen.findByLabelText("확인이 필요한 거래");
+    await screen.findByLabelText("세금 근거");
 
     const order = [
       screen.getByTestId("estimated-charge"),
-      screen.getByLabelText("판정 그룹"),
-      screen.getByLabelText("흔들리는 것"),
+      screen.getByLabelText("세금 근거"),
+      screen.getByLabelText("확인이 필요한 거래"),
       screen.getByLabelText("계산 내역"),
       screen.getByText("계산 조건 바꾸기"),
     ];
@@ -281,7 +281,7 @@ describe("TaxSimulator 제외 배너", () => {
       { ...base, id: "estimated", price_status: "ESTIMATED" },
       { ...base, id: "sold", classification: "SEND", direction: "OUT", user_override: null },
     ]);
-    const shaky = await screen.findByLabelText("흔들리는 것");
+    const shaky = await screen.findByLabelText("확인이 필요한 거래");
     const grounds = screen.queryByLabelText("계산 근거");
 
     const shakyText = shaky.textContent ?? "";
@@ -293,7 +293,7 @@ describe("TaxSimulator 제외 배너", () => {
     }
   });
 
-  it("흔들리는 지점을 영향 순으로 세우고 금액으로 말하지 않는다", async () => {
+  it("확인이 필요한 거래를 영향 순으로 세우고 금액으로 말하지 않는다", async () => {
     // 수신만 있으면 기간 내 작업이 없어 한계 패널 자체가 숨는다(빈 답은 흔들 것이 없다).
     // 처분을 하나 넣어 실제 계산이 있는 상태에서 한계 표기를 검증한다.
     await renderWithWallet([
@@ -301,9 +301,9 @@ describe("TaxSimulator 제외 배너", () => {
       { ...base, id: "estimated", price_status: "ESTIMATED" },
       { ...base, id: "sold", classification: "SEND", direction: "OUT", user_override: null },
     ]);
-    const section = await screen.findByLabelText("흔들리는 것");
+    const section = await screen.findByLabelText("확인이 필요한 거래");
 
-    expect(section.textContent).toContain("이 답이 흔들리는 지점");
+    expect(section.textContent).toContain("확인이 필요한 거래");
     // 답에서 빠진 것이 근사보다 먼저 온다 — 영향 순.
     const labels = [...section.querySelectorAll("li span:first-child")].map((node) => node.textContent);
     expect(labels.indexOf("답에서 빠짐")).toBeLessThan(labels.indexOf("근사"));
@@ -315,12 +315,12 @@ describe("TaxSimulator 제외 배너", () => {
 
   it("기간 밖 취득만 있으면 그 기간에 셀 것이 없다고 말한다", async () => {
     // 엔진은 원가 추적 때문에 기간 밖 취득을 판정 행으로 남긴다.
-    // 그걸 세면 "계산할 거래 없음"이 안 걸리고, 옛 취득 금액이 "왜 이 금액인가"에 뜬다.
+    // 그걸 세면 "계산할 거래 없음"이 안 걸리고, 옛 취득 금액이 "세금 근거"에 뜬다.
     await renderWithWallet([{ ...base, id: "old-buy", block_timestamp: "2024-03-01T00:00:00.000Z" }]);
     await selectTaxYear(2025);
 
     await waitFor(() => expect(screen.getByTestId("estimated-charge")).toHaveTextContent("계산할 거래 없음"));
-    expect(screen.queryByLabelText("판정 그룹")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("세금 근거")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("계산 내역")).not.toBeInTheDocument();
   });
 
@@ -648,7 +648,7 @@ describe("세금 탭이 답 우선 3계층인가", () => {
   it("L2: 판정 그룹이 왜 이 금액인지 설명한다", async () => {
     await renderSimulator();
     await screen.findByText("독일 · 2025");
-    const section = screen.getByLabelText("판정 그룹");
+    const section = screen.getByLabelText("세금 근거");
 
     // 독일 시나리오의 판정 그룹이 실제로 나온다.
     expect(section.textContent).toMatch(/소득 · 과세/);
@@ -664,7 +664,7 @@ describe("세금 탭이 답 우선 3계층인가", () => {
     await renderSimulator();
     await screen.findByText("독일 · 2025");
     const estimate = computeTaxEstimate({ country: "DE", taxYear: FIXTURE_TAX_YEAR, events: createTaxScenarioEvents(FIXTURE_TAX_YEAR) });
-    const section = screen.getByLabelText("판정 그룹");
+    const section = screen.getByLabelText("세금 근거");
 
     // 조건부 단언은 그룹이 있으면 아무것도 검사하지 않는다. 항상 값을 대조한다.
     expect(section.textContent).toContain(formatFiat(estimate.totals.incomeTotal, estimate.currency));
@@ -1013,7 +1013,7 @@ describe("세금 탭이 답 우선 3계층인가", () => {
 
     // 한국의 시행 전 "과세 대상 아님"에는 손익 행과 수령 FMV 행이 함께 있다.
     // 둘을 더한 수는 아무것도 아니므로 줄을 나눠야 한다.
-    const section = screen.getByLabelText("판정 그룹");
+    const section = screen.getByLabelText("세금 근거");
     const rows = [...section.querySelectorAll("li")].map((node) => node.textContent ?? "");
     const notTaxable = rows.filter((row) => row.includes("과세 대상 아님"));
     expect(notTaxable.length).toBeGreaterThan(1);
@@ -1026,7 +1026,7 @@ describe("세금 탭이 답 우선 3계층인가", () => {
   it("모든 판정 줄이 금액 종류를 밝힌다", async () => {
     await renderSimulator();
     await screen.findByText("독일 · 2025");
-    const section = screen.getByLabelText("판정 그룹");
+    const section = screen.getByLabelText("세금 근거");
     for (const row of section.querySelectorAll("li")) {
       const text = row.textContent ?? "";
       // 종류 없이 금액만 있으면 무엇의 금액인지 알 수 없다.
@@ -1049,14 +1049,14 @@ describe("세금 탭이 답 우선 3계층인가", () => {
     expect(screen.getByTestId("estimated-charge").textContent).not.toMatch(/0\.00/);
     expect(body).toContain("계산에 넣을 거래가 없습니다");
     // 셀 것이 없다면서 옛 취득 그룹을 금액과 함께 보이면 화면이 두 이야기를 한다.
-    expect(screen.queryByLabelText("판정 그룹")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("세금 근거")).not.toBeInTheDocument();
   });
 
   it("흔들릴 것이 없으면 흔들린다고 말하지 않는다", async () => {
     // 깨끗한 시나리오에서는 한계 패널 자체가 없어야 한다. 빈 패널을 띄우면 없는 불안을 만든다.
     await renderSimulator();
     await screen.findByText("독일 · 2025");
-    expect(screen.queryByLabelText("흔들리는 것")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("확인이 필요한 거래")).not.toBeInTheDocument();
   });
 
   it("재조회 중에는 옛 금액을 새 조건의 답인 척하지 않는다", async () => {

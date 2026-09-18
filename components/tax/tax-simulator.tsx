@@ -54,7 +54,7 @@ const TOPIC_LABEL: Record<RuleTopic, string> = {
 };
 
 /**
- * L2 — "왜 이 금액인가".
+ * L2 — "세금 근거".
  * 판정 그룹별로 접어 **건수와 금액**을 보인다. 총액(L1)과 건별 근거(L3) 사이를 잇는 층이다.
  */
 type GroupRow = {
@@ -596,8 +596,8 @@ export function TaxSimulator({
 
           {/* 셀 것이 없다고 말해놓고 옛 취득 그룹을 금액과 함께 보이면 두 이야기를 한다. */}
           {groups.length > 0 ? (
-            <section className="mt-6" aria-label="판정 그룹">
-              <h3 className="font-bold text-zinc-900">왜 이 금액인가</h3>
+            <section className="mt-6" aria-label="세금 근거">
+              <h3 className="font-bold text-zinc-900">세금 근거</h3>
               <p className="mt-1 text-sm text-zinc-500">
                 거래 하나하나에 세금을 나눠 붙일 수는 없습니다. 대신 각 거래가 계산에서 어떻게 쓰였는지를 묶어 보여줍니다.
               </p>
@@ -635,8 +635,8 @@ export function TaxSimulator({
               현재 답의 영향 요인처럼 보이면 거짓이다. 확인 필요한 제외 이벤트는
               위의 배너가 건수·동선과 함께 계속 알린다. */}
           {!hasNothingToCompute && result.limitations.length > 0 ? (
-            <section className="mt-6" aria-label="흔들리는 것">
-              <h3 className="font-bold text-zinc-900">이 답이 흔들리는 지점</h3>
+            <section className="mt-6" aria-label="확인이 필요한 거래">
+              <h3 className="font-bold text-zinc-900">확인이 필요한 거래</h3>
               <p className="mt-1 text-sm text-zinc-500">
                 답에 영향이 큰 순서입니다. 얼마나 달라지는지는 계산하지 않았으므로 금액으로 말하지 않습니다.
               </p>
@@ -765,7 +765,7 @@ export function TaxSimulator({
           <details className="mt-4 rounded-card border border-zinc-200 bg-white p-4 shadow-card" aria-label="계산 근거">
             <summary className="cursor-pointer font-bold text-zinc-900 marker:text-zinc-400">계산 근거와 가정</summary>
             <ul className="mt-3 list-disc pl-5 text-sm text-zinc-600">
-              {/* 한계는 위 "흔들리는 지점"이 이미 말했다. 여기서 또 말하면
+              {/* 한계는 위 "확인이 필요한 거래"가 이미 말했다. 여기서 또 말하면
                   같은 문장이 두 곳에 떠서 어느 쪽이 최신인지 알 수 없다. */}
               {ruleNotes.map((note) => <li key={note}>{note}</li>)}
             </ul>

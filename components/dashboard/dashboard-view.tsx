@@ -1106,7 +1106,7 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
   // 판정을 다시 계산하는 중이면 옛 estimate로 손익을 단정하지 않는다 — 카드가 두 이야기를 하지 않도록 보류한다.
   const headline = judgmentsPending || estimate === undefined ? undefined : estimateHeadline(estimate);
   const headlineCurrency = estimate?.currency ?? summaryFresh.data?.currency ?? "KRW";
-  // 신뢰도 칩(P1-9)도 같은 estimate에서 파생한다 — 세금 화면 "흔들리는 지점"과 같은 소스를 압축해 보인다.
+  // 신뢰도 칩(P1-9)도 같은 estimate에서 파생한다 — 세금 화면 "확인이 필요한 거래"와 같은 소스를 압축해 보인다.
   const confidence = headline === undefined || estimate === undefined ? undefined : estimateConfidence(estimate);
   const selected = selectedKey
     ? annotated.find((item) => item.record.event.id === selectedKey.eventId && item.occurrence === selectedKey.occurrence) ?? null
@@ -1200,7 +1200,7 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
               : (freshNotice(summaryFresh.state, "요약") ?? undefined)
           }
         />
-        {/* 신뢰도 칩(P1-9) — 세금 화면 "흔들리는 지점"과 같은 estimate에서 파생한 건수를 헤드라인 옆에 압축한다.
+        {/* 신뢰도 칩(P1-9) — 세금 화면 "확인이 필요한 거래"와 같은 estimate에서 파생한 건수를 헤드라인 옆에 압축한다.
             문구·건수는 하드코딩하지 않는다. 흔들릴 게 없으면(정상) 칩을 달지 않는다 — 없는 문제를 만들지 않기 위해서다.
             색만으로 구분하지 않도록 각 칩은 뜻과 건수를 글자로 함께 말한다. */}
         {confidence !== undefined && hasConfidenceSignal(confidence) ? (

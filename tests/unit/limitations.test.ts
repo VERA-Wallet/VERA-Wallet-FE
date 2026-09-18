@@ -50,7 +50,7 @@ describe("계산의 한계 분류", () => {
       const result = computeTaxEstimate({ country, taxYear: FIXTURE_TAX_YEAR, events: createTaxScenarioEvents(FIXTURE_TAX_YEAR) });
       const ranks = result.limitations.map((row) => LIMITATION_ORDER.indexOf(row.kind));
       expect([...ranks].sort((a, b) => a - b), country).toEqual(ranks);
-      // 룰셋 설명(notes)은 한계가 아니다. 섞이면 "이 답이 흔들리는 지점"이 규칙 해설로 찬다.
+      // 룰셋 설명(notes)은 한계가 아니다. 섞이면 "확인이 필요한 거래"가 규칙 해설로 찬다.
       for (const row of result.limitations) expect(row.kind, `${country} ${row.message}`).not.toBe("other");
     }
   });
