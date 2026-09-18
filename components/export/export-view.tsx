@@ -383,7 +383,28 @@ export function ExportView({ countryCode }: { countryCode?: string } = {}) {
         </p>
 
         <div className="mt-5 space-y-3">
-          {/* 직접 신고용(추천) — 홈택스 본인 신고. PDF 요약서 생성기가 없어 CSV 원장으로 구성한다. */}
+          {/* 보고서(읽는 문서) — 표 파일 둘과 달리 사람이 훑어보고 그대로 보관·제출하는 형식이다.
+              PDF 라이브러리 대신 인쇄 뷰를 새 창으로 여는 이유는 한글이다(print-report.tsx 주석).
+              귀속연도·시행가정을 주소에 싣는 이유는 과세연도가 메모리 컨텍스트라 새 창이 못 물려받기 때문이다. */}
+          <div className="rounded-card border border-zinc-200 p-4">
+            <p className="font-semibold text-zinc-900">보고서로 보기 · PDF</p>
+            <p className="mt-1 text-sm leading-6 text-zinc-500">
+              신고 요약 · 자산별 취득가액 · 거래 부속명세 · 예외를 한 문서로 · 인쇄 대화상자에서 &ldquo;PDF로 저장&rdquo;
+            </p>
+            <a
+              className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl border border-zinc-300 py-3 font-semibold text-zinc-700 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+              aria-disabled={!ready || downloadLocked}
+              href={`/export/print?year=${selectedYear}${assumeEffective ? "&assume=1" : ""}`}
+              target="_blank"
+              rel="noopener"
+              onClick={(event) => { if (!ready || downloadLocked) event.preventDefault(); }}
+            >
+              {downloadLocked && <Lock aria-hidden className="size-4 shrink-0" strokeWidth={2.5} />}
+              보고서 열기
+            </a>
+          </div>
+
+          {/* 직접 신고용(추천) — 홈택스 본인 신고. 원장 그대로가 필요한 사람을 위한 CSV다. */}
           <div className="rounded-card border border-primary-200 bg-primary-50/40 p-4">
             <div className="flex items-center gap-2">
               <p className="font-semibold text-zinc-900">직접 신고용</p>
