@@ -14,10 +14,10 @@ import type { PeriodSelection } from "@/lib/portfolio/period-selection";
 import { periodLabel } from "@/lib/period";
 import { freshNotice } from "@/lib/queries/fresh";
 import { MockProvenanceChip } from "@/components/ui/mock-provenance-chip";
+import { Skeleton } from "@/components/ui/skeleton";
 import { SummaryCard } from "@/components/ui/summary-card";
 import { useHideBalances } from "@/lib/privacy/use-hide-balances";
 import { formatFiat } from "@/lib/format";
-import { hasConfidenceSignal } from "@/lib/tax/estimate-summary";
 import { useTransactionList } from "@/lib/transactions/use-transaction-list";
 
 /** 요약에 얹는 "최근 거래" 줄 수. 원장을 옮겨 심는 자리가 아니라 **문**이라 세 줄이면 족하다. */
@@ -27,7 +27,7 @@ const RECENT_COUNT = 3;
  * 요약 화면.
  *
  * 전체 거래 목록은 거래 탭(`/transactions`)이 맡는다. 이 화면이 답하는 것은 셋뿐이다:
- * 지갑이 어떻게 움직였나(그래프), 이번 과세연도는 얼마인가(카드), 지금 손댈 것이 있나(확인 필요).
+ * 지갑이 어떻게 움직였나(그래프), 이번 과세연도는 얼마인가(카드), 방금 무슨 일이 있었나(최근 거래).
  * 목록까지 여기 있던 때에는 첫 거래 행이 1,200px 아래에서 시작했고, 그 위의 요약은 아무도 읽지 않았다.
  */
 export function DashboardView({ countryCode }: { countryCode?: string }) {
@@ -49,14 +49,12 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
     estimate,
     headline,
     headlineCurrency,
-    confidence,
     importTracker,
     items,
     annotated,
     periodWindow,
     periodNarrowed,
     listItems,
-    reviewItems,
     swapInLegOf,
     selectedKey,
     setSelectedKey,
@@ -116,20 +114,30 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
 
       <section className="mt-6 grid grid-cols-1 gap-3">
         {/* 계산에 들어간 이벤트가 없으면 "0"은 손익이 아니라 계산할 것이 없었다는 뜻이다.
-            손익은 세금 화면과 같은 estimate에서 파생한다 — 판정을 못 냈으면(headline 미정) 요약 상태를 그대로 말한다. */}
+            손익은 세금 화면과 같은 estimate에서 파생한다 — 판정을 못 냈으면(headline 미정) 요약 상태를 그대로 말한다.
+
+            값 자리의 "모른다" 규칙은 두 가지다(같은 headline 미정이라도 이유가 다르다):
+            거래 목록 자체가 아직 없으면(events.isLoading) 무엇을 셀지조차 모르는 것이라 스켈레톤 —
+            숫자 칸에 "—"를 두면 시각적으로 "0에 가까운 값"처럼 읽혀 완전한 무지와 구별이 안 된다.
+            반대로 거래는 이미 왔고 판정(estimate)만 다시 계산 중이면 이전 판정이 부분적으로 남아 있을 수 있어
+            그 옛 값을 단정하지 않으려 "—"를 그대로 쓴다(기존 계약 — dashboard-summary.test.tsx). */}
         <SummaryCard
           label="예상 손익"
           value={
-            headline === undefined
-              ? "—"
-              : headline.computableEventCount === 0
-                ? "계산할 거래 없음"
-                : hideBalances
-                  ? "•••••"
-                  : formatFiat(headline.periodPnl, headlineCurrency)
+            events.isLoading ? (
+              <Skeleton className="h-8 w-28" />
+            ) : headline === undefined ? (
+              "—"
+            ) : headline.computableEventCount === 0 ? (
+              "계산할 거래 없음"
+            ) : hideBalances ? (
+              "•••••"
+            ) : (
+              formatFiat(headline.periodPnl, headlineCurrency)
+            )
           }
           supportingText={
-            headline !== undefined && headline.computableEventCount === 0
+            !events.isLoading && headline !== undefined && headline.computableEventCount === 0
               ? "가격·분류를 확정한 거래가 아직 없습니다."
               : undefined
           }
@@ -138,71 +146,62 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
         <SummaryCard
           // 실제 과세 여부는 판정 그룹(취득·비과세·상계 소멸…)이 정하므로 "과세 대상"이라 부르면 과장이다.
           label="계산 대상 이벤트"
-          value={headline !== undefined ? `${headline.computableEventCount}건` : "—"}
+          value={events.isLoading ? <Skeleton className="h-8 w-16" /> : headline !== undefined ? `${headline.computableEventCount}건` : "—"}
           // 확인 필요 건수는 여기서 말하지 않는다. 요약의 pendingReviewCount는 다리(leg) 단위이고 아래 확인 필요
           // 카드·거래 탭은 스왑·브릿지를 묶은 행 단위라, 둘을 같이 두면 한 화면이 두 값을 말한다(실측 5,549 대 3,433).
+          // 거래 목록 자체가 로딩 중이면 이 보조 문구도 비운다 — "과세 여부는 아직 판단하지 않았습니다"조차
+          // 아직 무엇을 판단할지 모르는 상태에는 지어낸 확신이다.
           supportingText={
-            summaryFresh.data
-              ? estimate !== undefined && estimate.status !== "UNDETERMINED"
-                ? "과세 여부는 거래 탭의 판정에서 갈립니다"
-                : "과세 여부는 아직 판단하지 않았습니다"
-              : (freshNotice(summaryFresh.state, "요약") ?? undefined)
+            events.isLoading
+              ? undefined
+              : summaryFresh.data
+                ? estimate !== undefined && estimate.status !== "UNDETERMINED"
+                  ? "과세 여부는 거래 탭의 판정에서 갈립니다"
+                  : "과세 여부는 아직 판단하지 않았습니다"
+                : (freshNotice(summaryFresh.state, "요약") ?? undefined)
           }
           // 불러오는 중이면 이 숫자는 아직 새 지갑을 모른다. 말하지 않으면 사용자는 건수가 틀렸다고 읽는다.
-          note={importTracker.state.status === "running" ? "새 지갑 거래는 불러온 뒤 반영돼요" : undefined}
+          note={!events.isLoading && importTracker.state.status === "running" ? "새 지갑 거래는 불러온 뒤 반영돼요" : undefined}
         />
-        {/* 신뢰도 칩(P1-9) — 세금 화면 "흔들리는 지점"과 같은 estimate에서 파생한 건수를 헤드라인 옆에 압축한다.
-            문구·건수는 하드코딩하지 않는다. 흔들릴 게 없으면(정상) 칩을 달지 않는다 — 없는 문제를 만들지 않기 위해서다.
-            색만으로 구분하지 않도록 각 칩은 뜻과 건수를 글자로 함께 말한다. */}
-        {confidence !== undefined && hasConfidenceSignal(confidence) ? (
-          <div data-surface="dashboard-confidence" className="flex flex-wrap items-center gap-2" aria-label="계산 신뢰도">
-            <span className="text-xs font-medium text-zinc-500">신뢰도</span>
-            {confidence.notReflected > 0 ? (
-              <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
-                미반영 {confidence.notReflected}
-              </span>
-            ) : null}
-            {confidence.zeroBasis > 0 ? (
-              <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-900">
-                원가0원 {confidence.zeroBasis}
-              </span>
-            ) : null}
-            {confidence.partial ? (
-              <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
-                부분집계
-              </span>
-            ) : null}
-          </div>
-        ) : null}
       </section>
 
-      {/* 손댈 것이 있을 때만 뜬다. 0건에도 카드를 남기면 "할 일 없음"을 매번 확인시키는 줄이 되고,
-          진짜 확인할 것이 생겼을 때 그 줄이 눈에 띄지 않는다. */}
-      {reviewItems.length > 0 ? (
-        <Link
-          href="/transactions?tab=review"
-          data-surface="review-nudge"
-          className="mt-6 flex items-center justify-between gap-3 rounded-card border border-amber-200 bg-amber-50 px-4 py-3.5"
-        >
-          <span className="min-w-0">
-            <span className="block font-semibold text-amber-900">확인 필요 {reviewItems.length}건</span>
-            <span className="mt-0.5 block text-sm text-amber-800">가격·분류를 확정하면 계산에 들어갑니다.</span>
-          </span>
-          <span aria-hidden="true" className="shrink-0 font-semibold text-amber-800">›</span>
-        </Link>
-      ) : null}
 
       {/* 목록은 거래 탭이 맡는다. 여기 세 줄은 원장을 옮겨 심은 것이 아니라 **문**이다 —
           방금 무슨 일이 있었는지만 보이고, 나머지는 링크가 데려간다. */}
       <section className="mt-6" data-surface="recent-transactions">
         <div className="flex items-baseline justify-between gap-3">
           <h2 className="text-lg font-bold text-zinc-900">최근 거래</h2>
-          <Link href="/transactions" className="shrink-0 text-sm font-semibold text-primary-600">
-            전체 {listItems.length}건 보기
-          </Link>
+          {/* 모르는 건수를 0이라 말하지 않는다 — 불러오는 중에는 링크 자체를 그리지 않는다.
+              목록이 도착하면(0건이든 몇천 건이든) 그 값을 그대로 말한다. */}
+          {!events.isLoading ? (
+            <Link href="/transactions" className="shrink-0 text-sm font-semibold text-primary-600">
+              전체 {listItems.length}건 보기
+            </Link>
+          ) : null}
         </div>
         <div className="mt-3 grid grid-cols-1 gap-3">
-          {events.isLoading ? <p className="text-sm text-zinc-500">거래를 불러오는 중입니다</p> : null}
+          {events.isLoading ? (
+            <>
+              {/* 불러오는 중이라는 사실은 이 한 줄이 role="status"로 한 번만 말한다.
+                  아래 행 모양 스켈레톤은 그 사실을 다시 말하지 않는 장식이라 aria-hidden. */}
+              <p role="status" className="text-sm text-zinc-500">거래를 불러오는 중입니다</p>
+              {Array.from({ length: RECENT_COUNT }, (_, index) => (
+                <div
+                  key={index}
+                  aria-hidden="true"
+                  data-surface="recent-transaction-skeleton"
+                  className="flex items-center gap-3 rounded-card border border-zinc-100 p-3"
+                >
+                  <Skeleton className="h-9 w-9 shrink-0 rounded-full" />
+                  <div className="flex-1 space-y-1.5">
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-3 w-16" />
+                  </div>
+                  <Skeleton className="h-4 w-14" />
+                </div>
+              ))}
+            </>
+          ) : null}
           {events.isError ? (
             <p role="alert" className="rounded-card border border-red-200 bg-red-50 p-4 text-sm text-red-700">
               거래를 불러오지 못했습니다.{" "}

@@ -1,12 +1,13 @@
 "use client";
 
-import { ChevronDown, Search } from "lucide-react";
+import { Check, ChevronDown, Search } from "lucide-react";
 import { Fragment, useState } from "react";
 import { EventDetails } from "@/components/transactions/event-details";
 import { EventRow } from "@/components/transactions/event-row";
 import { BottomSheet } from "@/components/ui/bottom-sheet";
 import { ChainIcon } from "@/components/ui/chain-icon";
 import { GROUP_SHORT_LABEL } from "@/components/ui/judgment-badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { chainLabel, formatDate, shortHash, UTC_NOTICE } from "@/lib/format";
 import { isoDay } from "@/lib/period";
 import { useHideBalances } from "@/lib/privacy/use-hide-balances";
@@ -126,7 +127,19 @@ export function TransactionsView({
         setOpenFilter(null);
       }}
     >
-      <span className="flex min-w-0 items-center gap-1.5">{label}</span>
+      <span className="flex min-w-0 items-center gap-2.5">
+        {/* 고른 줄은 배경색만이 아니라 체크로도 말한다 — 색만으로는 무엇이 걸려 있는지 놓친다. */}
+        <span
+          aria-hidden="true"
+          data-checked={isSelected}
+          className={`flex size-5 shrink-0 items-center justify-center rounded-md border ${
+            isSelected ? "border-primary-500 bg-primary-500 text-white" : "border-zinc-300 bg-white"
+          }`}
+        >
+          {isSelected ? <Check className="size-3.5" strokeWidth={3} /> : null}
+        </span>
+        <span className="flex min-w-0 items-center gap-1.5">{label}</span>
+      </span>
       {count === null ? null : <span className="shrink-0 font-medium text-zinc-500">{count}건</span>}
     </button>
   );
@@ -145,7 +158,10 @@ export function TransactionsView({
       <div data-surface="transactions-header" className="sticky top-0 z-20 border-b border-zinc-200 bg-white/95 px-5 pt-8 backdrop-blur">
         <div className="flex items-baseline justify-between gap-3">
           <h1 className="text-3xl font-bold tracking-tight text-zinc-900">거래</h1>
-          <p className="shrink-0 text-sm font-medium text-zinc-500">{listItems.length}건</p>
+          {/* 모르는 건수를 0건이라 말하지 않는다 — 목록이 도착하기 전에는 숫자 대신 스켈레톤 막대. */}
+          <p className="shrink-0 text-sm font-medium text-zinc-500">
+            {events.isLoading ? <Skeleton className="h-4 w-10" /> : `${listItems.length}건`}
+          </p>
         </div>
         <div className="relative mt-3">
           <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-zinc-400" />
@@ -182,11 +198,18 @@ export function TransactionsView({
         <div className="mt-2 flex gap-1" role="tablist" aria-label="거래 필터">
           <button role="tab" aria-selected={tab === "all"} type="button" className={tabClass(tab === "all")} onClick={() => setTab("all")}>
             전체 거래
-            <span aria-hidden="true" className="rounded-full bg-zinc-100 px-1.5 py-0.5 text-xs font-semibold text-zinc-500">{listItems.length}</span>
+            <span aria-hidden="true" className="rounded-full bg-zinc-100 px-1.5 py-0.5 text-xs font-semibold text-zinc-500">
+              {events.isLoading ? <Skeleton className="h-3 w-3" /> : listItems.length}
+            </span>
           </button>
           <button role="tab" aria-selected={tab === "review"} type="button" className={tabClass(tab === "review")} onClick={() => setTab("review")}>
             확인 필요
-            <span aria-hidden="true" className={`rounded-full px-1.5 py-0.5 text-xs font-semibold ${reviewItems.length > 0 ? "bg-amber-100 text-amber-800" : "bg-zinc-100 text-zinc-500"}`}>{reviewItems.length}</span>
+            <span
+              aria-hidden="true"
+              className={`rounded-full px-1.5 py-0.5 text-xs font-semibold ${!events.isLoading && reviewItems.length > 0 ? "bg-amber-100 text-amber-800" : "bg-zinc-100 text-zinc-500"}`}
+            >
+              {events.isLoading ? <Skeleton className="h-3 w-3" /> : reviewItems.length}
+            </span>
           </button>
         </div>
       </div>
@@ -274,7 +297,7 @@ export function TransactionsView({
         {/* `grid-cols-1`은 장식이 아니다. 열을 지정하지 않으면 암묵 열이 `auto`라 **가장 넓은 행의 min-content**로
             늘어나고, 긴 손익 한 줄이 목록 전체를 껍데기(448px) 밖으로 민다(실측 510px). `minmax(0,1fr)`로 못 박는다. */}
         <div className="mt-3 grid grid-cols-1 gap-3">
-          {events.isLoading ? <p className="text-sm text-zinc-500">거래를 불러오는 중입니다</p> : null}
+          {events.isLoading ? <p role="status" className="text-sm text-zinc-500">거래를 불러오는 중입니다</p> : null}
           {events.isError ? (
             <p role="alert" className="rounded-card border border-red-200 bg-red-50 p-4 text-sm text-red-700">
               거래를 불러오지 못했습니다.{" "}

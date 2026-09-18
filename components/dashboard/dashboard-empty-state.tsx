@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { MockProvenanceChip } from "@/components/ui/mock-provenance-chip";
 import { SummaryCard } from "@/components/ui/summary-card";
+import { getRuleSet } from "@/lib/tax/rulesets";
 
 /**
  * 지갑 미연결(DID-only) 대시보드의 껍데기 상태.
@@ -15,9 +16,12 @@ export function DashboardEmptyState({ countryCode }: { countryCode?: string }) {
     <main className="min-h-dvh px-5 py-8">
       <header data-surface="dashboard-summary" className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-zinc-900">거래 요약</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-zinc-900">요약</h1>
+          {/* "클레임"은 내부 인증 용어다. 사용자에게는 자신이 고른 거주 국가만 말하면 된다 —
+              증명 방식(DID·클레임)을 설명할 자리가 아니다. 코드가 룰셋에 없으면(알 수 없는 국가)
+              지어낸 이름 대신 코드를 그대로 보인다. */}
           <p className="mt-1 text-sm text-zinc-500">
-            {countryCode ? `거주국 ${countryCode} 클레임이 확인된 상태입니다.` : "거주국 클레임이 확인된 상태입니다."}
+            {countryCode ? `거주 국가: ${getRuleSet(countryCode)?.label ?? countryCode}` : "거주 국가를 확인하지 못했습니다."}
           </p>
         </div>
         <MockProvenanceChip />
@@ -35,13 +39,13 @@ export function DashboardEmptyState({ countryCode }: { countryCode?: string }) {
         </div>
         <h2 className="mt-4 text-lg font-bold text-zinc-900">아직 불러온 거래가 없습니다</h2>
         <p className="mt-2 text-sm leading-6 text-zinc-600">
-          지갑을 연결하면 거래 내역을 불러와 요약·판정·내보내기를 사용할 수 있습니다.
+          지갑을 연결하면 거래 내역을 불러와 요약·판정·리포트를 사용할 수 있습니다.
         </p>
         <Link
           href="/connect-wallet"
           className="mt-5 inline-flex w-full items-center justify-center rounded-xl bg-primary-500 py-3.5 font-semibold text-white"
         >
-          데이터 불러오기
+          지갑 연결하기
         </Link>
         {/* 보조 CTA — 주 CTA(채움)보다 시각적 우선순위가 낮은 외곽선 스타일. */}
         <Link
@@ -53,8 +57,10 @@ export function DashboardEmptyState({ countryCode }: { countryCode?: string }) {
         <p className="mt-2 text-xs text-zinc-400">리포트의 데모 계산은 지갑 없이도 쓸 수 있습니다.</p>
       </section>
 
-      {/* 채워질 자리를 보여주는 플레이스홀더. 값은 대시보드 빈 상태와 같은 "—". */}
-      <section className="mt-6 grid gap-3" aria-hidden="true">
+      {/* 채워질 자리를 보여주는 플레이스홀더. 값은 대시보드 빈 상태와 같은 "—".
+          `grid-cols-1`을 명시한다 — 암묵 열이 가장 넓은 행의 min-content로 늘어나면
+          448px 껍데기를 밀어낸다(거래 탭 목록과 같은 이유, transactions-view.tsx 주석 참고). */}
+      <section className="mt-6 grid grid-cols-1 gap-3" aria-hidden="true">
         <SummaryCard label="예상 손익" value="—" supportingText="지갑을 연결하면 계산됩니다." />
         <SummaryCard label="계산 대상 이벤트" value="—" supportingText="지갑을 연결하면 채워집니다." />
       </section>
