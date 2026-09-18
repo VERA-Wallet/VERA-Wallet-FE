@@ -1,5 +1,4 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { planDefinition, type Plan } from "@/lib/plan/use-plan";
@@ -23,7 +22,7 @@ vi.mock("@/lib/plan/use-plan", async (importOriginal) => {
   return { ...actual, usePlan: () => ({ plan: state.plan, activate: vi.fn(), deactivate: vi.fn() }) };
 });
 
-import { ReportView } from "@/components/report/report-view";
+import { renderReportPages } from "@/tests/ui/helpers/report-pages";
 
 const estimate: TaxEstimate = {
   country: "KR",
@@ -87,12 +86,8 @@ function renderWith(computableEventCount: number, plan: Plan | null, periodStart
   ports.getSummary.mockResolvedValue(summaryWith(computableEventCount, periodStartYear));
   ports.estimate.mockResolvedValue(estimate);
   ports.listRuleSets.mockImplementation(async () => listRuleSetSummaries());
-  // 진입 귀속연도는 이제 서버가 파생해 prop으로 내려준다(`app/export/page.tsx`의 latestActivityTaxYear).
-  return render(
-    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-      <ReportView countryCode="KR" currentYear={2026} latestActivityYear={periodStartYear} />
-    </QueryClientProvider>,
-  );
+  // 진입 귀속연도는 이제 서버가 파생해 프로바이더로 내려준다(`app/export/layout.tsx`의 latestActivityTaxYear).
+  return renderReportPages({ pages: ["main"], countryCode: "KR", currentYear: 2026, latestActivityYear: periodStartYear });
 }
 
 beforeEach(() => {
@@ -127,13 +122,21 @@ describe("리포트 구독 상태 카드", () => {
     expect(gauge).toHaveAttribute("aria-valuenow", "100");
   });
 
-  it("미구독이면 구독 상태 카드와 과세연도별 결제 섹션을 그리지 않는다", async () => {
+  it("미구독이면 구독 상태 카드를 그리지 않는다", async () => {
     const { container } = renderWith(50, null);
 
     await waitFor(() => expect(ports.getSummary).toHaveBeenCalled());
-    // 미구독이어도 계산은 보인다 — 없는 것은 결제 관련 두 카드뿐이다.
+    // 미구독이어도 계산은 보인다 — 없는 것은 구독 상태 카드뿐이다.
     await screen.findByText("기타소득 계산");
     expect(container.querySelector("[data-surface='plan-status']")).toBeNull();
+  });
+
+  it("결제 이력은 리포트가 아니라 플랜 화면의 것이다", async () => {
+    // 과세연도별 결제는 `/plan`으로 이사했다(tests/ui/plan-view.test.tsx가 그 표면을 검증한다).
+    // 구독 중이어도 리포트에는 그 카드가 없어야 한다 — 두 화면이 같은 이력을 말하면 어느 쪽이 최신인지 모른다.
+    const { container } = renderWith(250, plusPlan);
+
+    await screen.findByText("플러스 플랜 · 2026년 귀속");
     expect(container.querySelector("[data-surface='plan-payments']")).toBeNull();
   });
 
@@ -144,11 +147,7 @@ describe("리포트 구독 상태 카드", () => {
     ports.getSummary.mockReturnValue(new Promise(() => {}));
     ports.estimate.mockReturnValue(new Promise(() => {}));
     ports.listRuleSets.mockImplementation(async () => listRuleSetSummaries());
-    render(
-      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <ReportView countryCode="KR" currentYear={2026} latestActivityYear={2026} />
-      </QueryClientProvider>,
-    );
+    renderReportPages({ pages: ["main"], countryCode: "KR", currentYear: 2026, latestActivityYear: 2026 });
 
     expect(screen.queryByRole("progressbar", { name: "내보내기 사용량" })).toBeNull();
     expect(screen.queryByText(/건 중 .*건 사용/)).toBeNull();
@@ -169,11 +168,4 @@ describe("리포트 구독 상태 카드", () => {
     expect(screen.queryByText(/지금 보는 연도는/)).toBeNull();
   });
 
-  it("과세연도별 결제 섹션은 활성 플랜 1행만 실데이터로 보여준다", async () => {
-    renderWith(10, plusPlan);
-
-    expect(await screen.findByText("과세연도별 결제")).toBeInTheDocument();
-    expect(screen.getByText("2026년 귀속 · 플러스 플랜 · 활성화 2026. 8. 19.")).toBeInTheDocument();
-    expect(screen.getByText(/지난 연도 결제 이력과 내보내기 스냅샷 보관은 아직 제공하지 않습니다/)).toBeInTheDocument();
-  });
 });

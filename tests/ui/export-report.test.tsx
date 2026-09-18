@@ -1,5 +1,4 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { computeTaxEstimate } from "@/lib/tax/engine";
 import { listRuleSetSummaries } from "@/lib/tax/rulesets";
@@ -25,7 +24,7 @@ vi.mock("@/lib/plan/use-plan", async (importOriginal) => {
   return { ...actual, usePlan: () => ({ plan: plusPlan, activate: vi.fn(), deactivate: vi.fn() }) };
 });
 
-import { ReportView } from "@/components/report/report-view";
+import { renderReportPages } from "@/tests/ui/helpers/report-pages";
 
 const estimate: TaxEstimate = {
   country: "KR",
@@ -78,12 +77,13 @@ const summary = {
   period: { from: "2027-01-01T00:00:00.000Z", to: "2028-01-01T00:00:00.000Z" },
 };
 
+/**
+ * 이 파일이 보는 것은 "estimate 하나가 화면 묶음 전체를 채우는가"다.
+ * 그래서 다섯 화면을 한 프로바이더 아래 함께 세운다 — 프로덕션에서 layout이 하는 일과 같다.
+ * (답·내려받기는 메인, 확인 필요 넛지는 확인할 것, 연말 시가는 계산 설정에 산다.)
+ */
 function renderReport() {
-  return render(
-    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-      <ReportView countryCode="KR" currentYear={2027} latestActivityYear={2027} />
-    </QueryClientProvider>,
-  );
+  return renderReportPages({ countryCode: "KR", currentYear: 2027, latestActivityYear: 2027 });
 }
 
 beforeEach(() => {

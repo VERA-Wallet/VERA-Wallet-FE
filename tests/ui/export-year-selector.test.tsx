@@ -26,7 +26,7 @@ vi.mock("@/lib/plan/use-plan", async (importOriginal) => {
   return { ...actual, usePlan: () => ({ plan: plusPlan, activate: vi.fn(), deactivate: vi.fn() }) };
 });
 
-import { ReportView } from "@/components/report/report-view";
+import { ReportPages } from "@/tests/ui/helpers/report-pages";
 
 // 데이터(요약 기간)는 2025년이라 진입 귀속연도 = 2025. 시행연도(2027)는 룰셋에서 온다.
 function estimateFor(taxYear: number, assumeEffective = false): TaxEstimate {
@@ -94,9 +94,10 @@ const summary = {
 };
 
 function renderReport() {
+  // 귀속연도 칩과 시행 가정 배너는 메인 화면의 것이다.
   return render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-      <ReportView countryCode="KR" currentYear={2025} latestActivityYear={2025} />
+      <ReportPages pages={["main"]} countryCode="KR" currentYear={2025} latestActivityYear={2025} />
     </QueryClientProvider>,
   );
 }
@@ -196,7 +197,7 @@ describe("리포트 귀속연도 선택기", () => {
     render(
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
         <TaxYearProvider>
-          <ReportView countryCode="KR" currentYear={2025} latestActivityYear={2025} />
+          <ReportPages pages={["main"]} countryCode="KR" currentYear={2025} latestActivityYear={2025} />
           <YearProbe />
         </TaxYearProvider>
       </QueryClientProvider>,

@@ -5,7 +5,7 @@ import { DidLoginFlow } from "@/components/did/did-login-flow";
 import { ConnectWalletFlow } from "@/components/wallet/connect-wallet-flow";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
 import { TransactionsView } from "@/components/transactions/transactions-view";
-import { ReportView } from "@/components/report/report-view";
+import { ReportPages } from "@/tests/ui/helpers/report-pages";
 import { DisclaimerFooter } from "@/components/ui/disclaimer-footer";
 import { createNormalizedEventFixtures } from "@/tests/fixtures/generated/normalized-events";
 import { TaxEngineService } from "@/lib/tax/tax-engine-service.server";
@@ -70,7 +70,9 @@ function renderAll() {
       <DidLoginFlow authClient={authClient()} />
       <ConnectWalletFlow walletPort={walletPort()} authClient={authClient()} />
       <DashboardView />
-      <ReportView />
+      {/* 리포트가 다섯 화면으로 나뉘었다 — 금지어 검사는 그 전부를 훑어야 한다.
+          한 화면만 세우면 나머지 네 화면이 검사 밖으로 빠진다. */}
+      <ReportPages />
       <DisclaimerFooter />
     </QueryClientProvider>,
   );
