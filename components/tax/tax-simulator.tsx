@@ -109,7 +109,9 @@ function groupJudgments(result: TaxEstimate): GroupRow[] {
 }
 
 const LIMITATION_LABEL: Record<LimitationKind, string> = {
-  excluded: "답에서 빠짐",
+  // 대시보드 탭·아래 동선이 모두 "확인 필요"라고 부른다. 여기만 다른 이름을 쓰면
+  // 같은 거래를 두 화면이 다른 말로 가리켜, 무엇을 고치러 가야 하는지가 흐려진다.
+  excluded: "확인이 필요한 거래",
   zero_basis: "취득가액 0으로 계산",
   approximation: "근사",
   not_reflected: "반영 안 함",

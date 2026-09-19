@@ -112,7 +112,7 @@ export type TaxLine = {
 
 /**
  * 계산이 흔들리는 지점의 종류.
- * `excluded` 답에서 빠짐 / `zero_basis` 취득가액 0으로 계산(답을 부풀릴 수 있음) /
+ * `excluded` 확인이 필요해 답에서 빠짐 / `zero_basis` 취득가액 0으로 계산(답을 부풀릴 수 있음) /
  * `approximation` 근사 / `not_reflected` 반영 안 함 / `other` 분류되지 않은 문구.
  */
 export type LimitationKind = "excluded" | "zero_basis" | "approximation" | "not_reflected" | "other";

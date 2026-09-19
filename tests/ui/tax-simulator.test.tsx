@@ -304,9 +304,9 @@ describe("TaxSimulator 제외 배너", () => {
     const section = await screen.findByLabelText("흔들리는 것");
 
     expect(section.textContent).toContain("이 답이 흔들리는 지점");
-    // 답에서 빠진 것이 근사보다 먼저 온다 — 영향 순.
+    // 확인이 필요해 답에서 빠진 것이 근사보다 먼저 온다 — 영향 순.
     const labels = [...section.querySelectorAll("li span:first-child")].map((node) => node.textContent);
-    expect(labels.indexOf("답에서 빠짐")).toBeLessThan(labels.indexOf("근사"));
+    expect(labels.indexOf("확인이 필요한 거래")).toBeLessThan(labels.indexOf("근사"));
     // 얼마나 달라지는지는 계산하지 않았다. 금액을 쓰면 지어낸 추정이 된다.
     expect(section.textContent).not.toMatch(/[€$₩][\d,]/);
     // 고치러 갈 동선이 있다.
