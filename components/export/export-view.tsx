@@ -9,8 +9,10 @@ import { Card } from "@/components/ui/card";
 import { MockProvenanceChip } from "@/components/ui/mock-provenance-chip";
 import { anchorProofProvider, eventRepository, summaryProvider, taxEngine } from "@/lib/composition-root.client";
 import { collectAllEvents } from "@/lib/export/collect";
-import { buildFilingSummary, createReportLedgerCsv } from "@/lib/export/report";
+import { FILING_LINE_SPECS, buildFilingSummary, createReportLedgerCsv, filingRow } from "@/lib/export/report";
+import { buildReportHtml } from "@/lib/export/report-html";
 import { createReportXlsx } from "@/lib/export/report-workbook";
+import { printReportHtml } from "@/lib/export/print";
 import type { SummaryDTO } from "@/lib/http/dto";
 import { formatDateTime, formatFiat } from "@/lib/format";
 import { isGroundedPeriod, periodFilePart, periodLabel } from "@/lib/period";
@@ -36,20 +38,14 @@ function download(data: BlobPart, type: string, filename: string) {
 }
 
 /**
- * 그룹형 리포트 라인. 값은 `buildFilingSummary(estimate)`에서만 파생한다 — 화면이 룰셋 조건을
- * 다시 쓰면 계산·리포트·화면이 서로 다른 답을 말한다. 여기서는 소계·차감 위계만 정한다.
+ * 그룹형 리포트 라인. 값도 위계도 지어내지 않는다 — 금액은 `buildFilingSummary(estimate)`에서,
+ * 순서·소계·차감은 `FILING_LINE_SPECS`(리포트 빌더)에서 온다. PDF 보고서도 같은 스펙을 읽으므로
+ * 룰셋이 줄을 하나 더 내면 화면과 종이가 함께 따라간다.
+ *
+ * 세율(`note`)만 뺀다. 카드 한 줄이 금액 아닌 값을 말하면 좁은 화면에서 계산 흐름이 끊긴다 —
+ * 세율은 아래 "계산 설정"과 PDF 요약표가 대신 말한다.
  */
-type ReportLineSpec = { label: string; source: string; role: "item" | "subtract" | "subtotal" | "total" };
-const REPORT_LINES: readonly ReportLineSpec[] = [
-  { label: "총수입금액", source: "총수입금액", role: "item" },
-  { label: "필요경비", source: "필요경비", role: "subtract" },
-  { label: "기타소득금액", source: "기타소득금액", role: "subtotal" },
-  { label: "기본공제", source: "기본공제", role: "subtract" },
-  { label: "과세표준", source: "과세표준", role: "subtotal" },
-  { label: "소득세", source: "산출 소득세", role: "item" },
-  { label: "개인지방소득세", source: "개인지방소득세", role: "item" },
-  { label: "예상 부담", source: "예상 합계 부담", role: "total" },
-];
+const REPORT_LINES = FILING_LINE_SPECS.filter((spec) => spec.role !== "note");
 
 export function ExportView({ countryCode }: { countryCode?: string } = {}) {
   const [events, setEvents] = useState<NormalizedEvent[]>([]);
@@ -61,6 +57,9 @@ export function ExportView({ countryCode }: { countryCode?: string } = {}) {
   // 없으면 연도 창은 시행 연도를 끼우지 않을 뿐, 그 밖은 그대로 동작한다.
   const [effectiveYear, setEffectiveYear] = useState<number | undefined>(undefined);
   const [yearPickerOpen, setYearPickerOpen] = useState(false);
+  // 보고서 인쇄는 팝업 차단·인쇄 미지원 브라우저에서 열리지 않을 수 있다. 조용히 아무 일도 안 일어나면
+  // 사용자는 자기 탓인지 앱 탓인지 모른다 — 그때만 이 자리에서 다른 내려받기를 권한다.
+  const [reportError, setReportError] = useState<string | null>(null);
   // 시행 전 룰셋(한국 2027)을 "시행됐다고 가정하고" 볼지. 기본은 사실 — 가정은 사용자가 켠다.
   // 세금 화면(tax-simulator)의 assumeEffective와 같은 패턴이다.
   const [assumeEffective, setAssumeEffective] = useState(false);
@@ -138,7 +137,7 @@ export function ExportView({ countryCode }: { countryCode?: string } = {}) {
   // 리포트 라인은 estimate 하나(buildFilingSummary)에서만 파생한다 — 하드코딩하지 않는다.
   const filing = estimate ? buildFilingSummary(estimate) : [];
   const filingAmount = (label: string): string => {
-    const value = filing.find((row) => row.기입란 === label)?.금액;
+    const value = filingRow(filing, label)?.금액;
     return typeof value === "number" ? String(value) : "0";
   };
 
@@ -293,7 +292,7 @@ export function ExportView({ countryCode }: { countryCode?: string } = {}) {
                     line.role === "subtotal" ? "border-t border-zinc-200" : line.role === "total" ? "mt-1 border-t-2 border-zinc-300" : ""
                   }`}
                 >
-                  <dt className={`text-sm ${emphasize ? "font-semibold text-zinc-900" : "text-zinc-600"}`}>{line.label}</dt>
+                  <dt className={`text-sm ${emphasize ? "font-semibold text-zinc-900" : "text-zinc-600"}`}>{line.shortLabel ?? line.source}</dt>
                   <dd
                     className={`tabular-nums ${
                       line.role === "total"
@@ -383,7 +382,7 @@ export function ExportView({ countryCode }: { countryCode?: string } = {}) {
         </p>
 
         <div className="mt-5 space-y-3">
-          {/* 직접 신고용(추천) — 홈택스 본인 신고. PDF 요약서 생성기가 없어 CSV 원장으로 구성한다. */}
+          {/* 직접 신고용(추천) — 홈택스 본인 신고. 기입란에 옮겨 적을 값은 아래 보고서가, 근거 원장은 이 CSV가 맡는다. */}
           <div className="rounded-card border border-primary-200 bg-primary-50/40 p-4">
             <div className="flex items-center gap-2">
               <p className="font-semibold text-zinc-900">직접 신고용</p>
@@ -400,6 +399,47 @@ export function ExportView({ countryCode }: { countryCode?: string } = {}) {
               {downloadLocked && <Lock aria-hidden className="size-4 shrink-0" strokeWidth={2.5} />}
               직접 신고용 내려받기
             </button>
+          </div>
+
+          {/* 보고서(PDF) — 값만 늘어놓은 격자가 아니라 계산 흐름을 보이는 문서. 한글 PDF를 직접 쓰려면
+              글꼴을 통째로 내장해야 해서(수 MB), 조판은 CSS가 하고 PDF 변환은 브라우저 인쇄가 맡는다.
+              그래서 이 버튼만 파일을 바로 주지 않고 보고서를 연다 — 그 사실을 버튼 옆에서 미리 말한다. */}
+          <div className="rounded-card border border-zinc-200 p-4">
+            <p className="font-semibold text-zinc-900">보고서 (PDF)</p>
+            <p className="mt-1 text-sm leading-6 text-zinc-500">
+              표지 · 신고 요약(기입란) · 자산별 취득가액 명세 · 예외와 한계. 보고서가 열리면 인쇄에서
+              &lsquo;PDF로 저장&rsquo;을 고르세요.
+            </p>
+            <button
+              className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl border border-primary-500 py-3 font-semibold text-primary-600 disabled:cursor-not-allowed disabled:opacity-50"
+              data-locked={downloadLocked ? "download" : undefined}
+              data-surface="report-pdf"
+              disabled={!ready || downloadLocked}
+              type="button"
+              onClick={() => {
+                const outcome = printReportHtml(
+                  buildReportHtml(
+                    events,
+                    estimate,
+                    {
+                      generatedAt: new Date().toISOString(),
+                      // 시행 가정으로 보고 있으면 종이에도 그 사실이 함께 가야 한다 — 가정을 뗀 금액은 다른 금액이다.
+                      ...(assumeEffective ? { assumeEffective: true, effectiveYear } : {}),
+                    },
+                    filenamePeriod,
+                  ),
+                );
+                setReportError(
+                  outcome === "unavailable"
+                    ? "보고서 창을 열지 못했습니다. 팝업 차단을 해제하거나 아래 XLSX로 내려받아 주세요."
+                    : null,
+                );
+              }}
+            >
+              {downloadLocked && <Lock aria-hidden className="size-4 shrink-0" strokeWidth={2.5} />}
+              보고서 열기
+            </button>
+            {reportError && <p className="mt-2 text-sm text-red-600">{reportError}</p>}
           </div>
 
           {/* 세무사 전달용 — XLSX 4시트(요약·자산별·원장·예외). 미리보기 목록을 여기에 흡수한다. */}

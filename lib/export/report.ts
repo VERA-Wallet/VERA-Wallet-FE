@@ -98,6 +98,34 @@ export function buildFilingSummary(estimate: TaxEstimate): ReportRow[] {
   ];
 }
 
+/**
+ * 신고 요약의 **줄 위계**. `buildFilingSummary`가 내는 행을 어떤 순서로, 소계·차감 중 무엇으로 보일지만 정한다.
+ *
+ * 금액은 여기 없다 — 값은 언제나 `buildFilingSummary(estimate)`에서만 읽는다.
+ * 위계를 화면과 PDF가 따로 쓰면 같은 estimate를 두고 두 문서가 다른 모양으로 계산을 설명하게 된다.
+ * `shortLabel`은 가로가 좁은 모바일 카드용이고, 종이(PDF)는 서식 기입란 이름을 그대로 쓴다.
+ */
+export type FilingLineRole = "item" | "subtract" | "subtotal" | "total" | "note";
+export type FilingLineSpec = { source: string; role: FilingLineRole; shortLabel?: string };
+
+export const FILING_LINE_SPECS: readonly FilingLineSpec[] = [
+  { source: "총수입금액", role: "item" },
+  { source: "필요경비", role: "subtract" },
+  { source: "기타소득금액", role: "subtotal" },
+  { source: "기본공제", role: "subtract" },
+  { source: "과세표준", role: "subtotal" },
+  // 세율은 금액이 아니라 적용 근거다. 좁은 카드에서는 줄을 먹기만 해서 화면이 빼고, 종이에는 남긴다.
+  { source: "세율", role: "note" },
+  { source: "산출 소득세", role: "item", shortLabel: "소득세" },
+  { source: "개인지방소득세", role: "item" },
+  { source: "예상 합계 부담", role: "total", shortLabel: "예상 부담" },
+];
+
+/** 요약 행에서 기입란 이름으로 한 행을 찾는다. 없으면 undefined — 룰셋이 그 줄을 내지 않았다는 뜻이다. */
+export function filingRow(rows: readonly ReportRow[], source: string): ReportRow | undefined {
+  return rows.find((row) => row.기입란 === source);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // P2-B 자산별 취득가액 명세 (최우선)
 // ─────────────────────────────────────────────────────────────────────────────

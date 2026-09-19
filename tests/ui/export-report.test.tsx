@@ -3,6 +3,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TaxEstimate } from "@/lib/tax/types";
 
 const ports = vi.hoisted(() => ({ list: vi.fn(), getSummary: vi.fn(), getProof: vi.fn(), estimate: vi.fn() }));
+// 인쇄는 jsdom에 없다. 화면의 책임은 "무엇을 인쇄로 넘기는가"뿐이라 그 경계만 더블로 잡는다.
+const print = vi.hoisted(() => ({ printReportHtml: vi.fn<(html: string) => "window">(() => "window") }));
+vi.mock("@/lib/export/print", () => print);
 
 vi.mock("@/lib/composition-root.client", () => ({
   eventRepository: { list: ports.list },
@@ -81,6 +84,7 @@ beforeEach(() => {
   ports.getProof.mockResolvedValue(null);
   ports.getSummary.mockResolvedValue(summary);
   ports.estimate.mockResolvedValue(estimate);
+  print.printReportHtml.mockClear();
 });
 
 describe("내보내기 estimate 배선", () => {
@@ -101,8 +105,9 @@ describe("내보내기 estimate 배선", () => {
     // 총수입금액 = Σ양도가액(5,000,000), 예상 부담 = 소득세+지방소득세(183,333.34).
     expect(screen.getByText("₩5,000,000")).toBeInTheDocument();
     expect(screen.getByText("₩183,333.34")).toBeInTheDocument();
-    // 세무사 전달용 카드가 4시트가 무엇을 담는지 말한다(취득가액 명세·예외는 이 카드에만 있다).
-    expect(screen.getByText(/취득가액 명세/)).toBeInTheDocument();
+    // 취득가액 명세는 이제 PDF 보고서 카드와 XLSX 카드가 함께 말한다(둘 다 같은 빌더에서 나온다).
+    expect(screen.getAllByText(/취득가액 명세/).length).toBeGreaterThanOrEqual(2);
+    // 4시트가 무엇을 담는지는 세무사 전달용 카드만 말한다.
     expect(screen.getByText(/판단보류·미반영/)).toBeInTheDocument();
     // 거래 부속명세는 직접 신고용(CSV)·세무사 전달용(원장) 두 카드에 모두 담긴다.
     expect(screen.getAllByText(/거래 부속명세/).length).toBeGreaterThanOrEqual(1);
@@ -142,5 +147,21 @@ describe("내보내기 estimate 배선", () => {
     } finally {
       HTMLAnchorElement.prototype.click = realClick;
     }
+  });
+
+  it("보고서 열기가 estimate에서 파생한 인쇄용 문서를 넘긴다", async () => {
+    render(<ExportView countryCode="KR" />);
+    await screen.findByText("기타소득 계산");
+
+    fireEvent.click(screen.getByRole("button", { name: /보고서 열기/ }));
+
+    await waitFor(() => expect(print.printReportHtml).toHaveBeenCalledTimes(1));
+    const html = print.printReportHtml.mock.calls[0][0];
+    // 화면이 보여 준 금액과 종이의 금액이 같아야 한다 — 둘 다 buildFilingSummary(estimate)에서 나온다.
+    expect(html).toContain("기타소득 신고 근거자료");
+    expect(html).toContain("2027년 귀속 · 한국 · 거주자별 총평균법");
+    expect(html).toContain("₩183,333.34");
+    // 인쇄 대화상자의 기본 파일명 = 문서 제목.
+    expect(html).toContain("<title>verawallet-신고근거-2027년귀속-");
   });
 });
