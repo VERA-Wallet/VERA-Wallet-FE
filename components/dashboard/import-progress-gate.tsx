@@ -42,10 +42,13 @@ export function ImportProgressGate({ walletAddress, returnTo = "/dashboard" }: {
     return () => setModalOpen(false);
   }, [dismissed, setModalOpen]);
 
-  // 응답이 오면 체인 목록이 사실(수집 건수)로 바뀐다. 그 전에는 지원 체인 전체를 건수 없이 보여준다.
-  const chains = useMemo(() => importScanChains(state.result), [state.result]);
+  // 응답이 오면 체인 목록이 사실(수집 건수)로 바뀐다. 그 전에는 지원 체인 전체를 건수 없이 보여주되,
+  // BE가 진행 중 보고한 체인은 끝나는 대로 건수가 붙는다.
+  const reported = state.job?.progress ?? null;
+  const chains = useMemo(() => importScanChains(state.result, reported, walletAddress), [state.result, reported, walletAddress]);
   const elapsedMs = useImportElapsed(state.startedAt);
-  const progress = importProgressFrom(state.status, elapsedMs, chains.length);
+  // 이 모달은 방금 연결한 지갑의 것이다 — 작업이 다른 지갑도 돌더라도 이 지갑의 체인만 말한다.
+  const progress = importProgressFrom(state.status, elapsedMs, chains.length, reported, walletAddress);
 
   // 완료 표시를 잠깐 보여준 뒤 스스로 닫는다. 사용자가 버튼을 눌러야 사라지면
   // 자리를 비운 사이 끝난 불러오기가 대시보드를 계속 가린다.

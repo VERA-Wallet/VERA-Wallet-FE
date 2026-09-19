@@ -123,6 +123,8 @@ export function ImportProgressModal({
         {/* 체인별 조회 상태. 진행 시트와 같은 컴포넌트를 쓴다 — 같은 작업을 두 화면이 다르게 말하지 않도록. */}
         <div className="mt-4">
           <ImportChainList progress={progress} chains={chains} />
+          {/* 전부 '대기'인 이유. 다른 지갑이 먼저 도는 동안 목록만 보면 멈춘 것처럼 읽힌다. */}
+          {progress.note ? <p className="mt-2 text-center text-xs text-zinc-500">{progress.note}</p> : null}
         </div>
 
         <div className="mt-5">
