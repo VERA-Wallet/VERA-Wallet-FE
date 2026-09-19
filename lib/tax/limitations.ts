@@ -1,3 +1,6 @@
+import type { TaxExclusionReason } from "@/lib/review";
+import { ZERO, abs, add, gte, isPositive, isZero, round } from "@/lib/tax/decimal";
+import type { Decimal } from "@/lib/tax/decimal";
 import type { Limitation, LimitationKind } from "@/lib/tax/types";
 
 /**
@@ -137,4 +140,122 @@ export function summarizeEventIds(eventIds: string[]): string {
   const head = eventIds.slice(0, EVENT_ID_PREVIEW_COUNT).join(", ");
   const rest = eventIds.length - EVENT_ID_PREVIEW_COUNT;
   return rest > 0 ? `${head} 외 ${rest}건` : head;
+}
+
+/**
+ * 문구에서 이벤트 id를 뗀다. 엔진은 "<id>: 확인이 필요해…"처럼 id를 문장 앞에 붙여 보내는데,
+ * 사람에게 `42161:0xfb49…:log:199`는 정보가 아니라 소음이다. 추적은 거래 탭이 맡는다.
+ */
+export function stripEventIds(message: string, eventIds: readonly string[]): string {
+  let text = message;
+  for (const id of eventIds) text = text.split(id).join("");
+  return text.replace(/^[\s:,·]+/, "").replace(/\s{2,}/g, " ").trim();
+}
+
+export type LimitationGroup = { kind: LimitationKind; message: string; eventIds: string[] };
+
+/**
+ * 같은 종류·같은 문구를 한 줄로 묶고 관련 이벤트를 합친다.
+ *
+ * 제외 이벤트는 건마다 한 줄씩 오므로, 거래가 많은 지갑은 같은 문장이 수십 장 쌓인다(실지갑 50장 관측).
+ * 묶으면 "계산에서 뺌 39건" 한 줄이 된다. 순서는 첫 등장 순 — 엔진이 이미 영향 순으로 준다.
+ */
+export function groupLimitations(rows: readonly Limitation[]): LimitationGroup[] {
+  const groups = new Map<string, LimitationGroup>();
+  for (const row of rows) {
+    const message = stripEventIds(row.message, row.eventIds);
+    const key = `${row.kind}\n${message}`;
+    const group = groups.get(key);
+    if (group) {
+      for (const id of row.eventIds) if (!group.eventIds.includes(id)) group.eventIds.push(id);
+    } else {
+      groups.set(key, { kind: row.kind, message, eventIds: [...new Set(row.eventIds)] });
+    }
+  }
+  return [...groups.values()];
+}
+
+/** 화면이 그리는 한 줄. `title`은 무슨 일이 있었는지, `detail`은 어느 정도인지, `action`은 그래서 무엇을 하면 되는지. */
+export type LimitationRow = { kind: LimitationKind; title: string; detail?: string; action?: string; eventIds: string[] };
+
+type Plain = { title: string; detail?: string; action?: string };
+
+const REVIEW_TAB = "확인 필요 탭에서";
+
+/**
+ * 엔진 문구는 세무사·리포트용이라 상태값(UNKNOWN, ESTIMATED)과 용어(피아트 처분)를 그대로 쓴다.
+ * 세금 화면은 일반 사용자가 보므로 여기서 사람 말로 바꾼다. 키를 상수로 잡아 엔진 문구가 바뀌면 여기가 같이 깨진다.
+ * 매핑이 없는 문구는 그대로 보인다 — 지어내지 않는다.
+ */
+const EXCLUSION_PLAIN: Record<TaxExclusionReason, Plain> = {
+  "가격 확인 필요": { title: "거래 당시 가격을 확인하지 못했습니다.", action: `${REVIEW_TAB} 가격을 넣으면 계산에 들어갑니다.` },
+  "분류 확인 필요": { title: "어떤 거래인지(매도·이체·수령 등) 아직 정하지 못했습니다.", action: `${REVIEW_TAB} 분류를 정하면 계산에 들어갑니다.` },
+  "수량 확인 필요": { title: "수량을 확인하지 못했습니다.", action: `${REVIEW_TAB} 확인해 주세요.` },
+  "방향·분류 불일치": { title: "들어온 거래인지 나간 거래인지와 분류가 서로 맞지 않습니다.", action: `${REVIEW_TAB} 분류를 정하면 계산에 들어갑니다.` },
+};
+
+const MESSAGE_PLAIN: ReadonlyMap<string, Plain> = new Map<string, Plain>([
+  [EXCLUDED_ID_SUFFIX.trim(), { title: "확인이 필요해 계산에서 뺐습니다.", action: `${REVIEW_TAB} 정리하면 계산에 들어갑니다.` }],
+  [FX_RATE_SUFFIX.trim(), { title: "거래일의 환율을 찾지 못해 계산에서 뺐습니다." }],
+  [LIMITATION_MESSAGE.EXCHANGE_APPROXIMATION, { title: "코인끼리 바꾼 거래는 무엇을 받았는지 정보가 없어, 판 것으로 보고 계산했습니다." }],
+  [LIMITATION_MESSAGE.ESTIMATED_PRICE, { title: "일부 거래는 추정 가격으로 계산했습니다." }],
+  [LIMITATION_MESSAGE.INTERNAL_TRANSFER, { title: "내 지갑끼리 옮긴 거래는 판 것으로 보지 않았습니다." }],
+  [LIMITATION_MESSAGE.GAS_FEE, { title: "가스비는 돈으로 환산할 정보가 없어 계산에 넣지 않았습니다." }],
+  [LIMITATION_MESSAGE.DUPLICATE_ID, { title: "같은 거래가 두 번 들어와 첫 건만 계산했습니다." }],
+]);
+
+/** 원장(ledger.ts)이 내는 모양 그대로: "원장에 없는 수량 <수량> <심볼> — 취득가액 0으로…". 수량은 십진 문자열만 받는다. */
+const ZERO_BASIS_PATTERN = /^원장에 없는 수량 (\d+(?:\.\d+)?) (\S+) —/;
+
+const ZERO_BASIS_PLAIN: Plain = {
+  title: "이 지갑에 산 기록이 없는 수량을 팔았습니다.",
+  action: "그 수량은 취득가액 0원으로 계산해 이익이 실제보다 크게 잡힐 수 있습니다. 취득한 지갑을 더 연결하면 그 값으로 다시 계산합니다.",
+};
+
+/** 1 이상은 소수 둘째 자리, 그 아래는 여섯째 자리까지 — 17자리 수량은 사람에게 정보가 아니다. */
+function formatQuantity(value: Decimal): string {
+  const rounded = round(value, gte(abs(value), "1") ? 2 : 6);
+  if (isZero(rounded) && isPositive(value)) return "0.000001 미만";
+  return rounded.includes(".") ? rounded.replace(/\.?0+$/, "") : rounded;
+}
+
+function describe(group: LimitationGroup): Plain {
+  if (group.message.endsWith(EXCLUSION_SUFFIX)) {
+    const reason = group.message.slice(0, -EXCLUSION_SUFFIX.length);
+    return (EXCLUSION_PLAIN as Partial<Record<string, Plain>>)[reason] ?? { title: group.message };
+  }
+  return MESSAGE_PLAIN.get(group.message) ?? { title: group.message };
+}
+
+/**
+ * 화면용: 묶고, 사람 말로 바꾸고, 취득가액 0원 건은 심볼별 수량 합계 한 줄로 합친다.
+ *
+ * 취득가액 0원은 처분마다 한 줄(수량이 달라 묶이지 않는다)이라, 실지갑에선 ETH 0.080783951951876…
+ * 같은 줄이 다섯 장 섰다. 사용자가 알아야 할 것은 "어느 자산이 얼마나"이지 건별 17자리 수량이 아니다.
+ */
+export function plainLimitations(rows: readonly Limitation[]): LimitationRow[] {
+  const out: LimitationRow[] = [];
+  const shortfalls = new Map<string, { quantity: Decimal; count: number }>();
+  let zeroBasis: LimitationRow | null = null;
+  for (const group of groupLimitations(rows)) {
+    const shortfall = group.kind === "zero_basis" ? ZERO_BASIS_PATTERN.exec(group.message) : null;
+    if (shortfall === null) {
+      out.push({ kind: group.kind, ...describe(group), eventIds: group.eventIds });
+      continue;
+    }
+    const [, quantity, symbol] = shortfall;
+    const prev = shortfalls.get(symbol);
+    shortfalls.set(symbol, { quantity: add(prev?.quantity ?? ZERO, quantity), count: (prev?.count ?? 0) + Math.max(group.eventIds.length, 1) });
+    if (zeroBasis === null) {
+      zeroBasis = { kind: "zero_basis", ...ZERO_BASIS_PLAIN, eventIds: [] };
+      out.push(zeroBasis);
+    }
+    for (const id of group.eventIds) if (!zeroBasis.eventIds.includes(id)) zeroBasis.eventIds.push(id);
+  }
+  if (zeroBasis !== null) {
+    zeroBasis.detail = [...shortfalls]
+      .map(([symbol, { quantity, count }]) => `${symbol} ${formatQuantity(quantity)}${count > 1 ? ` (${count}건)` : ""}`)
+      .join(" · ");
+  }
+  return out;
 }

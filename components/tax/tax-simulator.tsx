@@ -1,6 +1,6 @@
 "use client";
 
-import { summarizeEventIds } from "@/lib/tax/limitations";
+import { plainLimitations } from "@/lib/tax/limitations";
 import Link from "next/link";
 import { useState } from "react";
 import { ProvenanceChip } from "@/components/ui/provenance-chip";
@@ -21,6 +21,7 @@ import type {
   ConfirmationStatus,
   JudgmentGroup,
   JudgmentRow,
+  Limitation,
   LimitationKind,
   ProfileField,
   RuleTopic,
@@ -109,14 +110,15 @@ function groupJudgments(result: TaxEstimate): GroupRow[] {
 }
 
 const LIMITATION_LABEL: Record<LimitationKind, string> = {
-  // 대시보드 탭·아래 동선이 모두 "확인 필요"라고 부른다. 여기만 다른 이름을 쓰면
-  // 같은 거래를 두 화면이 다른 말로 가리켜, 무엇을 고치러 가야 하는지가 흐려진다.
-  excluded: "확인이 필요한 거래",
-  zero_basis: "취득가액 0으로 계산",
-  approximation: "근사",
+  // 섹션 제목이 대시보드 탭과 같은 "확인이 필요한 거래"다. 배지는 그 안에서 "계산이 무엇을 했는지"만
+  // 말한다 — 제목과 같은 말을 배지에 또 쓰면 한 화면에 같은 문구가 줄마다 반복된다.
+  excluded: "계산에서 뺌",
+  zero_basis: "취득가액 0원으로 계산",
+  approximation: "근사 계산",
   not_reflected: "반영 안 함",
   other: "그 밖의 한계",
 };
+
 
 const LIMITATION_STYLE: Record<LimitationKind, string> = {
   excluded: "bg-amber-100 text-amber-900",
@@ -125,6 +127,54 @@ const LIMITATION_STYLE: Record<LimitationKind, string> = {
   not_reflected: "bg-zinc-100 text-zinc-700",
   other: "bg-zinc-100 text-zinc-700",
 };
+
+/**
+ * 확인이 필요한 거래 — 계산이 못 한 일을 사람이 읽을 수 있게.
+ *
+ * 엔진은 제외 이벤트마다 한 줄씩(id 포함) 보낸다. 그대로 그리면 같은 문장이 수십 장 쌓이고 카드마다
+ * 72자 id가 두 번 찍힌다(실지갑 50장 관측). 종류·문구로 묶어 건수를 앞세우고, id는 떼고,
+ * "그래서 어떻게"를 한 줄 더한다. 얼마나 달라지는지는 계산하지 않았으므로 금액은 말하지 않는다.
+ */
+function LimitationSection({ limitations }: { limitations: Limitation[] }) {
+  const rows = plainLimitations(limitations);
+  const eventCount = new Set(rows.flatMap((row) => row.eventIds)).size;
+  return (
+    <section className="mt-6" aria-label="확인이 필요한 거래">
+      <div className="flex items-baseline justify-between gap-3">
+        <h3 className="font-bold text-zinc-900">확인이 필요한 거래</h3>
+        {eventCount > 0 ? <span className="shrink-0 text-sm font-semibold text-zinc-700 tabular-nums">{eventCount}건</span> : null}
+      </div>
+      <p className="mt-1 text-sm text-zinc-500">
+        정리하면 계산이 더 정확해집니다. 영향이 큰 것부터 보였고, 얼마나 달라지는지는 계산하지 않아 금액으로 말하지 않습니다.
+      </p>
+      <ul className="mt-2 grid gap-2">
+        {rows.map((row, index) => (
+          // 그리드 아이템은 min-width:auto라 띄어쓰기 없는 긴 토큰이 있으면 카드가 컬럼 밖으로 자란다 — min-w-0로 바닥을 없앤다.
+          <li key={`${row.kind}-${index}`} className="min-w-0 rounded-card border border-zinc-200 bg-white p-3 shadow-card">
+            <div className="flex items-center justify-between gap-2">
+              <span className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${LIMITATION_STYLE[row.kind]}`}>
+                {LIMITATION_LABEL[row.kind]}
+              </span>
+              {row.eventIds.length > 0 ? (
+                <span className="shrink-0 text-sm font-semibold text-zinc-900 tabular-nums">{row.eventIds.length}건</span>
+              ) : null}
+            </div>
+            <p className="mt-1 text-sm leading-6 wrap-anywhere text-zinc-700">{row.title}</p>
+            {row.detail ? <p className="text-sm leading-6 wrap-anywhere text-zinc-900">{row.detail}</p> : null}
+            {row.action ? <p className="mt-1 text-xs leading-5 text-zinc-500">{row.action}</p> : null}
+          </li>
+        ))}
+      </ul>
+      <Link
+        href="/dashboard?tab=review"
+        className="mt-2 flex items-center justify-between gap-3 rounded-card border border-zinc-200 bg-white p-3 text-sm text-zinc-700 shadow-card"
+      >
+        <span>확인 필요 탭에서 정리하기</span>
+        <span className="shrink-0 font-semibold text-primary-600 underline">바로가기</span>
+      </Link>
+    </section>
+  );
+}
 
 /**
  * 이 국가가 쓰는 입력만 살린다.
@@ -629,45 +679,10 @@ export function TaxSimulator({
             </section>
           ) : null}
 
-          {/* 셀 것이 없는 기간에는 흔들 답 자체가 없다. 과거 매수의 가스비 경고를
+          {/* 셀 것이 없는 기간에는 확인할 거래도 없다. 과거 매수의 가스비 경고를
               현재 답의 영향 요인처럼 보이면 거짓이다. 확인 필요한 제외 이벤트는
               위의 배너가 건수·동선과 함께 계속 알린다. */}
-          {!hasNothingToCompute && result.limitations.length > 0 ? (
-            <section className="mt-6" aria-label="흔들리는 것">
-              <h3 className="font-bold text-zinc-900">이 답이 흔들리는 지점</h3>
-              <p className="mt-1 text-sm text-zinc-500">
-                답에 영향이 큰 순서입니다. 얼마나 달라지는지는 계산하지 않았으므로 금액으로 말하지 않습니다.
-              </p>
-              <ul className="mt-2 grid gap-2">
-                {result.limitations.map((limitation, index) => (
-                  <li
-                    key={`${limitation.kind}-${index}`}
-                    // 그리드 아이템은 min-width:auto라, 이벤트 id처럼 띄어쓰기 없는 긴 토큰이 있으면 카드가 컬럼 밖으로 자란다.
-                    // min-w-0로 그 바닥을 없애고, 본문은 어디서든 꺾이게(wrap-anywhere) 둔다.
-                    className="min-w-0 rounded-card border border-zinc-200 bg-white p-3 shadow-card"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${LIMITATION_STYLE[limitation.kind]}`}>
-                        {LIMITATION_LABEL[limitation.kind]}
-                      </span>
-                      {limitation.eventIds.length > 0 ? (
-                        <span className="min-w-0 break-all text-xs text-zinc-400">{summarizeEventIds(limitation.eventIds)}</span>
-                      ) : null}
-
-                    </div>
-                    <p className="mt-1 text-sm leading-6 wrap-anywhere text-zinc-700">{limitation.message}</p>
-                  </li>
-                ))}
-              </ul>
-              <Link
-                href="/dashboard?tab=review"
-                className="mt-2 flex items-center justify-between gap-3 rounded-card border border-zinc-200 bg-white p-3 text-sm text-zinc-700 shadow-card"
-              >
-                <span>확인 필요 거래에서 바로잡기</span>
-                <span className="shrink-0 font-semibold text-primary-600 underline">확인 필요로</span>
-              </Link>
-            </section>
-          ) : null}
+          {!hasNothingToCompute && result.limitations.length > 0 ? <LimitationSection limitations={result.limitations} /> : null}
 
           {/* 셀 것이 없다면서 0.00 줄을 늘어놓으면 사용자가 의미를 찾느라 헤맨다. */}
           {!hasNothingToCompute ? (
@@ -756,7 +771,7 @@ export function TaxSimulator({
           <details className="mt-4 rounded-card border border-zinc-200 bg-white p-4 shadow-card" aria-label="계산 근거">
             <summary className="cursor-pointer font-bold text-zinc-900 marker:text-zinc-400">계산 근거와 가정</summary>
             <ul className="mt-3 list-disc pl-5 text-sm text-zinc-600">
-              {/* 한계는 위 "흔들리는 지점"이 이미 말했다. 여기서 또 말하면
+              {/* 한계는 위 "확인이 필요한 거래"가 이미 말했다. 여기서 또 말하면
                   같은 문장이 두 곳에 떠서 어느 쪽이 최신인지 알 수 없다. */}
               {ruleNotes.map((note) => <li key={note}>{note}</li>)}
             </ul>

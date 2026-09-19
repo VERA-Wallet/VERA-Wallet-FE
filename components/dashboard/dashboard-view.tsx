@@ -1183,7 +1183,7 @@ export function DashboardView({ countryCode, provenance = "mock" }: { countryCod
   // 판정을 다시 계산하는 중이면 옛 estimate로 손익을 단정하지 않는다 — 카드가 두 이야기를 하지 않도록 보류한다.
   const headline = judgmentsPending || estimate === undefined ? undefined : estimateHeadline(estimate);
   const headlineCurrency = estimate?.currency ?? summaryFresh.data?.currency ?? "KRW";
-  // 신뢰도 칩(P1-9)도 같은 estimate에서 파생한다 — 세금 화면 "흔들리는 지점"과 같은 소스를 압축해 보인다.
+  // 신뢰도 칩(P1-9)도 같은 estimate에서 파생한다 — 세금 화면 "확인이 필요한 거래"과 같은 소스를 압축해 보인다.
   const confidence = headline === undefined || estimate === undefined ? undefined : estimateConfidence(estimate);
   // 지갑을 고르면 헤더 기간도 그 지갑 것이어야 한다 — 선은 좁아졌는데 기간만 전체를 말하면
   // 한 화면이 두 기간을 동시에 말한다. 고르지 않았을 때는 서버 요약의 기간을 그대로 쓴다:
@@ -1339,7 +1339,7 @@ export function DashboardView({ countryCode, provenance = "mock" }: { countryCod
             신고에 쓸 수 없습니다.
           </p>
         ) : null}
-        {/* 신뢰도 칩(P1-9) — 세금 화면 "흔들리는 지점"과 같은 estimate에서 파생한 건수를 헤드라인 옆에 압축한다.
+        {/* 신뢰도 칩(P1-9) — 세금 화면 "확인이 필요한 거래"과 같은 estimate에서 파생한 건수를 헤드라인 옆에 압축한다.
             문구·건수는 하드코딩하지 않는다. 흔들릴 게 없으면(정상) 칩을 달지 않는다 — 없는 문제를 만들지 않기 위해서다.
             색만으로 구분하지 않도록 각 칩은 뜻과 건수를 글자로 함께 말한다. */}
         {confidence !== undefined && hasConfidenceSignal(confidence) ? (

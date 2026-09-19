@@ -196,8 +196,8 @@ describe("TaxSimulator", () => {
     expect(ports.estimate.mock.calls.at(-1)?.[0].source).toBe("wallet");
 
     // 지갑 경로만 만들 수 있는 파생 한계가 실제로 도달한다.
-    const shaky = await screen.findByLabelText("흔들리는 것");
-    expect(shaky.textContent).toContain("계산에서 제외했습니다");
+    const shaky = await screen.findByLabelText("확인이 필요한 거래");
+    expect(shaky.textContent).toContain("계산에서 뺌");
     expect(shaky.textContent).toContain("가스비는");
   });
 
@@ -244,13 +244,13 @@ describe("TaxSimulator 제외 배너", () => {
     // 흔들리는 지점이 계산 내역 뒤로 밀리면 신뢰도보다 세부가 먼저 오는 화면이 된다.
     // 판정 행과 한계가 모두 있는 상태여야 순서를 잴 수 있다.
     await renderWithWallet(createNormalizedEventFixtures(FIXTURE_TAX_YEAR));
-    await screen.findByLabelText("흔들리는 것");
+    await screen.findByLabelText("확인이 필요한 거래");
     await screen.findByLabelText("판정 그룹");
 
     const order = [
       screen.getByTestId("estimated-charge"),
       screen.getByLabelText("판정 그룹"),
-      screen.getByLabelText("흔들리는 것"),
+      screen.getByLabelText("확인이 필요한 거래"),
       screen.getByLabelText("계산 내역"),
       screen.getByText("계산 조건 바꾸기"),
     ];
@@ -281,15 +281,22 @@ describe("TaxSimulator 제외 배너", () => {
       { ...base, id: "estimated", price_status: "ESTIMATED" },
       { ...base, id: "sold", classification: "SEND", direction: "OUT", user_override: null },
     ]);
-    const shaky = await screen.findByLabelText("흔들리는 것");
+    const shaky = await screen.findByLabelText("확인이 필요한 거래");
     const grounds = screen.queryByLabelText("계산 근거");
 
     const shakyText = shaky.textContent ?? "";
     const groundsText = grounds?.textContent ?? "";
-    for (const sentence of ["계산에서 제외했습니다", "추정가(ESTIMATED)", "가스비는"]) {
+    // 엔진 문구(왼쪽)는 사람 말(오른쪽)로 바뀌어 한계 패널에만 뜬다. 계산 근거에는 어느 쪽도 다시 뜨지 않는다.
+    for (const [raw, plain] of [
+      ["계산에서 제외했습니다", "거래 당시 가격을 확인하지 못했습니다."],
+      ["추정가(ESTIMATED)", "추정 가격으로 계산했습니다."],
+      ["법정통화 환산 정보가 없어", "가스비는 돈으로 환산할 정보가 없어"],
+    ]) {
       // 문구가 사라져도 통과하던 조건부 검사를 없앤다.
-      expect(shakyText, sentence).toContain(sentence);
-      expect(groundsText, sentence).not.toContain(sentence);
+      expect(shakyText, plain).toContain(plain);
+      expect(shakyText, raw).not.toContain(raw);
+      expect(groundsText, raw).not.toContain(raw);
+      expect(groundsText, plain).not.toContain(plain);
     }
   });
 
@@ -301,12 +308,14 @@ describe("TaxSimulator 제외 배너", () => {
       { ...base, id: "estimated", price_status: "ESTIMATED" },
       { ...base, id: "sold", classification: "SEND", direction: "OUT", user_override: null },
     ]);
-    const section = await screen.findByLabelText("흔들리는 것");
+    const section = await screen.findByLabelText("확인이 필요한 거래");
 
-    expect(section.textContent).toContain("이 답이 흔들리는 지점");
+    expect(section.textContent).toContain("확인이 필요한 거래");
+    // 이벤트 id는 사람에게 소음이다 — 떼고 건수로 말한다.
+    expect(section.textContent).not.toContain("no-price");
     // 확인이 필요해 답에서 빠진 것이 근사보다 먼저 온다 — 영향 순.
     const labels = [...section.querySelectorAll("li span:first-child")].map((node) => node.textContent);
-    expect(labels.indexOf("확인이 필요한 거래")).toBeLessThan(labels.indexOf("근사"));
+    expect(labels.indexOf("계산에서 뺌")).toBeLessThan(labels.indexOf("근사 계산"));
     // 얼마나 달라지는지는 계산하지 않았다. 금액을 쓰면 지어낸 추정이 된다.
     expect(section.textContent).not.toMatch(/[€$₩][\d,]/);
     // 고치러 갈 동선이 있다.
@@ -1056,7 +1065,7 @@ describe("세금 탭이 답 우선 3계층인가", () => {
     // 깨끗한 시나리오에서는 한계 패널 자체가 없어야 한다. 빈 패널을 띄우면 없는 불안을 만든다.
     await renderSimulator();
     await screen.findByText("독일 · 2025");
-    expect(screen.queryByLabelText("흔들리는 것")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("확인이 필요한 거래")).not.toBeInTheDocument();
   });
 
   it("재조회 중에는 옛 금액을 새 조건의 답인 척하지 않는다", async () => {
