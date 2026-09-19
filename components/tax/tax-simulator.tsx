@@ -3,7 +3,7 @@
 import { summarizeEventIds } from "@/lib/tax/limitations";
 import Link from "next/link";
 import { useState } from "react";
-import { MockProvenanceChip } from "@/components/ui/mock-provenance-chip";
+import { ProvenanceChip } from "@/components/ui/provenance-chip";
 import { AMOUNT_KIND_LABEL, GROUP_SHORT_LABEL, JudgmentBadge } from "@/components/ui/judgment-badge";
 import { formatFiat } from "@/lib/format";
 import { halfOpenPeriodLabel } from "@/lib/period";
@@ -384,7 +384,7 @@ export function TaxSimulator({
           ) : null}
         </div>
         {/* 배지는 계산 입력의 출처를 말한다. 실 BE 스냅샷(live)으로 계산한 답에 mock 배지를 붙이면 거짓이 된다. */}
-        {result?.provenance === "mock" ? <MockProvenanceChip /> : null}
+        {result ? <ProvenanceChip provenance={result.provenance} /> : null}
       </header>
 
       {/* 지갑 미연결 동안 상시 노출한다 — 가정 배너와 같은 원칙: 답 옆에 그 사실이 계속 있어야 한다. */}

@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 
 import { BottomSheet } from "@/components/ui/bottom-sheet";
 import { ChainIcon } from "@/components/ui/chain-icon";
-import { MockProvenanceChip } from "@/components/ui/mock-provenance-chip";
+import { ProvenanceChip } from "@/components/ui/provenance-chip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { WalletMark } from "@/components/wallet/wallet-mark";
 import { chainLabel, formatFiat, shortHash } from "@/lib/format";
@@ -57,7 +57,7 @@ export function WalletsList(): React.JSX.Element {
           </p>
           {data ? (
             <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-400">
-              {holdings.data?.provenance === "mock" ? <MockProvenanceChip /> : null}
+              {holdings.data ? <ProvenanceChip provenance={holdings.data.provenance} /> : null}
               <span>
                 {holdings.data?.provenance === "mock" ? "데모 예시 데이터(USD) 기준" : `온체인 잔액 × DexScreener 시세 · ${formatAsOf(data.asOf)} 기준`}
                 {wallets.data && wallets.data.wallets.length > 1 ? ` · 지갑 ${wallets.data.wallets.length}개 합산` : ""}

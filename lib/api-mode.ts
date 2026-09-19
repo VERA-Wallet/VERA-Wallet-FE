@@ -23,6 +23,23 @@ export function isMockApiMode(): boolean {
 }
 
 /**
+ * 화면 배지용 데이터 출처. BE 응답에 provenance가 없는 표면(대시보드 요약·앵커 증명·지갑 연결)이
+ * "무엇을 보고 있는지"를 말하기 위해 서버 페이지가 계산해 내려준다. 응답에 provenance가 있으면 그쪽이 우선이다.
+ */
+export function apiProvenance(): "mock" | "live" {
+  return isMockApiMode() ? "mock" : "live";
+}
+
+/**
+ * 신원인증(모바일신분증) 출처. FE 인증창이 "했다 치고"(NEXT_PUBLIC_OMNIONE_CX_MOCK) 모드이거나 API가 mock이면 mock.
+ * BE의 IDENTITY_PROVIDER=mock은 여기서 보이지 않는다 — 그 경우 FE는 진짜 인증창을 띄우지만 BE가 토큰을 검증하지
+ * 않으므로, 실모드 전환 때는 두 스위치를 함께 꺼야 한다(.env.example 참고).
+ */
+export function identityProvenance(): "mock" | "live" {
+  return isMockApiMode() || process.env.NEXT_PUBLIC_OMNIONE_CX_MOCK === "true" ? "mock" : "live";
+}
+
+/**
  * BACKEND_ORIGIN 검증/정규화의 순수 함수. Slice 5에서 `backendOrigin()`과 instrumentation의
  * fail-closed 판정에 배선된다. 지금(Slice 0)은 순수 함수로만 추가하며 어떤 런타임 경로에도 배선하지 않는다
  * — `backendOrigin()`의 외부 관측 동작은 무변경이다.

@@ -6,7 +6,8 @@ import { useEffect, useMemo, useState } from "react";
 
 import { BottomSheet } from "@/components/ui/bottom-sheet";
 import { Card } from "@/components/ui/card";
-import { MockProvenanceChip } from "@/components/ui/mock-provenance-chip";
+import { ProvenanceChip } from "@/components/ui/provenance-chip";
+import type { Provenance } from "@/lib/http/envelope";
 import { anchorProofProvider, eventRepository, summaryProvider, taxEngine, taxEvidenceProvider } from "@/lib/composition-root.client";
 import { collectAllEvents } from "@/lib/export/collect";
 import { FILING_LINE_SPECS, buildFilingSummary, createReportLedgerCsv, filingRow } from "@/lib/export/report";
@@ -49,7 +50,8 @@ function download(data: BlobPart, type: string, filename: string) {
  */
 const REPORT_LINES = FILING_LINE_SPECS.filter((spec) => spec.role !== "note");
 
-export function ExportView({ countryCode }: { countryCode?: string } = {}) {
+/** `provenance`는 앵커 증명 카드용(응답에 출처가 없다). 리포트 카드는 estimate가 실어 온 출처를 쓴다. */
+export function ExportView({ countryCode, provenance = "mock" }: { countryCode?: string; provenance?: Provenance } = {}) {
   const [events, setEvents] = useState<NormalizedEvent[]>([]);
   const [summary, setSummary] = useState<SummaryDTO | null>(null);
   const [proof, setProof] = useState<Awaited<ReturnType<typeof anchorProofProvider.getProof>>>(null);
@@ -338,7 +340,7 @@ export function ExportView({ countryCode }: { countryCode?: string } = {}) {
                 <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">잠정</span>
               )}
             </div>
-            <MockProvenanceChip />
+            <ProvenanceChip provenance={estimate.provenance} />
           </div>
           <dl className="mt-4">
             {REPORT_LINES.map((line) => {
@@ -690,7 +692,7 @@ export function ExportView({ countryCode }: { countryCode?: string } = {}) {
 
       {/* 7. 앵커링 증명 */}
       {proof && <Card className="mt-5">
-        <div data-surface="anchor-proof" className="flex items-center justify-between gap-3"><p className="font-semibold text-zinc-900">앵커링 증명</p><MockProvenanceChip /></div>
+        <div data-surface="anchor-proof" className="flex items-center justify-between gap-3"><p className="font-semibold text-zinc-900">앵커링 증명</p><ProvenanceChip provenance={provenance} /></div>
         <dl className="mt-4 space-y-2 text-sm text-zinc-600"><div><dt className="inline font-medium text-zinc-900">거래 </dt><dd className="inline font-mono">{shortHash(proof.tx_hash)}</dd></div><div><dt className="inline font-medium text-zinc-900">Merkle root </dt><dd className="inline font-mono">{shortHash(proof.merkle_root)}</dd></div><div><dt className="inline font-medium text-zinc-900">기록 시각 </dt><dd className="inline">{formatDateTime(proof.anchored_at)}</dd></div></dl>
         {/* 탐색기가 없는 체인에서는 링크를 그리지 않는다 — 누르면 401이 뜨는 버튼은 증명이 아니다. */}
         {proof.explorer_url && <a className="mt-4 inline-block text-sm font-semibold text-primary-600 underline" href={proof.explorer_url} rel="noreferrer" target="_blank">탐색기에서 보기</a>}

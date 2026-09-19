@@ -3,6 +3,7 @@ import { getSessionCookieHeaderForEventReader, requireCompletedOnboarding, requi
 import { warmUpBeEventSync } from "@/lib/adapters/http/event-repository.server";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
+import { apiProvenance } from "@/lib/api-mode";
 import { ImportProgressGate } from "@/components/dashboard/import-progress-gate";
 
 // searchParams를 optional로 두는 이유: Next는 항상 넘기지만, 가드 테스트는 이 함수를 인자 없이 부른다.
@@ -30,12 +31,12 @@ export default async function DashboardPage({
       <>
         {/* 모달이 대시보드 위에 뜨는 동안에도 본문은 정상 렌더된다 — 백그라운드로 보내면 곧바로 쓸 수 있어야 한다. */}
         {importing ? <ImportProgressGate walletAddress={completed.walletAddress} /> : null}
-        <DashboardView countryCode={completed.countryCode} />
+        <DashboardView countryCode={completed.countryCode} provenance={apiProvenance()} />
       </>
     );
   }
 
   // 지갑 미연결(DID-only): 데이터 훅을 붙이지 않는 껍데기 상태 + "데이터 불러오기" CTA.
   // 여기서 이벤트를 조회하면 bound-wallet 404가 나므로, 껍데기는 네트워크를 건드리지 않는다.
-  return <DashboardEmptyState countryCode={session.countryCode} />;
+  return <DashboardEmptyState countryCode={session.countryCode} provenance={apiProvenance()} />;
 }

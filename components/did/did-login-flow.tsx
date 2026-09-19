@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
-import { MockProvenanceChip } from "@/components/ui/mock-provenance-chip";
+import { ProvenanceChip } from "@/components/ui/provenance-chip";
+import type { Provenance } from "@/lib/http/envelope";
 import { authClient as compositionAuthClient } from "@/lib/composition-root.client";
 import { closeCxLogin, cxLoginEnabled, openCxLogin } from "@/lib/omnione/oacx";
 import type { AuthClient, DidPresentation } from "@/lib/ports/auth-client";
@@ -16,7 +17,7 @@ const COUNTRY_LABEL: Record<Country, string> = { KR: "한국", US: "미국", UK:
 // 목 인증 제공자의 왕복을 흉내내는 최소 지연. 사용자를 세우기 위한 연출이 아니라 상태 전이를 보이게 하는 용도다.
 const PRESENTATION_DELAY_MS = 600;
 
-export function DidLoginFlow({ authClient = compositionAuthClient }: { authClient?: AuthClient }) {
+export function DidLoginFlow({ authClient = compositionAuthClient, provenance = "mock" }: { authClient?: AuthClient; provenance?: Provenance }) {
   const router = useRouter();
   const [country, setCountry] = useState<Country>("KR");
   const [state, setState] = useState<FlowState>("idle");
@@ -82,7 +83,7 @@ export function DidLoginFlow({ authClient = compositionAuthClient }: { authClien
     <Card className="space-y-4">
       <div data-surface="did-login" className="flex items-center justify-between">
         <p className="font-semibold text-zinc-900">거주국 선택</p>
-        <MockProvenanceChip />
+        <ProvenanceChip provenance={provenance} />
       </div>
       <div className="flex gap-2" role="group" aria-label="거주국 선택">
         {(["KR", "US", "UK", "DE"] as const).map((option) => (

@@ -24,7 +24,8 @@ import { INCOME_KIND_LABEL } from "@/components/ui/income-kind-badge";
 import { halfOpenPeriodLabel, isGroundedPeriod, isoDay, periodLabel } from "@/lib/period";
 import { fresh, freshNotice, type FreshState } from "@/lib/queries/fresh";
 import { AMOUNT_KIND_LABEL, GROUP_SHORT_LABEL, JudgmentBadge } from "@/components/ui/judgment-badge";
-import { MockProvenanceChip } from "@/components/ui/mock-provenance-chip";
+import { ProvenanceChip } from "@/components/ui/provenance-chip";
+import type { Provenance } from "@/lib/http/envelope";
 import { SummaryCard } from "@/components/ui/summary-card";
 import { useHideBalances } from "@/lib/privacy/use-hide-balances";
 import { assetLabel, assetTicker, chainLabel, explorerTxUrl, formatDate, formatDateTime, formatFiat, formatFiatExact, formatSignedTokenAmount, formatTokenAmount, nativeSymbol, shortHash, UTC_NOTICE } from "@/lib/format";
@@ -913,7 +914,8 @@ function EventRow({
   );
 }
 
-export function DashboardView({ countryCode }: { countryCode?: string }) {
+/** `provenance`는 서버 페이지가 API 모드에서 계산해 준다 — 이 화면의 요약·목록 응답에는 출처가 실려 오지 않는다. */
+export function DashboardView({ countryCode, provenance = "mock" }: { countryCode?: string; provenance?: Provenance }) {
   const queryClient = useQueryClient();
   // 불러오기 상태를 구독한다. 프로바이더가 없으면 "진행 중인 불러오기 없음"으로 읽히므로
   // 이 화면만 따로 렌더해도 그대로 돈다 — 원장은 불러오기와 독립적으로 존재하는 화면이다.
@@ -1227,7 +1229,7 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
           ) : null}
         </div>
         <div className="flex shrink-0 flex-col items-end gap-2">
-          <MockProvenanceChip />
+          <ProvenanceChip provenance={provenance} />
           {/* 잔액만 가린다 — 배지·건수는 확인에 필요한 사실이지 금액이 아니므로 그대로 둔다. */}
           <button
             type="button"

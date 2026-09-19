@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { requireDidSession } from "@/lib/dal";
 import { DidLoginFlow } from "@/components/did/did-login-flow";
+import { identityProvenance } from "@/lib/api-mode";
 import { OnboardingSteps } from "@/components/ui/onboarding-steps";
 
 export default async function LoginPage() {
@@ -24,7 +25,7 @@ export default async function LoginPage() {
           <OnboardingSteps current={1} />
         </div>
       </div>
-      <DidLoginFlow />
+      <DidLoginFlow provenance={identityProvenance()} />
     </main>
   );
 }

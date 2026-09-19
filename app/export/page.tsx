@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getSessionCookieHeaderForEventReader, requireCompletedOnboarding, requireDidSession } from "@/lib/dal";
 import { warmUpBeEventSync } from "@/lib/adapters/http/event-repository.server";
 import { ExportView } from "@/components/export/export-view";
+import { apiProvenance } from "@/lib/api-mode";
 
 export default async function ExportPage() {
   const completed = await requireCompletedOnboarding();
@@ -12,7 +13,7 @@ export default async function ExportPage() {
     const warmUp = await warmUpBeEventSync(await getSessionCookieHeaderForEventReader());
     if (warmUp.status === "failed") console.warn("BE 이벤트 warm-up이 실패했다.", warmUp);
     // 거주국은 DID 클레임에서 확정됐다 — 리포트가 귀속연도·룰셋을 서버에서 받아 estimate를 채운다.
-    return <ExportView countryCode={completed.countryCode} />;
+    return <ExportView countryCode={completed.countryCode} provenance={apiProvenance()} />;
   }
 
   const didSession = await requireDidSession();

@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { MockProvenanceChip } from "@/components/ui/mock-provenance-chip";
+import { ProvenanceChip } from "@/components/ui/provenance-chip";
+import type { Provenance } from "@/lib/http/envelope";
 import { SummaryCard } from "@/components/ui/summary-card";
 
 /**
@@ -10,7 +11,7 @@ import { SummaryCard } from "@/components/ui/summary-card";
  * 데이터를 불러오는 단 하나의 행동(지갑 연결)으로 유도한다. 데이터 훅은 호출하지 않는다 —
  * 지갑이 없으면 /api/events가 bound-wallet 404를 주므로, 껍데기는 네트워크를 건드리지 않는다.
  */
-export function DashboardEmptyState({ countryCode }: { countryCode?: string }) {
+export function DashboardEmptyState({ countryCode, provenance = "mock" }: { countryCode?: string; provenance?: Provenance }) {
   return (
     <main className="min-h-dvh px-5 py-8">
       <header data-surface="dashboard-summary" className="flex items-start justify-between gap-3">
@@ -21,7 +22,7 @@ export function DashboardEmptyState({ countryCode }: { countryCode?: string }) {
             {countryCode ? `거주국 ${countryCode} 클레임이 확인된 상태입니다.` : "거주국 클레임이 확인된 상태입니다."}
           </p>
         </div>
-        <MockProvenanceChip />
+        <ProvenanceChip provenance={provenance} />
       </header>
 
       {/* 데이터를 불러오는 단일 행동. 지갑 연결 페이지로 이동한다. */}
