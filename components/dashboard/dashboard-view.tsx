@@ -21,7 +21,7 @@ import { ChipScroller } from "@/components/ui/chip-scroller";
 import { AssetLogo, SplitAssetLogo } from "@/components/ui/asset-logo";
 import { CLASSIFICATION_LABEL, ClassificationBadge } from "@/components/ui/classification-badge";
 import { INCOME_KIND_LABEL } from "@/components/ui/income-kind-badge";
-import { isGroundedPeriod, isoDay, periodLabel } from "@/lib/period";
+import { halfOpenPeriodLabel, isGroundedPeriod, isoDay, periodLabel } from "@/lib/period";
 import { fresh, freshNotice, type FreshState } from "@/lib/queries/fresh";
 import { AMOUNT_KIND_LABEL, GROUP_SHORT_LABEL, JudgmentBadge } from "@/components/ui/judgment-badge";
 import { MockProvenanceChip } from "@/components/ui/mock-provenance-chip";
@@ -963,15 +963,46 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
   const [taxYear] = useTaxYear(derivedTaxYear);
   const judgments = useJudgments(countryCode ?? "KR", taxYear, referencePeriod !== null);
   const items = events.data?.items ?? [];
+
+  // ── 지갑 스코프 ──────────────────────────────────────────────────────────────
+  // 지갑 선택은 목록만 거르는 필터가 아니라 **보는 대상**을 바꾼다. 그래서 다른 모든 파생값보다 앞에 둔다 —
+  // 기간·그래프·건수·목록이 같은 거래 집합에서 나와야 한 화면이 한 이야기를 한다. 목록만 거르던 때는
+  // "이 지갑"을 골라도 위의 누적 순유입 선과 기간은 전체 지갑을 그려 두 이야기가 겹쳤다.
+  //
+  // 세금 금액(아래 headline·estimate)은 이 스코프를 따르지 않는다. 한국처럼 거주자별 총평균법을 쓰는 나라는
+  // 한 사람의 **모든** 지갑을 묶어 단가를 내므로, 지갑별로 쪼갠 값은 실제 신고값이 아니다 —
+  // 지어내는 대신 무엇을 합산한 값인지 카드 아래에서 밝힌다.
+  //
+  // 선택지와 건수는 스코프를 걸기 **전** 원장에서 센다. 스코프 안에서 세면 하나를 고르는 순간 다른 지갑이
+  // 목록에서 사라져 되돌아갈 문이 없어진다.
+  const walletAddressOf = (record: EventRecord) => record.event.wallet_address.toLowerCase();
+  const walletCounts = new Map<string, number>();
+  for (const record of items) {
+    const address = walletAddressOf(record);
+    walletCounts.set(address, (walletCounts.get(address) ?? 0) + 1);
+  }
+  // 지갑이 하나뿐이면 고를 것이 없다 — 선택지 하나짜리 드롭다운은 자리만 차지한다(체인 칩과 같은 규칙).
+  // 거래가 있는 지갑만 나온다: 등록만 하고 거래가 없는 지갑은 이벤트에 흔적이 없어 여기서 알 수 없다.
+  const walletFilters = walletCounts.size > 1
+    ? [...walletCounts.entries()].sort((left, right) => right[1] - left[1])
+    : [];
+  const walletTotal = items.length;
+  // 원장에 없는 지갑이 선택에 남아 있으면 빈 화면만 보이고 사용자는 이유를 알 수 없다 — 그때는 놓는다.
+  const activeWallet = wallet !== null && walletCounts.has(wallet) ? wallet : null;
+  const scopedItems = activeWallet === null
+    ? items
+    : items.filter((record) => walletAddressOf(record) === activeWallet);
+
   // 프리셋("최근 1개월")은 벽시계가 아니라 **받아온 거래의 끝**을 기준으로 센다 —
   // 벽시계로 세면 오래된 지갑·데모에서 모든 버튼이 빈 기간을 가리킨다.
-  const periodWindow = resolvePeriod(periodSelection, dataBounds(items.map((item) => item.event.block_timestamp)));
+  // 기준은 스코프 안의 거래다: 2021년부터 쓴 지갑과 지난달 만든 지갑이 같은 "전체"를 말하면 안 된다.
+  const periodWindow = resolvePeriod(periodSelection, dataBounds(scopedItems.map((item) => item.event.block_timestamp)));
   // 고르지 않았거나 기준이 없으면 좁힐 근거가 없다. 그때 화면은 예전처럼 전부를 보인다.
   const periodNarrowed = !isDefaultPeriod(periodSelection) && periodWindow !== null;
   // 레퍼런스 관례대로 최신이 위. 원본 배열은 건드리지 않는다 — 누적 그래프는 시간순으로 받아야 한다.
   // 페이지를 끝까지 이어 받은 뒤 정렬하므로 "최신"이 페이지 경계에 좌우되지는 않지만,
   // 목록이 잘렸을 때 이 순서가 전부는 아니라는 사실은 아래 잘림 고지가 말한다.
-  const orderedItems = [...items].sort(
+  const orderedItems = [...scopedItems].sort(
     (left, right) => Date.parse(right.event.block_timestamp) - Date.parse(left.event.block_timestamp),
   );
   // 같은 id가 두 번 이상 나오면 두 번째부터는 판정을 붙일 수 없다 — 확인 필요로 올린다.
@@ -1082,11 +1113,6 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
   };
   const matchesChain = (item: AnnotatedRecord, chain: number | null) =>
     chain === null || item.record.event.chain_id === chain;
-  // 주소 비교는 대소문자를 무시한다 — 체크섬 표기와 소문자 표기가 같은 지갑을 두 개로 갈라 놓으면
-  // 드롭다운에 같은 주소가 두 번 뜨고 어느 쪽을 골라도 절반만 보인다.
-  const walletOf = (item: AnnotatedRecord) => item.record.event.wallet_address.toLowerCase();
-  const matchesWallet = (item: AnnotatedRecord, target: string | null) =>
-    target === null || walletOf(item) === target;
   // 연도는 날짜 머리글과 같은 판정을 쓴다(`isoDay`) — 달력에 없는 날짜·깨진 오프셋은 연도도 없다.
   // 그런 건은 "날짜 미상"으로 남고 특정 연도 칩에는 잡히지 않는다.
   const yearOf = (item: AnnotatedRecord): number | null => {
@@ -1104,12 +1130,8 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
   const activeChain = chain !== null && tabItems.some((item) => matchesChain(item, chain)) ? chain : null;
   // 연도도 같은 규칙이다 — 고른 해가 이 탭에 없으면 놓는다.
   const activeYear = year !== null && tabItems.some((item) => matchesYear(item, year)) ? year : null;
-  // 지갑도 같은 규칙이다. 확인 필요 탭에 그 지갑의 거래가 없으면 선택을 유지할 근거가 없다 —
-  // 유지하면 빈 목록만 남고 사용자는 자기가 고른 지갑 때문인지 문제가 없는 건지 알 수 없다.
-  const activeWallet = wallet !== null && tabItems.some((item) => matchesWallet(item, wallet)) ? wallet : null;
   const displayedItems = tabItems.filter(
     (item) =>
-      matchesWallet(item, activeWallet) &&
       matchesChain(item, activeChain) &&
       matchesGroup(item, activeGroup) &&
       matchesYear(item, activeYear),
@@ -1134,36 +1156,25 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
   // 카드가 "판정 확인 중"인데 칩이 "취득 10"이라 하면 화면이 두 이야기를 한다.
   for (const item of judgmentsPending || judgments.isError
     ? []
-    : tabItems.filter((row) => matchesWallet(row, activeWallet) && matchesChain(row, activeChain) && matchesYear(row, activeYear))) {
+    : tabItems.filter((row) => matchesChain(row, activeChain) && matchesYear(row, activeYear))) {
     for (const key of groupsOf(item)) groupCounts.set(key, (groupCounts.get(key) ?? 0) + 1);
   }
   const groups = [...groupCounts.entries()];
   // 체인·연도 칩은 판정과 무관하게 온체인 사실이라 판정 조회 상태와 관계없이 셀 수 있다.
   const chainCounts = new Map<number, number>();
-  for (const item of tabItems.filter((row) => matchesWallet(row, activeWallet) && matchesGroup(row, activeGroup) && matchesYear(row, activeYear))) {
+  for (const item of tabItems.filter((row) => matchesGroup(row, activeGroup) && matchesYear(row, activeYear))) {
     const id = item.record.event.chain_id;
     chainCounts.set(id, (chainCounts.get(id) ?? 0) + 1);
   }
   // 체인이 하나뿐이면 고를 것이 없다 — 누를 수 없는 칩 한 줄은 자리만 차지한다.
   const chainFilters = chainCounts.size > 1 ? [...chainCounts.entries()].sort((left, right) => left[0] - right[0]) : [];
   const yearCounts = new Map<number, number>();
-  for (const item of tabItems.filter((row) => matchesWallet(row, activeWallet) && matchesChain(row, activeChain) && matchesGroup(row, activeGroup))) {
+  for (const item of tabItems.filter((row) => matchesChain(row, activeChain) && matchesGroup(row, activeGroup))) {
     const value = yearOf(item);
     if (value !== null) yearCounts.set(value, (yearCounts.get(value) ?? 0) + 1);
   }
   // 연도가 하나뿐이면 고를 것이 없다(체인 필터와 같은 규칙). 목록은 최신순이라 칩도 최신 연도가 먼저다.
   const yearFilters = yearCounts.size > 1 ? [...yearCounts.entries()].sort((left, right) => right[0] - left[0]) : [];
-  // 지갑 건수는 다른 필터를 적용한 뒤 센다(칩과 같은 규칙) — 드롭다운이 말하는 건수와 실제 목록이 어긋나면
-  // 사용자는 어느 쪽을 믿어야 할지 모른다. 거래가 있는 지갑만 나온다: 등록만 하고 거래가 없는 지갑은
-  // 이벤트에 흔적이 없어 여기서 알 수 없다(세션 계약이 지갑 목록을 내려주면 그때 합칠 자리다).
-  const walletCounts = new Map<string, number>();
-  for (const item of tabItems.filter((row) => matchesChain(row, activeChain) && matchesGroup(row, activeGroup) && matchesYear(row, activeYear))) {
-    const address = walletOf(item);
-    walletCounts.set(address, (walletCounts.get(address) ?? 0) + 1);
-  }
-  // 지갑이 하나뿐이면 고를 것이 없다 — 선택지 하나짜리 드롭다운은 자리만 차지한다(체인 칩과 같은 규칙).
-  const walletFilters = walletCounts.size > 1 ? [...walletCounts.entries()].sort((left, right) => right[1] - left[1]) : [];
-  const walletTotal = [...walletCounts.values()].reduce((sum, count) => sum + count, 0);
   const estimate = judgments.estimate;
   // 헤드라인 손익·건수는 이제 요약(이벤트 직접 집계)이 아니라 **세금 화면과 같은 estimate**에서 파생한다.
   // 그래야 같은 귀속연도에서 대시보드·세금·내보내기가 한 숫자를 말한다(P1-5).
@@ -1172,6 +1183,15 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
   const headlineCurrency = estimate?.currency ?? summaryFresh.data?.currency ?? "KRW";
   // 신뢰도 칩(P1-9)도 같은 estimate에서 파생한다 — 세금 화면 "흔들리는 지점"과 같은 소스를 압축해 보인다.
   const confidence = headline === undefined || estimate === undefined ? undefined : estimateConfidence(estimate);
+  // 지갑을 고르면 헤더 기간도 그 지갑 것이어야 한다 — 선은 좁아졌는데 기간만 전체를 말하면
+  // 한 화면이 두 기간을 동시에 말한다. 고르지 않았을 때는 서버 요약의 기간을 그대로 쓴다:
+  // 목록이 잘려도 전체 기간은 요약이 안다(목록에서 센 범위는 잘린 만큼 좁다).
+  const headerPeriodLabel = (periodNarrowed || activeWallet !== null) && periodWindow !== null
+    ? periodWindowLabel(periodWindow)
+    : period !== undefined
+      ? periodLabel(period)
+      : "기간 미정";
+
   const selected = selectedKey
     ? annotated.find((item) => item.record.event.id === selectedKey.eventId && item.occurrence === selectedKey.occurrence) ?? null
     : null;
@@ -1191,7 +1211,7 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
               고르기 전에는 요약이 말하는 기간을 그대로 보이고, 고른 뒤에는 **고른 기간**을 말한다. */}
           {period ? (
             <PeriodPicker
-              label={periodNarrowed ? periodWindowLabel(periodWindow!) : periodLabel(period)}
+              label={headerPeriodLabel}
               selection={periodSelection}
               onSelect={setPeriodSelection}
             />
@@ -1201,6 +1221,9 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
               고른 기간의 거래 {listItems.length}건
               {undatedDropped > 0 ? ` · 날짜를 모르는 ${undatedDropped}건은 빠집니다` : null}
             </p>
+          ) : activeWallet !== null ? (
+            // 기간을 좁히지 않았어도 지갑을 골랐으면 위 기간·선·건수가 그 지갑 것임을 말해야 한다.
+            <p className="mt-1 text-xs text-zinc-400">고른 지갑의 거래 {scopedItems.length}건</p>
           ) : null}
         </div>
         <div className="flex shrink-0 flex-col items-end gap-2">
@@ -1216,11 +1239,36 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
           </button>
         </div>
       </header>
+      {/* 지갑 선택. 체인·연도 칩이 목록을 좁히는 **필터**라면, 이것은 화면 전체가 무엇을 보는지 바꾸는
+          **스코프**다 — 그래서 목록 안이 아니라 그래프 위, 기간 바로 아래에 둔다. 여기서 고른 지갑은
+          아래 누적 순유입 선·기간·건수·목록에 그대로 적용된다.
+          드롭다운인 이유는 주소가 길어 칩으로 늘어놓으면 한 줄을 다 먹기 때문이다. */}
+      {walletFilters.length > 0 ? (
+        <div className="mt-4" data-surface="wallet-filter">
+          <label className="text-xs font-medium text-zinc-500" htmlFor="dashboard-wallet-filter">
+            지갑 선택하기
+          </label>
+          <select
+            id="dashboard-wallet-filter"
+            className="mt-1 w-full rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-sm font-semibold text-zinc-800"
+            value={activeWallet ?? ""}
+            onChange={(event) => setWallet(event.target.value === "" ? null : event.target.value)}
+          >
+            <option value="">전체 지갑 · {walletTotal}건</option>
+            {walletFilters.map(([address, count]) => (
+              <option key={address} value={address}>
+                {shortHash(address)} · {count}건
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
+
       {/* 이 화면은 지갑 이력이 그린 선까지만 말한다. 세금 금액·판정 기준·계산의 한계는
           세금 탭 한 곳에서만 답한다 — 두 화면이 각자 금액을 말하면 어느 쪽이 최신인지 알 수 없다. */}
       {/* 그래프의 기간 버튼은 자기 창만 바꾸지 않는다 — 헤더·목록이 함께 따라온다. */}
       <FlowChart
-        events={items.map((item) => item.event)}
+        events={scopedItems.map((item) => item.event)}
         state={eventsFresh.state}
         truncated={events.data?.truncated === true}
         hideBalances={hideBalances}
@@ -1231,7 +1279,18 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
 
       <ExchangeLinkSummary />
 
-      <section className="mt-6 grid gap-3">
+      {/* 위 그래프는 화면이 고른 기간(기본: 데이터 전체)을 그리는데, 아래 두 값은 **귀속연도 하나**의 답이다.
+          라벨 없이 나란히 두면 전체 기간 순유입과 그 해의 손익이 같은 자로 잰 숫자처럼 읽힌다
+          (실데이터에서 14억 옆에 16만이 붙었다). 귀속연도와 그 과세기간을 값 위에 못 박는다.
+          과세기간은 엔진이 준 `estimate.period`를 쓴다 — 영국 4/6~·호주 7/1~ 때문에 화면이 다시 계산하면 안 된다. */}
+      <div className="mt-6 flex items-baseline justify-between gap-3">
+        <h2 className="text-sm font-bold text-zinc-900">{taxYear}년 귀속</h2>
+        {estimate !== undefined && isGroundedPeriod(estimate.period) ? (
+          <p className="shrink-0 text-xs text-zinc-400 tabular-nums">{halfOpenPeriodLabel(estimate.period)}</p>
+        ) : null}
+      </div>
+
+      <section className="mt-2 grid gap-3">
         {/* 계산에 들어간 이벤트가 없으면 "0"은 손익이 아니라 계산할 것이 없었다는 뜻이다.
             손익은 세금 화면과 같은 estimate에서 파생한다 — 판정을 못 냈으면(headline 미정) 요약 상태를 그대로 말한다. */}
         <SummaryCard
@@ -1266,6 +1325,18 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
           // 불러오는 중이면 이 숫자는 아직 새 지갑을 모른다. 말하지 않으면 사용자는 건수가 틀렸다고 읽는다.
           note={importTracker.state.status === "running" ? "새 지갑 거래는 불러온 뒤 반영돼요" : undefined}
         />
+        {/* 위 두 값만 스코프를 따르지 않는다. 지갑별로 쪼갠 세금을 보여 주면 더 친절해 보이지만,
+            한국처럼 거주자별 총평균법을 쓰는 나라는 한 사람의 모든 지갑을 묶어 단가를 내므로
+            그 숫자는 신고값이 아니다. 지어내는 대신 무엇을 합산한 값인지 밝힌다.
+            `estimate.method`를 문장에 끼우지 않는다 — 룰셋 라벨은 "원장 집계만 수행(시행 전)"처럼
+            주어가 될 수 없는 문자열이라 끼우는 순간 비문이 된다. */}
+        {activeWallet !== null ? (
+          <p data-surface="tax-scope-note" className="text-xs leading-5 text-zinc-500">
+            위 두 값은 고른 지갑이 아니라 <span className="font-semibold text-zinc-700">전체 지갑 합산</span>{" "}
+            기준입니다. 거주국에 따라 취득가액을 지갑 전체로 묶어 산정하므로, 지갑 하나만 떼어낸 값은 그대로
+            신고에 쓸 수 없습니다.
+          </p>
+        ) : null}
         {/* 신뢰도 칩(P1-9) — 세금 화면 "흔들리는 지점"과 같은 estimate에서 파생한 건수를 헤드라인 옆에 압축한다.
             문구·건수는 하드코딩하지 않는다. 흔들릴 게 없으면(정상) 칩을 달지 않는다 — 없는 문제를 만들지 않기 위해서다.
             색만으로 구분하지 않도록 각 칩은 뜻과 건수를 글자로 함께 말한다. */}
@@ -1296,7 +1367,7 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
           <button role="tab" aria-selected={tab === "all"} type="button" className={tabClass(tab === "all")} onClick={() => setTab("all")}>
             전체 거래
             {/* 기간을 좁혔으면 배지도 그 기간의 수여야 한다 — "전체 거래 42"라 적고 5건을 보이면 둘 중 하나는 거짓이다. */}
-            <span aria-hidden="true" className="rounded-full bg-zinc-100 px-1.5 py-0.5 text-xs font-semibold text-zinc-500">{periodNarrowed ? listItems.length : items.length}</span>
+            <span aria-hidden="true" className="rounded-full bg-zinc-100 px-1.5 py-0.5 text-xs font-semibold text-zinc-500">{periodNarrowed ? listItems.length : scopedItems.length}</span>
           </button>
           <button role="tab" aria-selected={tab === "review"} type="button" className={tabClass(tab === "review")} onClick={() => setTab("review")}>
             확인 필요
@@ -1322,30 +1393,6 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
               ? `${(events.data?.spam ?? 0) > 0 ? " " : ""}형식이 맞지 않아 읽지 못한 ${events.data!.dropped}건이 있습니다.`
               : null}
           </p>
-        ) : null}
-        {/* 지갑 필터. 등록한 지갑이 여럿이면 거래가 한 목록에 섞여 "이 지갑에서 무슨 일이 있었나"를
-            볼 방법이 없다. 체인·연도가 칩인 것과 달리 드롭다운인 이유는 주소가 길어 칩으로 늘어놓으면
-            한 줄을 다 먹고, 지갑은 겹쳐 거는 필터가 아니라 **보는 대상을 바꾸는 선택**이기 때문이다.
-            체인·연도와 같은 표시 필터라 판정·요약 금액은 이 선택에 흔들리지 않는다. */}
-        {walletFilters.length > 0 ? (
-          <div className="mt-3" data-surface="wallet-filter">
-            <label className="text-xs font-medium text-zinc-500" htmlFor="dashboard-wallet-filter">
-              지갑
-            </label>
-            <select
-              id="dashboard-wallet-filter"
-              className="mt-1 w-full rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-sm font-semibold text-zinc-800"
-              value={activeWallet ?? ""}
-              onChange={(event) => setWallet(event.target.value === "" ? null : event.target.value)}
-            >
-              <option value="">전체 지갑 · {walletTotal}건</option>
-              {walletFilters.map(([address, count]) => (
-                <option key={address} value={address}>
-                  {shortHash(address)} · {count}건
-                </option>
-              ))}
-            </select>
-          </div>
         ) : null}
         {/* 연도 필터. 목록 자체는 늘 최신순이고, 연도는 정렬이 아니라 **경계**다 —
             "2025년에 무슨 일이 있었나"를 보려면 그 해만 남길 문이 있어야 한다.

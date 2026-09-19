@@ -10,10 +10,14 @@ import { TaxEngineService } from "@/lib/tax/tax-engine-service.server";
 import type { NormalizedEvent } from "@/lib/schema/normalized-event";
 
 /**
- * 지갑 필터.
+ * 지갑 스코프.
  *
  * 사용자는 지갑을 여러 개 등록할 수 있고 거래는 등록된 지갑 전체에서 합산돼 내려온다. 한 목록에 섞여
  * 있으면 "이 지갑에서 무슨 일이 있었나"를 볼 방법이 없으므로 드롭다운으로 보는 대상을 바꾼다.
+ *
+ * 이 선택은 목록만 거르는 필터가 아니라 화면 전체의 **스코프**다: 누적 순유입 그래프·헤더 기간·탭 건수가
+ * 함께 따라온다. 다만 세금 금액(예상 손익·계산 대상 이벤트)은 따라오지 않는다 — 총평균법은 한 사람의
+ * 모든 지갑을 묶어 단가를 내므로, 지갑 하나만 떼어낸 값은 신고에 쓸 수 없기 때문이다.
  *
  * 시각을 고정하는 이유는 연도 필터 파일과 같다 — 픽스처의 다음 해 배치가 실제 시계에 따라 커지고 작아지면
  * 건수 단언이 계절에 따라 다른 것을 지킨다.
@@ -112,7 +116,7 @@ describe("지갑 필터", () => {
     const { container } = renderDashboard();
     await settled(container);
 
-    const select = screen.getByLabelText("지갑") as HTMLSelectElement;
+    const select = screen.getByLabelText("지갑 선택하기") as HTMLSelectElement;
     const options = [...select.options].map((option) => option.textContent);
     expect(options[0]).toBe(`전체 지갑 · ${SPLIT.length}건`);
     expect(options).toContain(`${shortHash(WALLET_A)} · ${IN_A}건`);
@@ -124,7 +128,7 @@ describe("지갑 필터", () => {
     await settled(container);
     expect(cardsOf(container)).toHaveLength(SPLIT.length);
 
-    const select = screen.getByLabelText("지갑");
+    const select = screen.getByLabelText("지갑 선택하기");
     fireEvent.change(select, { target: { value: WALLET_B.toLowerCase() } });
     await waitFor(() => expect(cardsOf(container)).toHaveLength(IN_B));
 
@@ -138,6 +142,43 @@ describe("지갑 필터", () => {
     await waitFor(() => expect(cardsOf(container)).toHaveLength(SPLIT.length));
   });
 
+  it("그래프·기간·탭 건수가 고른 지갑을 함께 따라온다 — 목록만 좁아지면 한 화면이 두 기간을 말한다", async () => {
+    const { container } = renderDashboard();
+    await settled(container);
+
+    // 누적 순유입은 그 지갑이 실제로 주고받은 금액이다 — 지갑을 바꾸면 선도 합계도 달라져야 한다.
+    const flowLine = () => container.querySelector('[data-testid="flow-line"]')?.getAttribute("d") ?? "";
+    const flowTotal = () => container.querySelector('[data-testid="flow-total"]')?.textContent ?? "";
+    const beforeLine = flowLine();
+    const beforeTotal = flowTotal();
+    expect(beforeLine.length).toBeGreaterThan(0);
+    expect(container.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toContain(String(SPLIT.length));
+
+    fireEvent.change(screen.getByLabelText("지갑 선택하기"), { target: { value: WALLET_B.toLowerCase() } });
+
+    await waitFor(() =>
+      expect(container.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toContain(String(IN_B)),
+    );
+    // 선과 합계가 그대로면 그래프만 전체 지갑을 계속 말하는 것이다.
+    expect(flowLine()).not.toBe(beforeLine);
+    expect(flowTotal()).not.toBe(beforeTotal);
+    // 헤더는 고른 지갑의 거래 수를 말한다(기간을 좁히지 않았을 때).
+    expect(container.textContent).toContain(`고른 지갑의 거래 ${IN_B}건`);
+  });
+
+  it("세금 금액은 스코프를 따르지 않고, 무엇을 합산한 값인지 밝힌다", async () => {
+    const { container } = renderDashboard();
+    await settled(container);
+
+    // 고르기 전에는 합산 기준을 말할 이유가 없다 — 없는 문제를 설명하지 않는다.
+    expect(container.querySelector('[data-surface="tax-scope-note"]')).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("지갑 선택하기"), { target: { value: WALLET_A.toLowerCase() } });
+
+    await waitFor(() => expect(container.querySelector('[data-surface="tax-scope-note"]')).not.toBeNull());
+    expect(container.querySelector('[data-surface="tax-scope-note"]')?.textContent).toContain("전체 지갑 합산");
+  });
+
   it("체인 칩 건수는 고른 지갑을 기준으로 다시 센다", async () => {
     const { container } = renderDashboard();
     await settled(container);
@@ -149,7 +190,7 @@ describe("지갑 필터", () => {
 
     expect(chainChipTotal()).toBe(SPLIT.length);
 
-    fireEvent.change(screen.getByLabelText("지갑"), { target: { value: WALLET_B.toLowerCase() } });
+    fireEvent.change(screen.getByLabelText("지갑 선택하기"), { target: { value: WALLET_B.toLowerCase() } });
     // 칩 건수가 전체 기준에 머물면 드롭다운은 한 지갑 건수를 말하는데 칩은 전체를 말하게 된다.
     await waitFor(() => expect(chainChipTotal()).toBe(IN_B));
   });
