@@ -381,6 +381,7 @@ describe("불러오기 트래커", () => {
       scannedChainCount: 2,
       totalChainCount: 5,
       currentChain: { chainId: 137, chainName: "Polygon" },
+      note: null,
     });
   });
 

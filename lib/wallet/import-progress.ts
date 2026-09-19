@@ -66,9 +66,37 @@ export type ImportProgress = {
    * 단계 인덱스와 따로 두는 이유: "체인 거래 조회 중"만으로는 5개 중 몇 번째인지 알 수 없다.
    */
   scannedChainCount: number;
+  /**
+   * BE가 보고한 체인별 사실. 있으면 순서 기반 추정(`chainScanState`) 대신 이것을 쓴다 —
+   * 체인은 병렬로 끝나므로 "앞에서부터 n개 완료"라는 추정은 보고가 있는 순간부터 틀린다.
+   */
+  chains?: Readonly<Record<number, ChainScanDetail>>;
+  /**
+   * 지금 이 지갑에 아무 일도 일어나지 않는 이유를 한 줄로. 작업이 다른 지갑을 먼저 도는 동안 체인 목록은 전부
+   * '대기'인데, 그 이유를 말하지 않으면 멈춘 것으로 읽힌다.
+   */
+  note?: string | null;
 };
 
 export type ChainScanState = "pending" | "scanning" | "done" | "failed";
+
+/** BE가 진행 중 보고한 체인 하나의 사실. 타이머 연출이 아니라 서버가 말한 상태다. */
+export type ChainScanDetail = {
+  state: ChainScanState;
+  /** 진행 중일 때의 한 줄(받는 중 n건, 내부 이동 확인 n/m …). 끝났거나 모르면 null. */
+  detail: string | null;
+  /** 끝난 체인의 거래 수. 끝나기 전에는 모르므로 없다. */
+  txCount?: number;
+};
+
+/** 체인 한 줄의 상태. BE가 그 체인을 말했으면 그 사실을, 아니면 순서 기반 추정을 쓴다. */
+export function chainScanStateOf(progress: ImportProgress, chainId: number, index: number): ChainScanState {
+  return progress.chains?.[chainId]?.state ?? chainScanState(progress, index);
+}
+
+export function chainScanDetail(progress: ImportProgress, chainId: number): string | null {
+  return progress.chains?.[chainId]?.detail ?? null;
+}
 
 /**
  * 체인 하나의 조회 상태. 조회 단계를 지났으면 전부 끝난 것이고, 그 안에 있으면 `scannedChainCount`가 경계다.
