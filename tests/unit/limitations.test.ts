@@ -9,6 +9,7 @@ import { computeTaxEstimate } from "@/lib/tax/engine";
 import {
   COST_METHOD_SUFFIX,
   DEEMED_COST_SUFFIX,
+  EXCLUDED_ID_SUFFIX,
   LIMITATION_MESSAGE,
   LIMITATION_ORDER,
   RECEIPT_COST_SUFFIX,
@@ -96,6 +97,19 @@ describe("지갑 경로가 한계를 빠뜨리지 않는가", () => {
       expect(row.eventIds.length, row.message).toBeGreaterThan(0);
     }
     expect(result.excludedEventIds.length).toBeGreaterThan(0);
+  });
+
+  it("어댑터는 사유 있는 제외가 이미 말한 id를 '확인이 필요해'로 또 세지 않는다", async () => {
+    const engine = new TaxEngineService(() => createNormalizedEventFixtures(FIXTURE_TAX_YEAR));
+    const result = await engine.estimate({ country: "DE", taxYear: FIXTURE_TAX_YEAR, source: "wallet" });
+    const explained = new Set(
+      result.limitations.filter((row) => !row.message.endsWith(EXCLUDED_ID_SUFFIX)).flatMap((row) => row.eventIds),
+    );
+    const generic = result.limitations.filter((row) => row.message.endsWith(EXCLUDED_ID_SUFFIX));
+    // 같은 거래가 두 줄에 서면 화면 건수가 부푼다(실지갑 39건 중복).
+    for (const row of generic) for (const eventId of row.eventIds) expect(explained.has(eventId), eventId).toBe(false);
+    // 그리고 이 픽스처에는 사유 있는 제외가 실제로 있다 — 빈 검사로 통과하지 않는다.
+    expect(explained.size).toBeGreaterThan(0);
   });
 });
 
