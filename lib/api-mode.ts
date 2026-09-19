@@ -22,21 +22,43 @@ export function isMockApiMode(): boolean {
   return backendOrigin() === undefined;
 }
 
-/**
- * 화면 배지용 데이터 출처. BE 응답에 provenance가 없는 표면(대시보드 요약·앵커 증명·지갑 연결)이
- * "무엇을 보고 있는지"를 말하기 위해 서버 페이지가 계산해 내려준다. 응답에 provenance가 있으면 그쪽이 우선이다.
- */
-export function apiProvenance(): "mock" | "live" {
-  return isMockApiMode() ? "mock" : "live";
+/** BE가 스스로 말하는 모드. 2초 안에 답하지 않거나 형태가 다르면 null — 호출자는 "모른다"를 mock으로 다룬다. */
+async function backendHealth(): Promise<{ mockMode: boolean; identityProvider?: string } | null> {
+  const origin = backendOrigin();
+  if (!origin) return null;
+  try {
+    const response = await fetch(`${origin}/health`, { cache: "no-store", signal: AbortSignal.timeout(2_000) });
+    if (!response.ok) return null;
+    const body = (await response.json()) as { mockMode?: unknown; identityProvider?: unknown };
+    if (typeof body.mockMode !== "boolean") return null;
+    return { mockMode: body.mockMode, ...(typeof body.identityProvider === "string" ? { identityProvider: body.identityProvider } : {}) };
+  } catch {
+    return null;
+  }
 }
 
 /**
- * 신원인증(모바일신분증) 출처. FE 인증창이 "했다 치고"(NEXT_PUBLIC_OMNIONE_CX_MOCK) 모드이거나 API가 mock이면 mock.
- * BE의 IDENTITY_PROVIDER=mock은 여기서 보이지 않는다 — 그 경우 FE는 진짜 인증창을 띄우지만 BE가 토큰을 검증하지
- * 않으므로, 실모드 전환 때는 두 스위치를 함께 꺼야 한다(.env.example 참고).
+ * 화면 배지용 데이터 출처. BE 응답에 provenance가 없는 표면(대시보드 요약·앵커 증명·지갑 연결)이
+ * "무엇을 보고 있는지"를 말하기 위해 서버 페이지가 계산해 내려준다. 응답에 provenance가 있으면 그쪽이 우선이다.
+ *
+ * FE 모드만 보면 안 된다: ON 모드여도 BE가 MOCK_MODE면 데이터는 mock이다(e2e가 정확히 그 조합으로 돈다).
+ * 그래서 BE /health에 묻고, 답을 못 들으면 mock으로 본다 — 실데이터라고 주장하는 쪽이 더 위험하다.
  */
-export function identityProvenance(): "mock" | "live" {
-  return isMockApiMode() || process.env.NEXT_PUBLIC_OMNIONE_CX_MOCK === "true" ? "mock" : "live";
+export async function apiProvenance(): Promise<"mock" | "live"> {
+  if (isMockApiMode()) return "mock";
+  const health = await backendHealth();
+  return health !== null && health.mockMode === false ? "live" : "mock";
+}
+
+/**
+ * 신원인증(모바일신분증) 출처. 세 스위치가 모두 실모드여야 live다: FE API 모드, FE 인증창 "했다 치고"
+ * 스위치(NEXT_PUBLIC_OMNIONE_CX_MOCK), 그리고 BE가 /health로 말하는 신원 공급자(omnione_cx).
+ * 하나라도 mock이면 라온 인증창이 떠도 토큰이 검증되지 않는 반쪽 실모드라, 배지는 mock이어야 한다.
+ */
+export async function identityProvenance(): Promise<"mock" | "live"> {
+  if (isMockApiMode() || process.env.NEXT_PUBLIC_OMNIONE_CX_MOCK === "true") return "mock";
+  const health = await backendHealth();
+  return health !== null && health.mockMode === false && health.identityProvider === "omnione_cx" ? "live" : "mock";
 }
 
 /**

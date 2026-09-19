@@ -25,7 +25,7 @@ export default async function LoginPage() {
           <OnboardingSteps current={1} />
         </div>
       </div>
-      <DidLoginFlow provenance={identityProvenance()} />
+      <DidLoginFlow provenance={await identityProvenance()} />
     </main>
   );
 }

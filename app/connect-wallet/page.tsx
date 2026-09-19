@@ -31,7 +31,7 @@ export default async function ConnectWalletPage({ searchParams }: { searchParams
       // 이미 등록된 주소를 넘겨 같은 지갑을 다시 등록하려는 시도를 화면에서 끊는다 — 서버는 upsert라 조용히 통과한다.
       boundAddress={completed?.walletAddress ?? null}
       countryCode={session.countryCode ?? null}
-      provenance={apiProvenance()}
+      provenance={await apiProvenance()}
     />
   );
 }
