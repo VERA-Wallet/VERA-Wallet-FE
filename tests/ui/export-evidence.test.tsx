@@ -6,7 +6,7 @@ import type { EvidenceRecord } from "@/lib/ports/tax-evidence";
 
 const ports = vi.hoisted(() => ({
   list: vi.fn(), getSummary: vi.fn(), getProof: vi.fn(), estimate: vi.fn(),
-  latest: vi.fn(), record: vi.fn(), checkChain: vi.fn(),
+  latest: vi.fn(), record: vi.fn(),
 }));
 
 vi.mock("@/lib/composition-root.client", () => ({
@@ -14,7 +14,7 @@ vi.mock("@/lib/composition-root.client", () => ({
   summaryProvider: { getSummary: ports.getSummary },
   anchorProofProvider: { getProof: ports.getProof },
   taxEngine: { estimate: ports.estimate },
-  taxEvidenceProvider: { latest: ports.latest, record: ports.record, checkChain: ports.checkChain },
+  taxEvidenceProvider: { latest: ports.latest, record: ports.record },
 }));
 
 // 기록은 다운로드와 같은 플랜 게이트를 탄다 — 활성 플랜을 심어 버튼을 열고 본다.
@@ -165,66 +165,28 @@ describe("계산 근거 체인 기록", () => {
     expect(html).not.toContain("OmniOne 체인 기록");
   });
 
-  const chainCheck = (over: Partial<Record<string, unknown>> = {}) => ({
-    merkleRoot: CURRENT_ROOT, txHash: `0x${"ab".repeat(32)}`, blockNumber: "25737864",
-    readFromChain: true, success: true, anchoredPayloadHash: CURRENT_ROOT, matches: true,
-    checkedAt: "2027-05-02T00:00:00.000Z", ...over,
-  });
-
-  it("체인 확인은 저장된 값을 되읽지 않고 체인에 묻는다", async () => {
-    ports.latest.mockResolvedValue(recordOf(CURRENT_ROOT));
-    ports.checkChain.mockResolvedValue(chainCheck());
-    render(<ExportView countryCode="KR" />);
-    await screen.findByText("체인에 기록됨");
-
-    fireEvent.click(screen.getByRole("button", { name: /체인에서 직접 확인/ }));
-
-    await waitFor(() => expect(ports.checkChain).toHaveBeenCalledWith(CURRENT_ROOT));
-    expect(await screen.findByText("체인에 이 근거가 있습니다")).toBeInTheDocument();
-    expect(screen.getByText(/블록 25737864/)).toBeInTheDocument();
-  });
-
-  it("묻기 전에는 확인 결과를 보이지 않는다", async () => {
+  it("체인 확인은 근거 화면으로 이동한다 — 해시 한 줄을 이 자리에서 그리지 않는다", async () => {
     ports.latest.mockResolvedValue(recordOf(CURRENT_ROOT));
     const { container } = render(<ExportView countryCode="KR" />);
     await screen.findByText("체인에 기록됨");
 
+    // 이 체인에는 탐색기가 없다. 앱의 근거 화면이 체인 대조 결과와 봉인한 판정 전체를 대신 보인다.
+    expect(screen.getByRole("link", { name: /체인에서 직접 확인/ })).toHaveAttribute("href", `/export/evidence/${CURRENT_ROOT}`);
     expect(container.querySelector('[data-surface="evidence-chain-result"]')).toBeNull();
   });
 
-  it("체인의 해시가 다르면 있다고 말하지 않는다", async () => {
-    ports.latest.mockResolvedValue(recordOf(CURRENT_ROOT));
-    ports.checkChain.mockResolvedValue(chainCheck({ matches: false, anchoredPayloadHash: OTHER_ROOT }));
-    render(<ExportView countryCode="KR" />);
-    await screen.findByText("체인에 기록됨");
-
-    fireEvent.click(screen.getByRole("button", { name: /체인에서 직접 확인/ }));
-    expect(await screen.findByText("체인의 값이 이 근거와 다릅니다")).toBeInTheDocument();
-    expect(screen.getByText(OTHER_ROOT)).toBeInTheDocument();
-  });
-
-  it("체인을 못 읽었을 때 '없다'고 단정하지 않는다", async () => {
-    ports.latest.mockResolvedValue(recordOf(CURRENT_ROOT));
-    ports.checkChain.mockResolvedValue(chainCheck({ readFromChain: false, success: false, matches: false, anchoredPayloadHash: null }));
-    render(<ExportView countryCode="KR" />);
-    await screen.findByText("체인에 기록됨");
-
-    fireEvent.click(screen.getByRole("button", { name: /체인에서 직접 확인/ }));
-    expect(await screen.findByText("체인을 읽지 못했습니다")).toBeInTheDocument();
-    expect(screen.getByText(/기록이 없다는 뜻은 아닙니다/)).toBeInTheDocument();
-  });
-
-  it("다시 기록하면 옛 루트의 확인 결과는 지운다 — 다른 근거의 답을 남기지 않는다", async () => {
+  it("계산이 달라진 뒤에도 링크는 체인에 실제로 올라간 루트를 가리킨다", async () => {
     ports.latest.mockResolvedValue(recordOf(OTHER_ROOT));
-    ports.checkChain.mockResolvedValue(chainCheck({ merkleRoot: OTHER_ROOT, anchoredPayloadHash: OTHER_ROOT }));
-    ports.record.mockResolvedValue(recordOf(CURRENT_ROOT));
-    const { container } = render(<ExportView countryCode="KR" />);
+    render(<ExportView countryCode="KR" />);
     await screen.findByText(/기록한 뒤로 계산이 달라졌습니다/);
 
-    fireEvent.click(screen.getByRole("button", { name: /체인에서 직접 확인/ }));
-    await screen.findByText("체인에 이 근거가 있습니다");
+    // 지금 화면의 루트가 아니라 기록된 루트다 — 화면 값으로 바꾸면 체인에 없는 근거를 열게 된다.
+    expect(screen.getByRole("link", { name: /체인에서 직접 확인/ })).toHaveAttribute("href", `/export/evidence/${OTHER_ROOT}`);
+  });
 
-    fireEvent.click(screen.getByRole("button", { name: "다시 기록하기" }));
-    await waitFor(() => expect(container.querySelector('[data-surface="evidence-chain-result"]')).toBeNull());
+  it("기록이 없으면 확인할 근거도 없다 — 링크를 그리지 않는다", async () => {
+    render(<ExportView countryCode="KR" />);
+    await screen.findByText("계산 근거 기록");
+    expect(screen.queryByRole("link", { name: /체인에서 직접 확인/ })).toBeNull();
   });
 });

@@ -20,7 +20,7 @@ import { isGroundedPeriod, periodFilePart, periodLabel } from "@/lib/period";
 import { exportEventAllowance, planDefinition, usePlan } from "@/lib/plan/use-plan";
 import type { NormalizedEvent } from "@/lib/schema/normalized-event";
 import { buildEvidenceDocument } from "@/lib/tax/evidence";
-import type { EvidenceChainCheck, EvidenceRecord } from "@/lib/ports/tax-evidence";
+import type { EvidenceRecord } from "@/lib/ports/tax-evidence";
 import { estimateConfidence } from "@/lib/tax/estimate-summary";
 import { canonicalCountryCode } from "@/lib/tax/rulesets";
 import { useTaxYear } from "@/lib/tax/tax-year-context";
@@ -69,9 +69,6 @@ export function ExportView({ countryCode, provenance = "mock" }: { countryCode?:
   const [evidenceEntry, setEvidenceEntry] = useState<{ country: string; taxYear: number; record: EvidenceRecord | null } | null>(null);
   const [evidenceBusy, setEvidenceBusy] = useState(false);
   const [evidenceError, setEvidenceError] = useState<string | null>(null);
-  // 체인을 직접 읽어 대조한 결과. 누르기 전에는 null — 묻지 않은 것을 답인 척 보여 주지 않는다.
-  const [chainCheck, setChainCheck] = useState<EvidenceChainCheck | null>(null);
-  const [chainBusy, setChainBusy] = useState(false);
   // 시행 전 룰셋(한국 2027)을 "시행됐다고 가정하고" 볼지. 기본은 사실 — 가정은 사용자가 켠다.
   // 세금 화면(tax-simulator)의 assumeEffective와 같은 패턴이다.
   const [assumeEffective, setAssumeEffective] = useState(false);
@@ -181,24 +178,9 @@ export function ExportView({ countryCode, provenance = "mock" }: { countryCode?:
     setEvidenceError(null);
     void taxEvidenceProvider
       .record(buildEvidenceDocument(estimate))
-      .then((record) => {
-        setEvidenceEntry({ country, taxYear: selectedYear, record });
-        // 새로 기록했으면 옛 대조 결과는 다른 루트의 것이다 — 남겨 두면 거짓을 말한다.
-        setChainCheck(null);
-      })
+      .then((record) => setEvidenceEntry({ country, taxYear: selectedYear, record }))
       .catch((cause: unknown) => setEvidenceError(cause instanceof Error ? cause.message : "계산 근거를 기록하지 못했습니다."))
       .finally(() => setEvidenceBusy(false));
-  };
-
-  const checkChain = () => {
-    if (!evidence) return;
-    setChainBusy(true);
-    setEvidenceError(null);
-    void taxEvidenceProvider
-      .checkChain(evidence.merkleRoot)
-      .then((check) => setChainCheck(check))
-      .catch((cause: unknown) => setEvidenceError(cause instanceof Error ? cause.message : "체인을 확인하지 못했습니다."))
-      .finally(() => setChainBusy(false));
   };
 
   // 신뢰도 칩·확인 필요 배너는 문구를 지어내지 않고 estimate 구조에서만 파생한다.
@@ -637,55 +619,20 @@ export function ExportView({ countryCode, provenance = "mock" }: { countryCode?:
             </div>
           ) : null}
 
-          {/* 체인에서 직접 확인. 이 체인에는 블록 탐색기가 없어 사용자가 트랜잭션을 눈으로 볼 수 없다.
-              저장된 값을 되읽는 것이 아니라 **지금 체인에 물어** calldata의 해시를 루트와 대조한다. */}
+          {/* 체인에서 직접 확인 → 근거 화면(/export/evidence/<루트>). 이 체인에는 블록 탐색기가 없어 사용자가
+              트랜잭션을 눈으로 볼 수 없으므로 앱이 그 자리를 맡는다: 체인을 지금 읽어 대조한 결과와, 그 루트가
+              덮는 판정 전체를 한 화면에서 보인다. 결과를 이 카드 안에 그리지 않는 이유 — 해시가 같다는 한 줄만으로는
+              근거가 아니다. "무엇을 봉인했는지"까지 봐야 근거다. */}
           {evidence && (
-            <button
-              className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl border border-zinc-300 py-2.5 text-sm font-semibold text-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+            <Link
+              className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl border border-zinc-300 py-2.5 text-sm font-semibold text-zinc-700"
               data-surface="evidence-chain-check"
-              disabled={chainBusy}
-              type="button"
-              onClick={checkChain}
+              href={`/export/evidence/${evidence.merkleRoot}`}
             >
               <ShieldCheck aria-hidden className="size-4 shrink-0" strokeWidth={2.5} />
-              {chainBusy ? "체인 확인 중…" : "체인에서 직접 확인"}
-            </button>
-          )}
-
-          {chainCheck && (
-            <div
-              data-surface="evidence-chain-result"
-              className={`mt-3 rounded-card border p-3 text-sm leading-6 ${
-                chainCheck.matches
-                  ? "border-primary-200 bg-primary-50/50 text-zinc-700"
-                  : chainCheck.readFromChain
-                    ? "border-red-200 bg-red-50 text-red-900"
-                    : "border-amber-200 bg-amber-50 text-amber-900"
-              }`}
-            >
-              {chainCheck.matches ? (
-                <>
-                  <p className="font-semibold text-primary-700">체인에 이 근거가 있습니다</p>
-                  <p className="mt-1">
-                    블록 {chainCheck.blockNumber}의 거래가 실어 나른 해시가 위 머클루트와 같습니다.
-                  </p>
-                </>
-              ) : chainCheck.readFromChain ? (
-                <>
-                  <p className="font-semibold">체인의 값이 이 근거와 다릅니다</p>
-                  <p className="mt-1 break-all">
-                    체인의 해시: <span className="font-mono text-xs">{chainCheck.anchoredPayloadHash ?? "읽지 못함"}</span>
-                  </p>
-                </>
-              ) : (
-                <>
-                  <p className="font-semibold">체인을 읽지 못했습니다</p>
-                  {/* 못 읽은 것과 없는 것은 다르다. 없다고 단정하지 않는다. */}
-                  <p className="mt-1">기록이 없다는 뜻은 아닙니다. 잠시 뒤 다시 확인해 주세요.</p>
-                </>
-              )}
-              <p className="mt-2 text-xs opacity-70">{formatDateTime(chainCheck.checkedAt)} 확인</p>
-            </div>
+              체인에서 직접 확인
+              <ArrowRight aria-hidden className="size-4 shrink-0" strokeWidth={2.5} />
+            </Link>
           )}
         </Card>
       )}

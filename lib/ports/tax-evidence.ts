@@ -1,4 +1,4 @@
-import type { EvidenceDocument } from "@/lib/tax/evidence";
+import type { EvidenceDocument, EvidenceLeaf } from "@/lib/tax/evidence";
 
 /** 체인에 봉인된 계산 근거 한 건. 값은 전부 서버가 확정한 사실이다 — FE가 지어내지 않는다. */
 export type EvidenceRecord = {
@@ -13,6 +13,15 @@ export type EvidenceRecord = {
   blockNumber: string | null;
   anchoredAt: string | null;
   explorerUrl: string | null;
+};
+
+/**
+ * 기록 + 그 루트가 덮는 정본 문서. 근거 화면이 "체인의 해시 ← 머클루트 ← 이 판정들"을 한 자리에서
+ * 보이는 데 쓴다. 잎은 서버가 저장한 그대로이므로 화면은 `merkleRoot(leaves)`를 다시 계산해 기록과 대조할 수 있다.
+ */
+export type EvidenceDetail = EvidenceRecord & {
+  version: number;
+  leaves: EvidenceLeaf[];
 };
 
 /**
@@ -38,4 +47,6 @@ export interface TaxEvidenceProvider {
   latest(country: string, taxYear: number): Promise<EvidenceRecord | null>;
   /** 체인을 지금 읽어 대조한다. 저장된 값을 되읽는 것이 아니라 체인에 묻는다. */
   checkChain(merkleRoot: string): Promise<EvidenceChainCheck>;
+  /** 루트가 덮는 정본 문서와 기록 정보. 내 기록이 아니거나 없으면 null. */
+  document(merkleRoot: string): Promise<EvidenceDetail | null>;
 }

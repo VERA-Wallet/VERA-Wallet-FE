@@ -2,9 +2,9 @@ import "server-only";
 
 import { keccak256, toBytes } from "viem";
 
-import { merkleRoot } from "@/lib/tax/evidence";
+import { EVIDENCE_VERSION, merkleRoot } from "@/lib/tax/evidence";
 import type { EvidenceLeaf } from "@/lib/tax/evidence";
-import type { EvidenceChainCheck, EvidenceRecord } from "@/lib/ports/tax-evidence";
+import type { EvidenceChainCheck, EvidenceDetail, EvidenceRecord } from "@/lib/ports/tax-evidence";
 
 /**
  * OFF(FE mock) 모드의 계산 근거 저장소.
@@ -15,7 +15,8 @@ import type { EvidenceChainCheck, EvidenceRecord } from "@/lib/ports/tax-evidenc
  *
  * mock 저장소 수명주기는 이벤트·인증 저장소와 같다(globalThis 고정, 단일 프로세스 전용).
  */
-type Stored = EvidenceRecord & { userKey: string };
+// 잎을 함께 둔다 — 근거 화면이 "루트가 무엇을 덮는지"를 보이려면 원본이 있어야 한다(BE `TaxEvidence.document`와 같은 이유).
+type Stored = EvidenceRecord & { userKey: string; leaves: EvidenceLeaf[] };
 
 const globalStore = globalThis as typeof globalThis & { __verawalletEvidence?: Map<string, Stored> };
 const records = (globalStore.__verawalletEvidence ??= new Map<string, Stored>());
@@ -33,6 +34,7 @@ export function recordMockEvidence(userKey: string, leaves: readonly EvidenceLea
   const txHash = keccak256(toBytes(`vw-mock-anchor:${root}`));
   const stored: Stored = {
     userKey,
+    leaves: [...leaves],
     merkleRoot: root,
     countryCode: header.country,
     taxYear: header.taxYear,
@@ -56,7 +58,13 @@ export function latestMockEvidence(userKey: string, country: string, taxYear: nu
   return matches[0] ? view(matches[0]) : null;
 }
 
-/** 저장소 키(userKey)는 응답에 싣지 않는다 — 화면이 알 필요도, 알아서도 안 되는 값이다. */
+/** 루트가 덮는 정본 문서 + 기록 정보. 내 기록이 아니면 null — 남의 근거를 열어 주지 않는다. */
+export function documentMockEvidence(userKey: string, root: string): EvidenceDetail | null {
+  const record = records.get(key(userKey, root));
+  if (!record) return null;
+  return { ...view(record), version: EVIDENCE_VERSION, leaves: [...record.leaves] };
+}
+
 /** OFF 모드의 체인 대조. 체인이 없으니 저장해 둔 사실을 그대로 답한다 — 없는 확인을 지어내지 않는다. */
 export function inspectMockEvidence(userKey: string, merkleRoot: string): EvidenceChainCheck | null {
   const record = records.get(key(userKey, merkleRoot));
@@ -73,6 +81,7 @@ export function inspectMockEvidence(userKey: string, merkleRoot: string): Eviden
   };
 }
 
+/** 저장소 키(userKey)와 잎은 응답에 싣지 않는다 — 기록 목록이 알 필요도, 알아서도 안 되는 값이다. */
 function view(record: Stored): EvidenceRecord {
   return {
     merkleRoot: record.merkleRoot,

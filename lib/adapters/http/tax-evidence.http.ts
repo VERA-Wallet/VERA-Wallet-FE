@@ -3,8 +3,8 @@ import "client-only";
 import { z } from "zod";
 
 import { decodeResponse } from "@/lib/http/error-codec";
-import type { EvidenceChainCheck, EvidenceRecord, TaxEvidenceProvider } from "@/lib/ports/tax-evidence";
-import type { EvidenceDocument } from "@/lib/tax/evidence";
+import type { EvidenceChainCheck, EvidenceDetail, EvidenceRecord, TaxEvidenceProvider } from "@/lib/ports/tax-evidence";
+import type { EvidenceDocument, EvidenceLeaf } from "@/lib/tax/evidence";
 
 const evidenceRecordSchema = z.object({
   merkleRoot: z.string().regex(/^0x[0-9a-fA-F]{64}$/),
@@ -17,6 +17,13 @@ const evidenceRecordSchema = z.object({
   blockNumber: z.string().nullable(),
   anchoredAt: z.string().nullable(),
   explorerUrl: z.string().nullable(),
+});
+
+// 잎은 저장된 그대로 돌아온다. 종류(kind)만 확인하고 나머지는 열어 둔다 — 잎 구조는 정본 규칙(`lib/tax/evidence.ts`)이
+// 정하고, 화면이 그 루트를 다시 계산해 기록과 대조하므로 여기서 필드를 하나씩 검증할 이유가 없다.
+const evidenceDetailSchema = evidenceRecordSchema.extend({
+  version: z.number().int(),
+  leaves: z.array(z.looseObject({ kind: z.string() })),
 });
 
 const chainCheckSchema = z.object({
@@ -54,6 +61,16 @@ export class HttpTaxEvidenceProvider implements TaxEvidenceProvider {
       evidenceRecordSchema,
     );
     if ("data" in response && "meta" in response) return response.data;
+    if (response.error.code === "not_found") return null;
+    throw new Error(response.error.message);
+  }
+
+  async document(merkleRoot: string): Promise<EvidenceDetail | null> {
+    const response = await decodeResponse(
+      await this.fetcher(`/api/tax-evidence/${encodeURIComponent(merkleRoot)}`),
+      evidenceDetailSchema,
+    );
+    if ("data" in response && "meta" in response) return { ...response.data, leaves: response.data.leaves as EvidenceLeaf[] };
     if (response.error.code === "not_found") return null;
     throw new Error(response.error.message);
   }
