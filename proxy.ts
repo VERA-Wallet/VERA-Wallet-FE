@@ -22,6 +22,7 @@ const BACKEND_OWNED_PATHS = new Set([
   "/api/auth/session",
   "/api/auth/logout",
   "/api/anchor-proof",
+  "/api/tax-evidence",
 ]);
 
 /**
@@ -34,7 +35,8 @@ const BACKEND_OWNED_PATHS = new Set([
 const FORWARDED_HEADERS = ["accept", "accept-language", "content-type", "content-length", "user-agent"] as const;
 
 function isBackendOwned(pathname: string): boolean {
-  return BACKEND_OWNED_PATHS.has(pathname) || pathname === "/api/events" || pathname.startsWith("/api/events/");
+  // 계산 근거는 BE가 루트를 **다시 계산해** 체인에 올린다 — 하위 경로(정본 문서 조회)까지 BE 소유다.
+  return BACKEND_OWNED_PATHS.has(pathname) || pathname === "/api/events" || pathname.startsWith("/api/events/") || pathname.startsWith("/api/tax-evidence/");
 }
 
 /**
@@ -79,5 +81,7 @@ export const config = {
     "/api/events",
     "/api/events/:path*",
     "/api/anchor-proof",
+    "/api/tax-evidence",
+    "/api/tax-evidence/:path*",
   ],
 };

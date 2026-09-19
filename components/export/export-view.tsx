@@ -1,13 +1,13 @@
 "use client";
 
-import { ArrowRight, ChevronDown, Lock } from "lucide-react";
+import { ArrowRight, ChevronDown, Link2, Lock, ShieldCheck } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { BottomSheet } from "@/components/ui/bottom-sheet";
 import { Card } from "@/components/ui/card";
 import { MockProvenanceChip } from "@/components/ui/mock-provenance-chip";
-import { anchorProofProvider, eventRepository, summaryProvider, taxEngine } from "@/lib/composition-root.client";
+import { anchorProofProvider, eventRepository, summaryProvider, taxEngine, taxEvidenceProvider } from "@/lib/composition-root.client";
 import { collectAllEvents } from "@/lib/export/collect";
 import { FILING_LINE_SPECS, buildFilingSummary, createReportLedgerCsv, filingRow } from "@/lib/export/report";
 import { buildReportHtml } from "@/lib/export/report-html";
@@ -18,6 +18,8 @@ import { formatDateTime, formatFiat } from "@/lib/format";
 import { isGroundedPeriod, periodFilePart, periodLabel } from "@/lib/period";
 import { exportEventAllowance, planDefinition, usePlan } from "@/lib/plan/use-plan";
 import type { NormalizedEvent } from "@/lib/schema/normalized-event";
+import { buildEvidenceDocument } from "@/lib/tax/evidence";
+import type { EvidenceChainCheck, EvidenceRecord } from "@/lib/ports/tax-evidence";
 import { estimateConfidence } from "@/lib/tax/estimate-summary";
 import { canonicalCountryCode } from "@/lib/tax/rulesets";
 import { useTaxYear } from "@/lib/tax/tax-year-context";
@@ -60,6 +62,14 @@ export function ExportView({ countryCode }: { countryCode?: string } = {}) {
   // 보고서 인쇄는 팝업 차단·인쇄 미지원 브라우저에서 열리지 않을 수 있다. 조용히 아무 일도 안 일어나면
   // 사용자는 자기 탓인지 앱 탓인지 모른다 — 그때만 이 자리에서 다른 내려받기를 권한다.
   const [reportError, setReportError] = useState<string | null>(null);
+  // 체인에 봉인한 계산 근거. **어느 연도의 답인지 함께** 들고 있는다 — 연도를 바꿀 때 상태를 비우려고
+  // 효과 안에서 setState를 부르면 렌더가 연쇄된다(React Compiler가 막는다). 연도가 다르면 아래에서 안 쓴다.
+  const [evidenceEntry, setEvidenceEntry] = useState<{ country: string; taxYear: number; record: EvidenceRecord | null } | null>(null);
+  const [evidenceBusy, setEvidenceBusy] = useState(false);
+  const [evidenceError, setEvidenceError] = useState<string | null>(null);
+  // 체인을 직접 읽어 대조한 결과. 누르기 전에는 null — 묻지 않은 것을 답인 척 보여 주지 않는다.
+  const [chainCheck, setChainCheck] = useState<EvidenceChainCheck | null>(null);
+  const [chainBusy, setChainBusy] = useState(false);
   // 시행 전 룰셋(한국 2027)을 "시행됐다고 가정하고" 볼지. 기본은 사실 — 가정은 사용자가 켠다.
   // 세금 화면(tax-simulator)의 assumeEffective와 같은 패턴이다.
   const [assumeEffective, setAssumeEffective] = useState(false);
@@ -139,6 +149,54 @@ export function ExportView({ countryCode }: { countryCode?: string } = {}) {
   const filingAmount = (label: string): string => {
     const value = filingRow(filing, label)?.금액;
     return typeof value === "number" ? String(value) : "0";
+  };
+
+  // 지금 화면이 말하는 계산의 머클루트. 체인에 올라간 루트와 같은지 비교해 "고친 뒤인지"를 판단한다 —
+  // 잎마다 keccak을 돌리므로 estimate가 바뀔 때만 다시 센다.
+  const currentRoot = useMemo(() => (estimate ? buildEvidenceDocument(estimate).merkleRoot : null), [estimate]);
+  // 고른 귀속연도의 기록. 아직 못 읽었거나 다른 해의 답이면 null로 둔다 — 없는 기록을 있다고 말하지 않는다.
+  const evidence = evidenceEntry !== null && evidenceEntry.country === country && evidenceEntry.taxYear === selectedYear
+    ? evidenceEntry.record
+    : null;
+
+  // 기록은 있는데 지금 계산과 루트가 다르면, 기록 뒤에 거래를 고쳤다는 뜻이다.
+  const evidenceStale = evidence !== null && currentRoot !== null && evidence.merkleRoot.toLowerCase() !== currentRoot.toLowerCase();
+
+  // 404는 실패가 아니라 "그 해에는 기록이 없다"는 사실이다(어댑터가 null로 번역한다).
+  useEffect(() => {
+    if (country === null) return;
+    let active = true;
+    void taxEvidenceProvider
+      .latest(country, selectedYear)
+      .then((record) => { if (active) setEvidenceEntry({ country, taxYear: selectedYear, record }); })
+      .catch(() => { /* 기록 조회 실패가 리포트 전체를 막지는 않는다 — 버튼은 그대로 눌러 볼 수 있다. */ });
+    return () => { active = false; };
+  }, [country, selectedYear]);
+
+  const recordEvidence = () => {
+    if (!estimate || country === null) return;
+    setEvidenceBusy(true);
+    setEvidenceError(null);
+    void taxEvidenceProvider
+      .record(buildEvidenceDocument(estimate))
+      .then((record) => {
+        setEvidenceEntry({ country, taxYear: selectedYear, record });
+        // 새로 기록했으면 옛 대조 결과는 다른 루트의 것이다 — 남겨 두면 거짓을 말한다.
+        setChainCheck(null);
+      })
+      .catch((cause: unknown) => setEvidenceError(cause instanceof Error ? cause.message : "계산 근거를 기록하지 못했습니다."))
+      .finally(() => setEvidenceBusy(false));
+  };
+
+  const checkChain = () => {
+    if (!evidence) return;
+    setChainBusy(true);
+    setEvidenceError(null);
+    void taxEvidenceProvider
+      .checkChain(evidence.merkleRoot)
+      .then((check) => setChainCheck(check))
+      .catch((cause: unknown) => setEvidenceError(cause instanceof Error ? cause.message : "체인을 확인하지 못했습니다."))
+      .finally(() => setChainBusy(false));
   };
 
   // 신뢰도 칩·확인 필요 배너는 문구를 지어내지 않고 estimate 구조에서만 파생한다.
@@ -425,6 +483,18 @@ export function ExportView({ countryCode }: { countryCode?: string } = {}) {
                       generatedAt: new Date().toISOString(),
                       // 시행 가정으로 보고 있으면 종이에도 그 사실이 함께 가야 한다 — 가정을 뗀 금액은 다른 금액이다.
                       ...(assumeEffective ? { assumeEffective: true, effectiveYear } : {}),
+                      // 체인 기록은 **지금 화면의 계산과 같을 때만** 싣는다. 고친 뒤의 종이에 옛 루트를 찍으면
+                      // 받는 사람이 대조에 실패하고, 그 실패의 이유를 알 방법이 없다.
+                      ...(evidence && !evidenceStale
+                        ? {
+                            anchor: {
+                              merkleRoot: evidence.merkleRoot,
+                              txHash: evidence.txHash,
+                              anchoredAt: evidence.anchoredAt,
+                              explorerUrl: evidence.explorerUrl,
+                            },
+                          }
+                        : {}),
                     },
                     filenamePeriod,
                   ),
@@ -479,11 +549,151 @@ export function ExportView({ countryCode }: { countryCode?: string } = {}) {
         )}
       </Card>
 
+      {/* 6. 계산 근거 기록 — OmniOne 체인에 봉인한다.
+          체인에 나가는 것은 **머클루트 하나**다: 건별 판정을 잎으로 묶은 해시라, 나중에 거래 한 건만
+          골라 "그때 이렇게 판정했다"를 나머지를 보이지 않고 증명할 수 있다.
+          루트는 서버가 잎에서 다시 계산한다 — 화면이 준 해시를 그냥 올리면 아무도 재현할 수 없는 값이 남는다. */}
+      {estimate && (
+        <Card className="mt-5">
+          <div data-surface="evidence-anchor" className="flex items-center justify-between gap-3">
+            <p className="font-semibold text-zinc-900">계산 근거 기록</p>
+            {evidence && !evidenceStale && (
+              <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary-50 px-2.5 py-1 text-xs font-semibold text-primary-600">
+                <ShieldCheck aria-hidden className="size-3.5 shrink-0" strokeWidth={2.5} />
+                체인에 기록됨
+              </span>
+            )}
+          </div>
+          <p className="mt-2 text-sm leading-6 text-zinc-500">
+            {selectedYear}년 귀속 계산을 OmniOne 체인에 봉인합니다. 금액·지갑 주소는 올라가지 않고, 건별 판정을 묶은
+            해시(머클루트) 하나만 올라갑니다.
+          </p>
+
+          {evidence && (
+            <dl className="mt-4 space-y-2 text-sm">
+              <div className="flex items-start justify-between gap-3">
+                <dt className="shrink-0 text-zinc-500">머클루트</dt>
+                <dd className="text-right font-mono text-xs text-zinc-900">{shortHash(evidence.merkleRoot)}</dd>
+              </div>
+              {evidence.txHash && (
+                <div className="flex items-start justify-between gap-3">
+                  <dt className="shrink-0 text-zinc-500">거래</dt>
+                  <dd className="text-right font-mono text-xs text-zinc-900">{shortHash(evidence.txHash)}</dd>
+                </div>
+              )}
+              <div className="flex items-start justify-between gap-3">
+                <dt className="shrink-0 text-zinc-500">봉인한 판정</dt>
+                {/* 잎에는 헤더 1개가 함께 들어간다 — 사용자에게는 판정 건수로 말한다. */}
+                <dd className="text-right font-medium text-zinc-900">{Math.max(evidence.leafCount - 1, 0)}건</dd>
+              </div>
+              <div className="flex items-start justify-between gap-3">
+                <dt className="shrink-0 text-zinc-500">기록 시각</dt>
+                <dd className="text-right font-medium text-zinc-900">{formatDateTime(evidence.anchoredAt ?? evidence.recordedAt)}</dd>
+              </div>
+            </dl>
+          )}
+
+          {/* 기록 뒤에 거래를 고쳤으면 그 사실을 말한다 — "기록됨" 배지만 남기면 옛 근거를 현재 근거로 읽는다. */}
+          {evidenceStale && (
+            <p className="mt-4 rounded-card border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-900">
+              기록한 뒤로 계산이 달라졌습니다. 지금 화면의 근거를 남기려면 다시 기록해 주세요 — 이전 기록은 체인에 그대로 남습니다.
+            </p>
+          )}
+
+          {evidence?.anchorStatus === "pending" && (
+            <p className="mt-4 text-sm leading-6 text-zinc-500">체인에 올리는 중입니다. 잠시 뒤 이 화면을 다시 열면 거래 번호가 표시됩니다.</p>
+          )}
+
+          <button
+            className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-xl border border-primary-500 py-3 font-semibold text-primary-600 disabled:cursor-not-allowed disabled:opacity-50"
+            data-locked={downloadLocked ? "download" : undefined}
+            disabled={!ready || downloadLocked || evidenceBusy || (evidence !== null && !evidenceStale)}
+            type="button"
+            onClick={recordEvidence}
+          >
+            {downloadLocked && <Lock aria-hidden className="size-4 shrink-0" strokeWidth={2.5} />}
+            {evidenceBusy ? "기록하는 중…" : evidenceStale ? "다시 기록하기" : evidence ? "기록 완료" : "계산 근거 기록하기"}
+          </button>
+          {evidenceError && <p className="mt-2 text-sm text-red-600">{evidenceError}</p>}
+
+          {/* 탐색기가 있으면 링크, 없으면 거래 해시 전문. OmniOne 스테이지에는 블록 탐색기가 없어
+              사용자가 조회에 쓸 수 있는 값은 이 해시뿐이다 — 누르면 401이 뜨는 링크로 대신하지 않는다. */}
+          {evidence?.explorerUrl ? (
+            <a
+              className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-primary-600 underline"
+              href={evidence.explorerUrl}
+              rel="noreferrer"
+              target="_blank"
+            >
+              <Link2 aria-hidden className="size-4 shrink-0" strokeWidth={2.5} />
+              체인에서 확인하기
+            </a>
+          ) : evidence?.txHash ? (
+            <div data-surface="evidence-tx" className="mt-3 rounded-card border border-zinc-200 bg-zinc-50 p-3">
+              <p className="text-xs font-medium text-zinc-500">거래 해시 (체인 조회용)</p>
+              <p className="mt-1 break-all font-mono text-xs text-zinc-800">{evidence.txHash}</p>
+            </div>
+          ) : null}
+
+          {/* 체인에서 직접 확인. 이 체인에는 블록 탐색기가 없어 사용자가 트랜잭션을 눈으로 볼 수 없다.
+              저장된 값을 되읽는 것이 아니라 **지금 체인에 물어** calldata의 해시를 루트와 대조한다. */}
+          {evidence && (
+            <button
+              className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl border border-zinc-300 py-2.5 text-sm font-semibold text-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+              data-surface="evidence-chain-check"
+              disabled={chainBusy}
+              type="button"
+              onClick={checkChain}
+            >
+              <ShieldCheck aria-hidden className="size-4 shrink-0" strokeWidth={2.5} />
+              {chainBusy ? "체인 확인 중…" : "체인에서 직접 확인"}
+            </button>
+          )}
+
+          {chainCheck && (
+            <div
+              data-surface="evidence-chain-result"
+              className={`mt-3 rounded-card border p-3 text-sm leading-6 ${
+                chainCheck.matches
+                  ? "border-primary-200 bg-primary-50/50 text-zinc-700"
+                  : chainCheck.readFromChain
+                    ? "border-red-200 bg-red-50 text-red-900"
+                    : "border-amber-200 bg-amber-50 text-amber-900"
+              }`}
+            >
+              {chainCheck.matches ? (
+                <>
+                  <p className="font-semibold text-primary-700">체인에 이 근거가 있습니다</p>
+                  <p className="mt-1">
+                    블록 {chainCheck.blockNumber}의 거래가 실어 나른 해시가 위 머클루트와 같습니다.
+                  </p>
+                </>
+              ) : chainCheck.readFromChain ? (
+                <>
+                  <p className="font-semibold">체인의 값이 이 근거와 다릅니다</p>
+                  <p className="mt-1 break-all">
+                    체인의 해시: <span className="font-mono text-xs">{chainCheck.anchoredPayloadHash ?? "읽지 못함"}</span>
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="font-semibold">체인을 읽지 못했습니다</p>
+                  {/* 못 읽은 것과 없는 것은 다르다. 없다고 단정하지 않는다. */}
+                  <p className="mt-1">기록이 없다는 뜻은 아닙니다. 잠시 뒤 다시 확인해 주세요.</p>
+                </>
+              )}
+              <p className="mt-2 text-xs opacity-70">{formatDateTime(chainCheck.checkedAt)} 확인</p>
+            </div>
+          )}
+        </Card>
+      )}
+
       {/* 7. 앵커링 증명 */}
       {proof && <Card className="mt-5">
         <div data-surface="anchor-proof" className="flex items-center justify-between gap-3"><p className="font-semibold text-zinc-900">앵커링 증명</p><MockProvenanceChip /></div>
         <dl className="mt-4 space-y-2 text-sm text-zinc-600"><div><dt className="inline font-medium text-zinc-900">거래 </dt><dd className="inline font-mono">{shortHash(proof.tx_hash)}</dd></div><div><dt className="inline font-medium text-zinc-900">Merkle root </dt><dd className="inline font-mono">{shortHash(proof.merkle_root)}</dd></div><div><dt className="inline font-medium text-zinc-900">기록 시각 </dt><dd className="inline">{formatDateTime(proof.anchored_at)}</dd></div></dl>
-        <a className="mt-4 inline-block text-sm font-semibold text-primary-600 underline" href={proof.explorer_url} rel="noreferrer" target="_blank">탐색기에서 보기</a>
+        {/* 탐색기가 없는 체인에서는 링크를 그리지 않는다 — 누르면 401이 뜨는 버튼은 증명이 아니다. */}
+        {proof.explorer_url && <a className="mt-4 inline-block text-sm font-semibold text-primary-600 underline" href={proof.explorer_url} rel="noreferrer" target="_blank">탐색기에서 보기</a>}
       </Card>}
 
       {/* 귀속연도 선택 바텀시트. 고른 해는 전역 소스에 써서 estimate를 그 해로 재계산하고,

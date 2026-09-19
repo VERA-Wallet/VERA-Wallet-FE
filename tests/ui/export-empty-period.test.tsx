@@ -8,6 +8,8 @@ vi.mock("@/lib/composition-root.client", () => ({
   eventRepository: { list: ports.list },
   summaryProvider: { getSummary: ports.getSummary },
   anchorProofProvider: { getProof: ports.getProof },
+  // 계산 근거 기록은 체인 왕복이라 화면 테스트에서는 "기록 없음"(null)으로 고정한다.
+  taxEvidenceProvider: { latest: async () => null, record: async () => { throw new Error("not used"); }, checkChain: async () => { throw new Error("not used"); } },
 }));
 
 // 다운로드는 이제 구독 전제다 — 활성 플랜을 심어야 버튼이 열려 파일명 검증까지 도달한다.

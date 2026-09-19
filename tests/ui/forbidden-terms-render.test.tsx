@@ -33,6 +33,8 @@ vi.mock("@/lib/composition-root.client", () => ({
   eventRepository: { list: ports.list, reclassify: ports.reclassify, getById: ports.getById },
   summaryProvider: { getSummary: ports.getSummary },
   anchorProofProvider: { getProof: ports.getProof },
+  // 계산 근거 기록은 체인 왕복이라 화면 테스트에서는 "기록 없음"(null)으로 고정한다.
+  taxEvidenceProvider: { latest: async () => null, record: async () => { throw new Error("not used"); }, checkChain: async () => { throw new Error("not used"); } },
   taxEngine: { listRuleSets: ports.listRuleSets, estimate: ports.estimate },
   authClient: { requestNonce: vi.fn(), verify: vi.fn(), presentDid: vi.fn(), logout: vi.fn(), getSession: vi.fn() },
 }));

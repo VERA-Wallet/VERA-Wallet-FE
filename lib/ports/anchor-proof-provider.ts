@@ -3,6 +3,6 @@ export interface AnchorProofProvider {
     tx_hash: string;
     merkle_root: string;
     anchored_at: string;
-    explorer_url: string;
+    explorer_url: string | null;
   } | null>;
 }
