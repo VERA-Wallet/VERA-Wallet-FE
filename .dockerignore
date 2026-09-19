@@ -1,0 +1,22 @@
+# 빌드 컨텍스트에서 뺀다. .env*는 개발용 값이라 운영 번들(NEXT_PUBLIC_ 인라인)에 섞이면 안 된다.
+node_modules
+.next
+out
+build
+coverage
+.env
+.env.*
+!.env.example
+artifacts
+test-results
+playwright-report
+tests
+docs
+.git
+.github
+.gjc
+.omc
+*.tsbuildinfo
+*.log
+.DS_Store
+Dockerfile
