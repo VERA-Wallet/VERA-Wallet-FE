@@ -96,14 +96,15 @@ export class TaxEngineService implements TaxEnginePort {
       excludedEventIds: [...derived.excludedEventIds.filter((id) => inPeriod.has(id)), ...fxExcludedIds],
     };
     const estimate = computeTaxEstimate(estimateInput);
-    // 환율 제외는 사유를 아는 생산자(여기)가 말한다. finalizeEstimate가 사유 없이 채운 같은 id의 일반 제외 줄은 걷어낸다.
-    const fxExcluded = new Set(fxExcludedIds);
+    // 제외 사유는 아는 생산자(파생·환율)가 말한다. finalizeEstimate는 사유 없이 "확인이 필요해"로 같은 id를
+    // 한 줄씩 더 채우는데, 그대로 두면 같은 거래가 두 줄에 세어져 화면 건수가 부풀었다(실지갑 39건 중복).
     const fxLimitations: Limitation[] = [
       ...fxExcludedIds.map((id) => limitationOf(`${id}:${FX_RATE_SUFFIX}`, [id])),
       ...conversion.convertedFrom.map((from) => limitationOf(`${from} → ${targetCurrency}${FX_CONVERSION_SUFFIX}`, [])),
     ];
+    const explained = new Set([...derived.limitations, ...fxLimitations].flatMap((row) => row.eventIds));
     const rulesetLimitations = estimate.limitations.filter(
-      (row) => !(row.message.endsWith(EXCLUDED_ID_SUFFIX) && row.eventIds.length === 1 && fxExcluded.has(row.eventIds[0])),
+      (row) => !(row.message.endsWith(EXCLUDED_ID_SUFFIX) && row.eventIds.length === 1 && explained.has(row.eventIds[0])),
     );
     return {
       ...estimate,
