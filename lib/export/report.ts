@@ -4,6 +4,7 @@ import { formatKstDateTime, formatTokenAmount } from "@/lib/format";
 import type { NormalizedEvent } from "@/lib/schema/normalized-event";
 import type { LimitationKind, TaxEstimate } from "@/lib/tax/types";
 import { estimateConfidence } from "@/lib/tax/estimate-summary";
+import { stripEventIds } from "@/lib/tax/limitations";
 
 /**
  * 리포트 빌더 — 온체인 로그 덤프를 "신고를 채우고 방어하는 근거자료"로 바꾼다.
@@ -432,7 +433,9 @@ export function buildExceptions(
     for (const id of limitation.eventIds) covered.add(id);
     rows.push({
       구분: LIMITATION_KIND_LABEL[limitation.kind],
-      내용: limitation.message,
+      // 엔진은 "<id>: 원장에 없는 수량…"처럼 id를 문장 앞에 붙인다. id는 관련이벤트 열이 이미 들고 있고,
+      // 화면에서는 70자 토큰이 카드 밖으로 밀려 나간다(2026-09-20 관측). 세금 화면과 같은 규칙으로 뗀다.
+      내용: stripEventIds(limitation.message, limitation.eventIds),
       관련이벤트: limitation.eventIds.join(", "),
       금액영향_원: amountImpact(limitation.eventIds, fiatByEvent),
     });

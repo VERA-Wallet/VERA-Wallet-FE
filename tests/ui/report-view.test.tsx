@@ -107,6 +107,21 @@ describe("보고서 앱 화면", () => {
     expect(document.querySelector('[data-surface="report-view"]')).toHaveClass("max-w-md");
   });
 
+  it("예외 문구는 이벤트 id 없이 싣고, 긴 토큰이 남아도 카드 안에서 꺾이게 한다", async () => {
+    const id = "42161:0x3a7799c5939202136b9159a7b7e3286e33ed392aaf0d9bfc2dc66cadc42f6584:balance:0";
+    const warning = `${id}: 원장에 없는 수량 0.08078441928337632 ETH: 취득가액 0으로 계산했습니다.`;
+    ports.estimate.mockResolvedValue({
+      ...estimate,
+      limitations: [{ kind: "zero_basis", message: warning, eventIds: [id] }],
+    });
+    render(<ReportView countryCode="KR" taxYear={2027} />);
+
+    const body = await screen.findByText("원장에 없는 수량 0.08078441928337632 ETH: 취득가액 0으로 계산했습니다.");
+    expect(body).toHaveClass("wrap-anywhere");
+    expect(screen.queryByText(new RegExp(id.slice(6, 30)))).not.toBeInTheDocument();
+    expect(screen.getByText("관련 거래 1건")).toBeInTheDocument();
+  });
+
   it("PDF로 저장이 화면과 같은 estimate로 만든 인쇄용 문서를 넘긴다", async () => {
     render(<ReportView countryCode="KR" taxYear={2027} />);
     await screen.findByText("2027년 귀속 · 한국 · 거주자별 총평균법");

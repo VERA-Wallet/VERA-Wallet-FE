@@ -494,7 +494,8 @@ export function ReportView({
                               <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-semibold text-zinc-700">{String(row.구분)}</span>
                               <span className="shrink-0 text-sm font-semibold text-zinc-900 tabular-nums">{impact}</span>
                             </div>
-                            <p className="mt-1.5 text-sm leading-6 text-zinc-700">{String(row.내용)}</p>
+                            {/* 문구에 주소·해시 같은 긴 토큰이 남아도 카드 안에서 꺾인다. */}
+                            <p className="mt-1.5 text-sm leading-6 wrap-anywhere text-zinc-700">{String(row.내용)}</p>
                             {/* 빌더가 id를 붙이지 않은 행(건수만 문장에 있는 근사 계산)은 "0건"이라고 말하지 않는다 — 종이의 "—"와 같다. */}
                             {related.length > 0 && (
                               <p className="mt-1 text-xs text-zinc-500">관련 거래 {related.length.toLocaleString("ko-KR")}건</p>
