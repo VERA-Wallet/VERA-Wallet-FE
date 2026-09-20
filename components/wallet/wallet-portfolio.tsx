@@ -273,6 +273,7 @@ export function WalletPortfolio({
   coverage,
   freshness,
   verification = null,
+  onRemove,
 }: {
   address: string;
   /** 자산이 있는 체인들(보유 자산 파생). 주소 칩이 "이 지갑이 걸쳐 있는 네트워크"를 이 목록으로 말한다. */
@@ -290,6 +291,8 @@ export function WalletPortfolio({
   freshness?: "refreshing" | "stale";
   /** 등록 방식. 이름("등록한 주소"/"브라우저 지갑")만 정한다 — 배지는 두지 않는다. */
   verification?: SessionWalletVerification | string | null;
+  /** 등록 해제 진입점. 없으면(데모·읽기 전용) 삭제 구역을 그리지 않는다. 확인은 호출부의 몫이다. */
+  onRemove?: () => void;
 }): React.JSX.Element {
   const [tab, setTab] = useState<Tab>("token");
   const [network, setNetwork] = useState<number | "all">("all");
@@ -483,6 +486,20 @@ export function WalletPortfolio({
           </>
         )}
       </section>
+
+      {/* 삭제는 목록 맨 아래 — 헤더의 한 번 탭으로 지갑이 사라지면 안 된다. 확인 시트는 호출부(wallet-home)가 연다. */}
+      {onRemove && (
+        <section data-surface="wallet-remove" className="mt-10 border-t border-zinc-100 pt-5">
+          <button
+            type="button"
+            onClick={onRemove}
+            className="w-full rounded-xl border border-red-200 py-3 text-sm font-semibold text-red-600 transition-colors active:bg-red-50"
+          >
+            이 지갑 삭제
+          </button>
+          <p className="mt-2 text-center text-xs text-zinc-400">이 지갑에서 불러온 거래가 원장과 리포트에서 빠집니다.</p>
+        </section>
+      )}
     </main>
   );
 }

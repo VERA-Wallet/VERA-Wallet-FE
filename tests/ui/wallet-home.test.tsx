@@ -1,12 +1,12 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PortfolioHoldingsDTO } from "@/lib/http/dto";
 import type { Provenance } from "@/lib/http/envelope";
 
 const nav = vi.hoisted(() => ({ push: vi.fn() }));
-const ports = vi.hoisted(() => ({ getHoldings: vi.fn(), getWallets: vi.fn() }));
+const ports = vi.hoisted(() => ({ getHoldings: vi.fn(), getWallets: vi.fn(), removeWallet: vi.fn() }));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: nav.push, replace: vi.fn(), refresh: vi.fn() }),
@@ -14,7 +14,7 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/composition-root.client", () => ({
   authClient: { requestNonce: vi.fn(), verify: vi.fn(), presentDid: vi.fn(), logout: vi.fn(), getSession: vi.fn() },
   holdingsProvider: { getHoldings: ports.getHoldings },
-  walletsProvider: { getWallets: ports.getWallets },
+  walletsProvider: { getWallets: ports.getWallets, removeWallet: ports.removeWallet },
 }));
 
 import { authClient } from "@/lib/composition-root.client";
@@ -47,6 +47,44 @@ beforeEach(() => {
   ports.getHoldings.mockImplementation(demoHoldings);
   ports.getWallets.mockReset();
   ports.getWallets.mockImplementation(registered);
+  ports.removeWallet.mockReset();
+});
+
+describe("wallet removal", () => {
+  it("asks first, then removes the registered (checksum) address and returns to the wallet list", async () => {
+    ports.removeWallet.mockResolvedValue({ walletAddress: WALLET, removedTransactions: 3 });
+    await renderConnected();
+
+    // 한 번 탭으로 지워지지 않는다 — 시트가 무엇이 사라지는지 먼저 말한다.
+    await userEvent.click(screen.getByRole("button", { name: "이 지갑 삭제" }));
+    expect(ports.removeWallet).not.toHaveBeenCalled();
+    expect(await screen.findByText("이 지갑을 삭제할까요?")).toBeInTheDocument();
+    expect(screen.getByText(/체인에 이미 기록한 계산 근거는 지워지지 않습니다/)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "삭제" }));
+
+    await waitFor(() => expect(ports.removeWallet).toHaveBeenCalledWith(WALLET));
+    await waitFor(() => expect(nav.push).toHaveBeenCalledWith("/wallets"));
+  });
+
+  it("cancel closes the sheet without calling the server", async () => {
+    await renderConnected();
+    await userEvent.click(screen.getByRole("button", { name: "이 지갑 삭제" }));
+    await userEvent.click(screen.getByRole("button", { name: "취소" }));
+    await waitFor(() => expect(screen.queryByText("이 지갑을 삭제할까요?")).toBeNull());
+    expect(ports.removeWallet).not.toHaveBeenCalled();
+    expect(nav.push).not.toHaveBeenCalled();
+  });
+
+  it("says why when the server refuses, and stays on the page", async () => {
+    ports.removeWallet.mockRejectedValue(new HoldingsFetchError("wallet_not_found", "Wallet is not registered to this account."));
+    await renderConnected();
+    await userEvent.click(screen.getByRole("button", { name: "이 지갑 삭제" }));
+    await userEvent.click(screen.getByRole("button", { name: "삭제" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("이미 등록 해제된 지갑입니다");
+    expect(nav.push).not.toHaveBeenCalled();
+  });
 });
 
 describe("wallet home (portfolio of one registered wallet)", () => {

@@ -255,3 +255,11 @@ export const registeredWalletsSchema: z.ZodType<RegisteredWalletsDTO> = z.object
     boundAt: z.string(),
   })),
 });
+
+/** 지갑 등록 해제 응답. `removedTransactions`는 함께 지운 원장 행 수다(OFF 모드는 원장을 세지 않아 0). */
+export type RemovedWalletDTO = { walletAddress: string; removedTransactions: number };
+
+export const removedWalletSchema: z.ZodType<RemovedWalletDTO> = z.object({
+  walletAddress: z.string().regex(/^0x[0-9a-fA-F]{40}$/),
+  removedTransactions: z.number().int().nonnegative(),
+});

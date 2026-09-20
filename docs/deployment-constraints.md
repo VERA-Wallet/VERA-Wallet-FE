@@ -66,6 +66,7 @@ ON 모드(`VERAWALLET_BACKEND_ORIGIN` 설정)에서 어떤 경로가 어디로 �
 | `POST /api/auth/verify` | BE | 서명 검증과 지갑 바인딩 |
 | `GET /api/auth/session` | BE | 세션 판정의 단일 진실 소스 |
 | `POST /api/auth/logout` | BE | 쿠키 만료를 BE가 발급해야 실제로 끊긴다 |
+| `DELETE /api/auth/wallets/:address` | BE | 지갑 등록 해제. 바인딩과 그 거래·동기화 커서를 BE가 함께 지우고 원장 캐시를 비운다 |
 | `/api/events` (+ 하위 전체, `GET`·`PATCH`) | BE | 목록·요약·상세와 `PATCH /api/events/:id` 재분류까지 |
 | `GET /api/anchor-proof` | BE | 앵커 증명 |
 | `/api/tax-evidence` (+ `/:merkleRoot`) | BE | 계산 근거를 OmniOne 체인에 올린다. 루트는 **BE가 잎에서 다시 계산**하고(FE가 준 해시를 그대로 믿지 않는다) 원본 정본 문서는 BE가 보관한다 |
