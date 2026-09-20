@@ -110,8 +110,10 @@ describe("보고서 앱 화면", () => {
   it("예외 문구는 이벤트 id 없이 싣고, 긴 토큰이 남아도 카드 안에서 꺾이게 한다", async () => {
     const id = "42161:0x3a7799c5939202136b9159a7b7e3286e33ed392aaf0d9bfc2dc66cadc42f6584:balance:0";
     const warning = `${id}: 원장에 없는 수량 0.08078441928337632 ETH: 취득가액 0으로 계산했습니다.`;
+    // 원장 경고는 notes와 limitations 양쪽에 같은 문구로 온다(ledger.ts). 메모 목록에 원문이 다시 서면 id가 샌다.
     ports.estimate.mockResolvedValue({
       ...estimate,
+      notes: [...estimate.notes, warning],
       limitations: [{ kind: "zero_basis", message: warning, eventIds: [id] }],
     });
     render(<ReportView countryCode="KR" taxYear={2027} />);
@@ -120,6 +122,9 @@ describe("보고서 앱 화면", () => {
     expect(body).toHaveClass("wrap-anywhere");
     expect(screen.queryByText(new RegExp(id.slice(6, 30)))).not.toBeInTheDocument();
     expect(screen.getByText("관련 거래 1건")).toBeInTheDocument();
+    // 예외 행 한 번만. 계산 메모에는 규칙 설명만 남는다.
+    expect(screen.getAllByText(/원장에 없는 수량/)).toHaveLength(1);
+    expect(screen.getByText("가격을 모르는 거래 1건은 계산에서 뺐습니다.")).toBeInTheDocument();
   });
 
   it("PDF로 저장이 화면과 같은 estimate로 만든 인쇄용 문서를 넘긴다", async () => {

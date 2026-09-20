@@ -1,6 +1,6 @@
 "use client";
 
-import { plainLimitations } from "@/lib/tax/limitations";
+import { plainLimitations, ruleNotesOf } from "@/lib/tax/limitations";
 import Link from "next/link";
 import { useState } from "react";
 import { ChipScroller } from "@/components/ui/chip-scroller";
@@ -356,8 +356,7 @@ export function TaxSimulator({
         ? `${sourceLabel}에 ${countryLabel} 룰셋을 적용하는 중입니다.`
         : `${sourceLabel}에 ${countryLabel} 룰셋을 적용한 결과입니다. 계산 보조용이며 확정 판단이 아닙니다.`;
   // notes에는 규칙 설명과 계산 한계가 섞여 있다. 한계는 전용 패널이 이미 보여준다.
-  const limitationMessages = new Set(result?.limitations.map((row) => row.message) ?? []);
-  const ruleNotes = (result?.notes ?? []).filter((note) => !limitationMessages.has(note));
+  const ruleNotes = result ? ruleNotesOf(result.notes, result.limitations) : [];
   // 취득은 원가 추적 때문에 기간 밖에서도 남는다(engine.ts가 의도적으로 남긴다).
   // 그걸 세면 "이번 기간에 셀 것이 없음"이 영영 걸리지 않는다.
   // 어차피 안 그릴 것을 집계하지 않는다. 순서가 뒤집히면 "셀 것이 없다"면서 옛 취득 그룹을 보인다.

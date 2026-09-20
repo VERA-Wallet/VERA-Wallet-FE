@@ -14,6 +14,7 @@ import {
 } from "@/lib/export/report-format";
 import { halfOpenPeriodLabel } from "@/lib/period";
 import type { NormalizedEvent } from "@/lib/schema/normalized-event";
+import { ruleNotesOf } from "@/lib/tax/limitations";
 import type { TaxEstimate } from "@/lib/tax/types";
 import {
   FILING_LINE_SPECS,
@@ -367,7 +368,8 @@ function basisSection(estimate: TaxEstimate | null, events: readonly NormalizedE
   const bases = estimate
     ? [...new Set(estimate.lines.map((line) => line.basis).filter((basis): basis is string => Boolean(basis)))]
     : [];
-  const notes = estimate?.notes ?? [];
+  // 3절 예외 표가 이미 실은 원장 경고를 메모에 다시 쓰지 않는다(앱 화면·세금 화면과 같은 규칙).
+  const notes = estimate ? ruleNotesOf(estimate.notes, estimate.limitations) : [];
   const required = estimate?.requiredInputs ?? [];
 
   const list = (items: readonly string[]) =>

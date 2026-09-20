@@ -152,6 +152,15 @@ export function stripEventIds(message: string, eventIds: readonly string[]): str
   return text.replace(/^[\s:,·]+/, "").replace(/\s{2,}/g, " ").trim();
 }
 
+/**
+ * 규칙 설명만 남긴다. 원장 경고는 notes와 limitations 양쪽에 같은 문구로 들어오므로(ledger.ts),
+ * 한계 목록을 따로 그리는 화면이 notes까지 그대로 실으면 같은 줄이 두 번 서고 id가 붙은 원문이 새어 나온다.
+ */
+export function ruleNotesOf(notes: readonly string[], limitations: readonly Limitation[]): string[] {
+  const messages = new Set(limitations.map((row) => row.message));
+  return notes.filter((note) => !messages.has(note));
+}
+
 export type LimitationGroup = { kind: LimitationKind; message: string; eventIds: string[] };
 
 /**

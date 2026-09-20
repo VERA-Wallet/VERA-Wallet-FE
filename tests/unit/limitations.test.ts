@@ -19,6 +19,7 @@ import {
   groupLimitations,
   limitationOf,
   plainLimitations,
+  ruleNotesOf,
   stripEventIds,
 } from "@/lib/tax/limitations";
 import { TaxEngineService } from "@/lib/tax/tax-engine-service.server";
@@ -209,5 +210,16 @@ describe("확인이 필요한 거래 — 사람 말로", () => {
   it("매핑이 없는 문구는 지어내지 않고 그대로 보인다", () => {
     const message = `취득가액 통산 —${COST_METHOD_SUFFIX}`;
     expect(plainLimitations([limitationOf(message, [])])).toEqual([{ kind: "approximation", title: message, eventIds: [] }]);
+  });
+});
+
+describe("ruleNotesOf", () => {
+  it("한계 목록에 같은 문구로 들어 있는 원장 경고는 규칙 메모에서 뺀다", () => {
+    const id = "42161:0x3a7799c5939202136b9159a7b7e3286e33ed392aaf0d9bfc2dc66cadc42f6584:balance:0";
+    const warning = `${id}: 원장에 없는 수량 0.5 ETH: 취득가액 0으로 계산했습니다.`;
+    const notes = ["1년 초과 보유는 전액 비과세", warning];
+    expect(ruleNotesOf(notes, [{ kind: "zero_basis" as const, message: warning, eventIds: [id] }])).toEqual(["1년 초과 보유는 전액 비과세"]);
+    // 한계 목록에 없는 문구는 숨기지 않는다.
+    expect(ruleNotesOf(notes, [])).toEqual(notes);
   });
 });

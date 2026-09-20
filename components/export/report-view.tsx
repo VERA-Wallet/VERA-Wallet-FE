@@ -41,6 +41,7 @@ import type { NormalizedEvent } from "@/lib/schema/normalized-event";
 import { ZERO, isNegative, sum } from "@/lib/tax/decimal";
 import type { Decimal } from "@/lib/tax/decimal";
 import { buildEvidenceDocument } from "@/lib/tax/evidence";
+import { ruleNotesOf } from "@/lib/tax/limitations";
 import { canonicalCountryCode } from "@/lib/tax/rulesets";
 import { useTaxYear } from "@/lib/tax/tax-year-context";
 import type { TaxEstimate } from "@/lib/tax/types";
@@ -208,6 +209,8 @@ export function ReportView({
   const filing = useMemo(() => (estimate ? buildFilingSummary(estimate) : []), [estimate]);
   const assetRows = useMemo(() => (estimate ? buildAssetCostDetail(estimate) : []), [estimate]);
   const exceptionRows = useMemo(() => (estimate ? buildExceptions(events, estimate) : []), [events, estimate]);
+  // 원장 경고는 notes와 limitations에 같은 문구로 온다. 3절이 이미 실었으므로 메모에는 규칙 설명만 남긴다(세금 화면과 같은 규칙).
+  const ruleNotes = useMemo(() => (estimate ? ruleNotesOf(estimate.notes, estimate.limitations) : []), [estimate]);
   const wallets = useMemo(() => [...new Set(events.map((event) => event.wallet_address.toLowerCase()))].sort(), [events]);
   const bases = estimate
     ? [...new Set(estimate.lines.map((line) => line.basis).filter((basis): basis is string => Boolean(basis)))]
@@ -560,16 +563,16 @@ export function ReportView({
             {estimate && estimate.requiredInputs.length > 0 && (
               <>
                 <p className="mt-4 text-sm font-semibold text-zinc-800">지갑 밖에서 확인이 필요한 입력</p>
-                <ul className="mt-1 list-disc space-y-1 pl-5 text-sm leading-6 text-zinc-700">
+                <ul className="mt-1 list-disc space-y-1 pl-5 text-sm leading-6 wrap-anywhere text-zinc-700">
                   {estimate.requiredInputs.map((item) => <li key={item}>{item}</li>)}
                 </ul>
               </>
             )}
-            {estimate && estimate.notes.length > 0 && (
+            {estimate && ruleNotes.length > 0 && (
               <>
                 <p className="mt-4 text-sm font-semibold text-zinc-800">계산 메모</p>
-                <ul className="mt-1 list-disc space-y-1 pl-5 text-sm leading-6 text-zinc-700">
-                  {estimate.notes.map((note) => <li key={note}>{note}</li>)}
+                <ul className="mt-1 list-disc space-y-1 pl-5 text-sm leading-6 wrap-anywhere text-zinc-700">
+                  {ruleNotes.map((note) => <li key={note}>{note}</li>)}
                 </ul>
               </>
             )}
