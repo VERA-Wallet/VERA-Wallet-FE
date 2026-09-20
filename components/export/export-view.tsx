@@ -11,9 +11,7 @@ import type { Provenance } from "@/lib/http/envelope";
 import { anchorProofProvider, eventRepository, summaryProvider, taxEngine, taxEvidenceProvider } from "@/lib/composition-root.client";
 import { collectAllEvents } from "@/lib/export/collect";
 import { FILING_LINE_SPECS, buildFilingSummary, createReportLedgerCsv, filingRow } from "@/lib/export/report";
-import { buildReportHtml } from "@/lib/export/report-html";
 import { createReportXlsx } from "@/lib/export/report-workbook";
-import { printReportHtml } from "@/lib/export/print";
 import type { SummaryDTO } from "@/lib/http/dto";
 import { formatDateTime, formatFiat } from "@/lib/format";
 import { isGroundedPeriod, periodFilePart, periodLabel } from "@/lib/period";
@@ -61,9 +59,6 @@ export function ExportView({ countryCode, provenance = "mock" }: { countryCode?:
   // 없으면 연도 창은 시행 연도를 끼우지 않을 뿐, 그 밖은 그대로 동작한다.
   const [effectiveYear, setEffectiveYear] = useState<number | undefined>(undefined);
   const [yearPickerOpen, setYearPickerOpen] = useState(false);
-  // 보고서 인쇄는 팝업 차단·인쇄 미지원 브라우저에서 열리지 않을 수 있다. 조용히 아무 일도 안 일어나면
-  // 사용자는 자기 탓인지 앱 탓인지 모른다 — 그때만 이 자리에서 다른 내려받기를 권한다.
-  const [reportError, setReportError] = useState<string | null>(null);
   // 체인에 봉인한 계산 근거. **어느 연도의 답인지 함께** 들고 있는다 — 연도를 바꿀 때 상태를 비우려고
   // 효과 안에서 setState를 부르면 렌더가 연쇄된다(React Compiler가 막는다). 연도가 다르면 아래에서 안 쓴다.
   const [evidenceEntry, setEvidenceEntry] = useState<{ country: string; taxYear: number; record: EvidenceRecord | null } | null>(null);
@@ -443,57 +438,35 @@ export function ExportView({ countryCode, provenance = "mock" }: { countryCode?:
             </button>
           </div>
 
-          {/* 보고서(PDF) — 값만 늘어놓은 격자가 아니라 계산 흐름을 보이는 문서. 한글 PDF를 직접 쓰려면
-              글꼴을 통째로 내장해야 해서(수 MB), 조판은 CSS가 하고 PDF 변환은 브라우저 인쇄가 맡는다.
-              그래서 이 버튼만 파일을 바로 주지 않고 보고서를 연다 — 그 사실을 버튼 옆에서 미리 말한다. */}
+          {/* 보고서 — 값만 늘어놓은 격자가 아니라 계산 흐름을 보이는 문서. 앱 화면(/export/report)에서 그대로 읽고,
+              PDF는 거기서 브라우저 인쇄로 저장한다(한글 PDF를 직접 쓰려면 글꼴을 통째로 내장해야 해서).
+              링크에 귀속연도와 시행 가정을 실어 보낸다 — 화면이 전역 선택을 잃어도 같은 계산을 연다. */}
           <div className="rounded-card border border-zinc-200 p-4">
-            <p className="font-semibold text-zinc-900">보고서 (PDF)</p>
+            <p className="font-semibold text-zinc-900">보고서</p>
             <p className="mt-1 text-sm leading-6 text-zinc-500">
-              표지 · 신고 요약(기입란) · 자산별 취득가액 명세 · 예외와 한계. 보고서가 열리면 인쇄에서
-              &lsquo;PDF로 저장&rsquo;을 고르세요.
+              표지 · 신고 요약(기입란) · 자산별 취득가액 명세 · 예외와 한계. 앱 안에서 읽고, 인쇄에서
+              &lsquo;PDF로 저장&rsquo;을 고르면 파일이 됩니다.
             </p>
-            <button
-              className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl border border-primary-500 py-3 font-semibold text-primary-600 disabled:cursor-not-allowed disabled:opacity-50"
-              data-locked={downloadLocked ? "download" : undefined}
-              data-surface="report-pdf"
-              disabled={!ready || downloadLocked}
-              type="button"
-              onClick={() => {
-                const outcome = printReportHtml(
-                  buildReportHtml(
-                    events,
-                    estimate,
-                    {
-                      generatedAt: new Date().toISOString(),
-                      // 시행 가정으로 보고 있으면 종이에도 그 사실이 함께 가야 한다 — 가정을 뗀 금액은 다른 금액이다.
-                      ...(assumeEffective ? { assumeEffective: true, effectiveYear } : {}),
-                      // 체인 기록은 **지금 화면의 계산과 같을 때만** 싣는다. 고친 뒤의 종이에 옛 루트를 찍으면
-                      // 받는 사람이 대조에 실패하고, 그 실패의 이유를 알 방법이 없다.
-                      ...(evidence && !evidenceStale
-                        ? {
-                            anchor: {
-                              merkleRoot: evidence.merkleRoot,
-                              txHash: evidence.txHash,
-                              anchoredAt: evidence.anchoredAt,
-                              explorerUrl: evidence.explorerUrl,
-                            },
-                          }
-                        : {}),
-                    },
-                    filenamePeriod,
-                  ),
-                );
-                setReportError(
-                  outcome === "unavailable"
-                    ? "보고서 창을 열지 못했습니다. 팝업 차단을 해제하거나 아래 XLSX로 내려받아 주세요."
-                    : null,
-                );
-              }}
-            >
-              {downloadLocked && <Lock aria-hidden className="size-4 shrink-0" strokeWidth={2.5} />}
-              보고서 열기
-            </button>
-            {reportError && <p className="mt-2 text-sm text-red-600">{reportError}</p>}
+            {ready && !downloadLocked ? (
+              <Link
+                href={`/export/report?year=${selectedYear}${assumeEffective ? "&assume=1" : ""}`}
+                data-surface="report-open"
+                className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl border border-primary-500 py-3 font-semibold text-primary-600"
+              >
+                보고서 보기
+              </Link>
+            ) : (
+              <button
+                className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl border border-primary-500 py-3 font-semibold text-primary-600 disabled:cursor-not-allowed disabled:opacity-50"
+                data-locked={downloadLocked ? "download" : undefined}
+                data-surface="report-open"
+                disabled
+                type="button"
+              >
+                {downloadLocked && <Lock aria-hidden className="size-4 shrink-0" strokeWidth={2.5} />}
+                보고서 보기
+              </button>
+            )}
           </div>
 
           {/* 세무사 전달용 — XLSX 4시트(요약·자산별·원장·예외). 미리보기 목록을 여기에 흡수한다. */}

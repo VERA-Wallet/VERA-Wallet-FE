@@ -151,19 +151,13 @@ describe("내보내기 estimate 배선", () => {
     }
   });
 
-  it("보고서 열기가 estimate에서 파생한 인쇄용 문서를 넘긴다", async () => {
+  it("보고서 보기가 같은 귀속연도의 앱 화면 보고서로 보낸다 — 새 탭 인쇄가 첫 답이 아니다", async () => {
     render(<ExportView countryCode="KR" />);
     await screen.findByText("기타소득 계산");
 
-    fireEvent.click(screen.getByRole("button", { name: /보고서 열기/ }));
-
-    await waitFor(() => expect(print.printReportHtml).toHaveBeenCalledTimes(1));
-    const html = print.printReportHtml.mock.calls[0][0];
-    // 화면이 보여 준 금액과 종이의 금액이 같아야 한다 — 둘 다 buildFilingSummary(estimate)에서 나온다.
-    expect(html).toContain("기타소득 신고 근거자료");
-    expect(html).toContain("2027년 귀속 · 한국 · 거주자별 총평균법");
-    expect(html).toContain("₩183,333.34");
-    // 인쇄 대화상자의 기본 파일명 = 문서 제목.
-    expect(html).toContain("<title>verawallet-신고근거-2027년귀속-");
+    const link = await screen.findByRole("link", { name: "보고서 보기" });
+    expect(link).toHaveAttribute("href", "/export/report?year=2027");
+    // 이 화면은 더 이상 인쇄를 직접 띄우지 않는다 — PDF는 보고서 화면의 몫이다.
+    expect(print.printReportHtml).not.toHaveBeenCalled();
   });
 });

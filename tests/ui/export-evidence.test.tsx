@@ -143,26 +143,13 @@ describe("계산 근거 체인 기록", () => {
     expect(await screen.findByText("Evidence merkle root mismatch.")).toBeInTheDocument();
   });
 
-  it("보고서(PDF)는 지금 계산과 같은 기록만 싣는다", async () => {
+  it("보고서는 앱 화면(/export/report)으로 잇는다 — 기록을 종이에 싣는 규칙은 그 화면의 몫이다", async () => {
     ports.latest.mockResolvedValue(recordOf(CURRENT_ROOT));
     render(<ExportView countryCode="KR" />);
     await screen.findByText("체인에 기록됨");
 
-    fireEvent.click(screen.getByRole("button", { name: /보고서 열기/ }));
-    await waitFor(() => expect(print.printReportHtml).toHaveBeenCalledTimes(1));
-    expect(print.printReportHtml.mock.calls[0][0]).toContain(CURRENT_ROOT);
-  });
-
-  it("계산이 달라진 기록은 보고서에 찍지 않는다 — 대조에 실패할 해시를 종이에 남기지 않는다", async () => {
-    ports.latest.mockResolvedValue(recordOf(OTHER_ROOT));
-    render(<ExportView countryCode="KR" />);
-    await screen.findByText(/기록한 뒤로 계산이 달라졌습니다/);
-
-    fireEvent.click(screen.getByRole("button", { name: /보고서 열기/ }));
-    await waitFor(() => expect(print.printReportHtml).toHaveBeenCalledTimes(1));
-    const html = print.printReportHtml.mock.calls[0][0];
-    expect(html).not.toContain(OTHER_ROOT);
-    expect(html).not.toContain("OmniOne 체인 기록");
+    expect(screen.getByRole("link", { name: "보고서 보기" })).toHaveAttribute("href", "/export/report?year=2027");
+    expect(print.printReportHtml).not.toHaveBeenCalled();
   });
 
   it("체인 확인은 근거 화면으로 이동한다 — 해시 한 줄을 이 자리에서 그리지 않는다", async () => {
