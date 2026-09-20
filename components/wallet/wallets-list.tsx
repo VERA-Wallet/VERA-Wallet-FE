@@ -8,6 +8,7 @@ import { ChainIcon } from "@/components/ui/chain-icon";
 import { ProvenanceChip } from "@/components/ui/provenance-chip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { WalletMark } from "@/components/wallet/wallet-mark";
+import { HoldingsFetchError } from "@/lib/adapters/http/holdings-provider.http";
 import { chainLabel, formatFiat, shortHash } from "@/lib/format";
 import type { RegisteredWalletDTO, WalletSummaryDTO } from "@/lib/http/dto";
 import { useHoldings, useRegisteredWallets } from "@/lib/queries/holdings";
@@ -22,7 +23,7 @@ type BalanceState = "pending" | "error" | "ready";
  * 두 소스를 따로 읽는다:
  * - 목록(주소)은 저장소가 아는 사실이라 먼저, 그리고 잔액 조회가 실패해도 그려진다.
  * - 잔액·체인·평가액은 온체인 조회라 늦게 오고 실패할 수 있다. 그동안 값 자리는 스켈레톤이고, 실패하면
- *   헤드라인이 이유를 말하고 행마다 "US$?"와 "잔액 미확인"을 쓴다. 숫자를 0으로 채우지 않는다.
+ *   헤드라인이 이유를 말하고 행마다 "₩?"와 "잔액 미확인"을 쓴다. 숫자를 0으로 채우지 않는다.
  * 등록 방식 배지·이름은 목록에 두지 않는다(2026-09-11 결정).
  */
 export function WalletsList(): React.JSX.Element {
@@ -48,9 +49,9 @@ export function WalletsList(): React.JSX.Element {
           <p className="flex items-baseline gap-2 text-xl font-bold text-zinc-900">
             <span>전체 평가액</span>
             {data ? (
-              <span className="tabular-nums">{formatFiat(data.totalValueUsd, "USD")}</span>
+              <span className="tabular-nums">{formatFiat(data.totalValueKrw, "KRW")}</span>
             ) : balanceState === "error" ? (
-              <span className="text-zinc-400">—</span>
+              <span className="text-zinc-400">-</span>
             ) : (
               <Skeleton className="h-6 w-24" />
             )}
@@ -59,7 +60,7 @@ export function WalletsList(): React.JSX.Element {
             <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-400">
               {holdings.data ? <ProvenanceChip provenance={holdings.data.provenance} /> : null}
               <span>
-                {holdings.data?.provenance === "mock" ? "데모 예시 데이터(USD) 기준" : `온체인 잔액 × DexScreener 시세 · ${formatAsOf(data.asOf)} 기준`}
+                {holdings.data?.provenance === "mock" ? "데모 예시 데이터(원화) 기준" : `온체인 잔액 × DexScreener 시세 · US$1 = ${formatFiat(data.fx.usdKrw, "KRW")} · ${formatAsOf(data.asOf)} 기준`}
                 {wallets.data && wallets.data.wallets.length > 1 ? ` · 지갑 ${wallets.data.wallets.length}개 합산` : ""}
                 {data.unpricedCount > 0 ? ` · 시세 없는 자산 ${data.unpricedCount}개 제외` : ""}
               </span>
@@ -67,7 +68,7 @@ export function WalletsList(): React.JSX.Element {
             </p>
           ) : balanceState === "error" ? (
             <p role="alert" data-surface="wallets-total-error" className="mt-1 flex flex-wrap items-center gap-2 text-xs text-dispose">
-              <span>잔액 서버에서 응답을 받지 못했습니다. 거래 내역과 계산에는 영향이 없습니다.</span>
+              <span>{describeBalanceFailure(holdings.error)} 거래 내역과 계산에는 영향이 없습니다.</span>
               <button type="button" onClick={() => void holdings.refetch()} className="font-bold underline underline-offset-2">다시 시도</button>
             </p>
           ) : (
@@ -127,7 +128,7 @@ export function WalletsList(): React.JSX.Element {
             <div key={name} className="flex items-center gap-3 py-2">
               <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-zinc-200 text-xs font-bold text-zinc-500">{mark}</span>
               <div className="min-w-0 flex-1">
-                <p className="text-lg font-bold text-zinc-400">—</p>
+                <p className="text-lg font-bold text-zinc-400">-</p>
                 <p className="text-sm text-zinc-400">{name} · 준비 중</p>
               </div>
             </div>
@@ -178,9 +179,9 @@ function WalletRow({ wallet, summary, balanceState }: { wallet: RegisteredWallet
         </span>
         <div className="min-w-0 flex-1">
           {summary ? (
-            <p className="text-lg font-bold tabular-nums text-zinc-900">{formatFiat(summary.totalValueUsd, "USD")}</p>
+            <p className="text-lg font-bold tabular-nums text-zinc-900">{formatFiat(summary.totalValueKrw, "KRW")}</p>
           ) : failed ? (
-            <p className="text-lg font-bold text-zinc-900">US$?</p>
+            <p className="text-lg font-bold text-zinc-900">₩?</p>
           ) : (
             <Skeleton className="h-6 w-24 bg-zinc-200" />
           )}
@@ -199,7 +200,8 @@ function WalletRow({ wallet, summary, balanceState }: { wallet: RegisteredWallet
             ) : failed ? (
               <span className="font-semibold text-dispose">잔액 미확인</span>
             ) : (
-              <Skeleton className="h-4 w-[72px] rounded-full bg-zinc-200" />
+              // 체인 로고 묶음(16px 로고 1~3개 ≈ 16~38px)의 자리. 72px로 두면 실제보다 두 배 길어 "더 올 것"처럼 읽힌다.
+              <Skeleton className="h-4 w-9 rounded-full bg-zinc-200" />
             )}
           </p>
         </div>
@@ -209,6 +211,12 @@ function WalletRow({ wallet, summary, balanceState }: { wallet: RegisteredWallet
       </Link>
     </li>
   );
+}
+
+/** 잔액 조회 실패를 사용자 말로. 환율 장애는 잔액 서버 장애와 다른 문제라 따로 말한다. */
+function describeBalanceFailure(error: unknown): string {
+  const code = error instanceof HoldingsFetchError ? error.code : null;
+  return code === "fx_unavailable" ? "환율 서버에서 응답을 받지 못해 원화 평가액을 계산하지 못했습니다." : "잔액 서버에서 응답을 받지 못했습니다.";
 }
 
 function formatAsOf(iso: string): string {

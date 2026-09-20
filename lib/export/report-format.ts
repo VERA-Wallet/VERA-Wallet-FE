@@ -21,7 +21,7 @@ export function decimalOf(value: number): Decimal | null {
 
 /** 요약 행의 칸 하나를 금액으로. 숫자가 아닌 칸(세율·신뢰도)은 글자 그대로 둔다. */
 export function cellText(value: string | number | undefined, currency: string): string {
-  if (value === undefined) return "—";
+  if (value === undefined) return "-";
   if (typeof value === "string") return value;
   const decimal = decimalOf(value);
   return decimal === null ? String(value) : formatFiat(decimal, currency);
@@ -29,7 +29,7 @@ export function cellText(value: string | number | undefined, currency: string): 
 
 /** 수량은 통화가 아니다 — 꼬리 0을 떼어 `1.5 ETH`처럼 읽히게 한다. */
 export function quantityText(value: string | number | undefined): string {
-  if (value === undefined) return "—";
+  if (value === undefined) return "-";
   const raw = String(value);
   if (!/^-?\d+(?:\.\d+)?$/.test(raw)) return raw;
   const trimmed = raw.includes(".") ? raw.replace(/0+$/, "").replace(/\.$/, "") : raw;
@@ -51,7 +51,7 @@ export function groupedAmount(value: Decimal): string {
 
 /** 자산별 명세의 금액 칸 글자(기호 없음). 숫자가 아니면 그대로, 읽을 수 없으면 원문 그대로. */
 export function groupedCellText(value: string | number | undefined): string {
-  if (typeof value !== "number") return String(value ?? "—");
+  if (typeof value !== "number") return String(value ?? "-");
   const decimal = decimalOf(value);
   return decimal === null ? String(value) : groupedAmount(decimal);
 }
@@ -71,7 +71,7 @@ export const STATUS_BADGE: Record<TaxEstimate["status"], { label: string; tone: 
 /** 작성 시각을 KST로 못 박는다. 브라우저 시간대에 따라 같은 문서가 다른 시각을 말하면 안 된다. */
 export function generatedAtText(iso: string): string {
   const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "—";
+  if (Number.isNaN(date.getTime())) return "-";
   const parts = new Intl.DateTimeFormat("en-CA", {
     year: "numeric", month: "2-digit", day: "2-digit",
     hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Seoul",

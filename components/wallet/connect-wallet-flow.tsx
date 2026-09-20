@@ -28,7 +28,7 @@ function errorMessage(cause: unknown) {
   if (cause instanceof AuthClientError) {
     if (SIWE_CHALLENGE_MISMATCH_CODES.has(cause.code)) return "인증 요청 불일치";
     if (cause.code === "challenge_not_found") return "인증 요청을 찾을 수 없습니다. 다시 시도해 주세요.";
-    if (cause.code === "challenge_expired") return "만료됨 — 다시 시도";
+    if (cause.code === "challenge_expired") return "만료됨. 다시 시도";
     if (cause.status === 401) return "서명을 확인할 수 없습니다.";
   }
   return cause instanceof Error ? cause.message : "인증 중 오류가 발생했습니다.";

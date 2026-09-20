@@ -19,7 +19,7 @@ export function OnboardingSteps({ current }: { current: 1 | 2 }) {
             >
               {done ? <Check aria-hidden="true" className="size-3.5 shrink-0" strokeWidth={3} /> : null}
               {/* 번호는 순서 의무를 암시하는데 지갑 연결은 선택 단계다 */}
-              {label === "지갑 연결" && !active && !done ? `${label} — 나중에 가능` : label}
+              {label === "지갑 연결" && !active && !done ? `${label} (나중에 가능)` : label}
             </span>
             {step < STEPS.length ? <span aria-hidden="true" className="h-px w-3 bg-zinc-300" /> : null}
           </li>

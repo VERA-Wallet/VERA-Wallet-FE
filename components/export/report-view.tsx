@@ -335,11 +335,11 @@ export function ReportView({
                 <MetaItem term="거래 건수">{events.length.toLocaleString("ko-KR")}건</MetaItem>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <MetaItem term="작성 시각">{viewedAt ? generatedAtText(viewedAt) : "—"}</MetaItem>
-                <MetaItem term="계산 신뢰도">{estimate ? filingConfidenceNote(estimate) : "—"}</MetaItem>
+                <MetaItem term="작성 시각">{viewedAt ? generatedAtText(viewedAt) : "-"}</MetaItem>
+                <MetaItem term="계산 신뢰도">{estimate ? filingConfidenceNote(estimate) : "-"}</MetaItem>
               </div>
               <MetaItem term="대상 지갑" mono>
-                {wallets.length === 0 ? "—" : wallets.map((address) => <span key={address} className="block">{address}</span>)}
+                {wallets.length === 0 ? "-" : wallets.map((address) => <span key={address} className="block">{address}</span>)}
               </MetaItem>
               {anchor && <MetaItem term="계산 근거 머클루트" mono>{anchor.merkleRoot}</MetaItem>}
             </dl>
@@ -353,7 +353,7 @@ export function ReportView({
               <p className="mt-1 text-sm text-zinc-600">{String(headlineRow?.근거 ?? "산출 소득세 + 개인지방소득세")}</p>
               {assumeEffective && (
                 <p className="mt-3 border-t border-dashed border-primary-200 pt-3 text-sm leading-6 text-amber-900">
-                  시행 가정 — {estimate.taxYear}년 거래에 {effectiveYear ?? ""}년 시행 규칙({estimate.method})을 적용했다고{" "}
+                  시행 가정: {estimate.taxYear}년 거래에 {effectiveYear ?? ""}년 시행 규칙({estimate.method})을 적용했다고{" "}
                   <strong>가정한</strong> 금액이며, 현재 확정된 실제 부담이 아닙니다.
                 </p>
               )}

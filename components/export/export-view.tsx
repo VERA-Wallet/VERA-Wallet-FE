@@ -499,7 +499,7 @@ export function ExportView({ countryCode, provenance = "mock" }: { countryCode?:
           >
             <span>
               {`${planName} 플랜 ${allowance.toLocaleString("ko-KR")}건까지 · 현재 ${billableCount.toLocaleString("ko-KR")}건`}
-              {downloadLocked && (plan === null ? " — 플랜이 필요합니다" : " — 상위 플랜이 필요합니다")}
+              {downloadLocked && (plan === null ? " (플랜 필요)" : " (상위 플랜 필요)")}
             </span>
             <span className={`shrink-0 font-semibold underline ${downloadLocked ? "" : "text-primary-600"}`}>플랜 보기</span>
           </Link>
@@ -553,7 +553,7 @@ export function ExportView({ countryCode, provenance = "mock" }: { countryCode?:
           {/* 기록 뒤에 거래를 고쳤으면 그 사실을 말한다 — "기록됨" 배지만 남기면 옛 근거를 현재 근거로 읽는다. */}
           {evidenceStale && (
             <p className="mt-4 rounded-card border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-900">
-              기록한 뒤로 계산이 달라졌습니다. 지금 화면의 근거를 남기려면 다시 기록해 주세요 — 이전 기록은 체인에 그대로 남습니다.
+              기록한 뒤로 계산이 달라졌습니다. 지금 화면의 근거를 남기려면 다시 기록해 주세요. 이전 기록은 체인에 그대로 남습니다.
             </p>
           )}
 

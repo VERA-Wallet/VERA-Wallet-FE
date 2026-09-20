@@ -736,9 +736,9 @@ describe("4차 리뷰 P1 경계 — 오래된 상태가 최신인 척하지 않�
     renderDashboard("DE");
     await screen.findByText(/요약을 불러오지 못했습니다/, undefined, { timeout: 3000 });
     // 한 카드만 비고 다른 카드가 옛 값을 유지해도 통과하면 안 된다.
-    expect(screen.getByText("예상 손익").parentElement?.textContent).toContain("—");
+    expect(screen.getByText("예상 손익").parentElement?.textContent).toContain("-");
     // 요약이 실패하면 "과세 대상"이라 단정할 근거도 없다.
-    expect(screen.getByText("계산 대상 이벤트").parentElement?.textContent).toContain("—");
+    expect(screen.getByText("계산 대상 이벤트").parentElement?.textContent).toContain("-");
     // 요약 카드에 옛 집계가 남으면 안 된다(행의 거래액은 별개다).
     expect(screen.getByText("예상 손익").parentElement?.textContent).not.toMatch(/\d/);
     expect(screen.getByText("계산 대상 이벤트").parentElement?.textContent).not.toContain("1건");
@@ -1194,7 +1194,7 @@ describe("3세대 P1 경계", () => {
     // 재조회가 실패하면 캐시된 행이 남는다. 그걸 현재 사실로 단정하면 거짓이다.
     ports.list.mockRejectedValue(new Error("boom"));
     void client.invalidateQueries({ queryKey: ["events", "list"] });
-    await screen.findByText(/갱신하지 못했습니다 — 마지막으로 받은 상태 표시/, undefined, {
+    await screen.findByText(/갱신하지 못했습니다\. 마지막으로 받은 상태 표시/, undefined, {
       timeout: 3000,
     });
     // 내부 이체 행도 예외가 아니다 — 목록이 stale이면 판정을 보류해 손익 블록을 거둔다.
@@ -1860,7 +1860,7 @@ describe("목록이 실현 손익(₩)을 상세와 같은 소스에서 뽑아 �
     // 가격조차 미확인인 무손익 행만 —로 둔다(손익도 평가액도 없음).
     const unpricedNoGain = events.find((event) => event.fiat_value === null)!;
     const unpricedCell = rowById(unpricedNoGain.id).querySelector('[data-surface="event-gain"]')!;
-    expect(unpricedCell.textContent).toContain("—");
+    expect(unpricedCell.textContent).toContain("-");
     expect(unpricedCell.textContent ?? "").not.toMatch(/[€₩$]/);
   });
 

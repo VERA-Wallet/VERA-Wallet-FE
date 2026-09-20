@@ -42,11 +42,11 @@ describe("계산의 한계 분류", () => {
     expect(classifyLimitation(LIMITATION_MESSAGE.ESTIMATED_PRICE)).toBe("approximation");
     expect(classifyLimitation(LIMITATION_MESSAGE.EXCHANGE_APPROXIMATION)).toBe("approximation");
     expect(classifyLimitation("가격 확인 필요 상태인 이벤트는 계산에서 제외했습니다.")).toBe("excluded");
-    expect(classifyLimitation("dsp-btc-04: 원장에 없는 수량 1 BTC — 취득가액 0으로 계산했습니다.")).toBe("zero_basis");
+    expect(classifyLimitation("dsp-btc-04: 원장에 없는 수량 1 BTC: 취득가액 0으로 계산했습니다.")).toBe("zero_basis");
     // 법정 취득가액·원가법 대신 대체값으로 계산한 줄은 "근사"다. other로 새면 화면이 한계를 숨긴다.
-    expect(classifyLimitation(`시행일 전 취득분을 소비한 처분 3건 —${DEEMED_COST_SUFFIX}`)).toBe("approximation");
-    expect(classifyLimitation(`판정 보류 수령분 2건 —${RECEIPT_COST_SUFFIX}`)).toBe("approximation");
-    expect(classifyLimitation(`취득가액 산정 —${COST_METHOD_SUFFIX}`)).toBe("approximation");
+    expect(classifyLimitation(`시행일 전 취득분을 소비한 처분 3건.${DEEMED_COST_SUFFIX}`)).toBe("approximation");
+    expect(classifyLimitation(`판정 보류 수령분 2건.${RECEIPT_COST_SUFFIX}`)).toBe("approximation");
+    expect(classifyLimitation(`취득가액 산정.${COST_METHOD_SUFFIX}`)).toBe("approximation");
   });
 
   it("모르는 문구는 숨기지 않고 other로 내보인다", () => {
@@ -193,7 +193,7 @@ describe("확인이 필요한 거래 — 사람 말로", () => {
   it("취득가액 0원 건은 심볼별 수량 합계 한 줄로 합치고 긴 소수를 줄인다", () => {
     // 원장(ledger.ts)이 내는 모양 그대로.
     const ledgerRow = (n: number, quantity: string, symbol: string) =>
-      limitationOf(`${id(n)}: 원장에 없는 수량 ${quantity} ${symbol} —${ZERO_BASIS_SUFFIX}`, [id(n)]);
+      limitationOf(`${id(n)}: 원장에 없는 수량 ${quantity} ${symbol}:${ZERO_BASIS_SUFFIX}`, [id(n)]);
     const rows = plainLimitations([
       ledgerRow(1, "0.08078395195187632", "ETH"),
       limitationOf(LIMITATION_MESSAGE.GAS_FEE, []),

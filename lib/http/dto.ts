@@ -138,7 +138,7 @@ export type HoldingPriceStatus = "priced" | "illiquid" | "no_market" | "unknown"
  * - ready: 원장이 잔액 전량의 원가를 안다.
  * - partial: 원장이 아는 수량(`trackedAmount`)이 잔액과 다르다 — 불러오기 중이거나 이벤트가 빠졌다.
  * - unknown: 원장이 이 자산을 모른다.
- * - fx_unavailable: 원가는 있는데(원장 통화) 환율 소스가 응답하지 않아 USD로 옮기지 못했다.
+ * - fx_unavailable: 원가는 있는데 그 통화의 환율을 받지 못해 원화로 옮기지 못했다. 원장 통화가 KRW인 지금은 나오지 않는다.
  */
 export type HoldingCostStatus = "ready" | "partial" | "unknown" | "fx_unavailable";
 
@@ -152,11 +152,13 @@ export type PortfolioHoldingDTO = {
   decimals: number;
   /** 사람이 읽는 수량(십진 문자열, 반올림 없음). */
   amount: string;
-  priceUsd: string | null;
-  valueUsd: string | null;
+  /** 단가(KRW, 소수 8자리). BE의 USD 시세를 오늘 환율로 옮긴 값. 시세가 없으면 null. */
+  priceKrw: string | null;
+  /** 평가액(KRW). 1원 이상은 원 단위, 1원 미만은 소수 둘째 자리까지. 시세가 없으면 null. */
+  valueKrw: string | null;
   priceStatus: HoldingPriceStatus;
-  /** USD로 환산한 취득원가. `costStatus`가 ready·partial일 때만 값이 있다. */
-  costUsd: string | null;
+  /** 취득원가(KRW). 원장 통화가 KRW라 환산 없이 그대로다. `costStatus`가 ready·partial일 때만 값이 있다. */
+  costKrw: string | null;
   costStatus: HoldingCostStatus;
   /** 원장이 원가를 아는 수량. `amount`와 다르면 partial. */
   trackedAmount: string | null;
@@ -169,8 +171,8 @@ export type WalletSummaryDTO = {
   /** 소문자 주소. */
   address: string;
   verificationMethod: string;
-  /** 시세 있는 보유분 USD 합. 시세 없는 자산은 0이 아니라 빠져 있고 `unpricedCount`에 센다. */
-  totalValueUsd: string;
+  /** 시세 있는 보유분 KRW 합. 시세 없는 자산은 0이 아니라 빠져 있고 `unpricedCount`에 센다. */
+  totalValueKrw: string;
   /** 잔액이 실제로 있는 체인(스팸·더스트 제외 후). */
   chainIds: number[];
   holdingsCount: number;
@@ -190,11 +192,16 @@ export type PortfolioHoldingsDTO = {
   unresolvedCount: number;
   /** 형식이 맞지 않아 FE가 버린 행 수. 조용히 버리면 목록이 완전한 것처럼 보이면서 자산이 사라진다(이벤트 목록의 `dropped`와 같은 이유). */
   droppedCount: number;
-  /** 시세가 있는 보유분의 USD 합. 시세 없는 자산은 0이 아니라 빠져 있다. */
-  totalValueUsd: string;
+  /** 시세가 있는 보유분의 KRW 합. 시세 없는 자산은 0이 아니라 빠져 있다. */
+  totalValueKrw: string;
   unpricedCount: number;
   asOf: string;
+  /** 시세(USD)를 원화로 옮긴 환율. 화면이 "US$1 = ₩1,390"처럼 환산 근거를 말한다. */
+  fx: HoldingsFxDTO;
 };
+
+/** 이 응답의 원화 환산에 쓴 환율. `day`는 환율 기준일(UTC)이다. */
+export type HoldingsFxDTO = { usdKrw: string; day: string };
 
 const nullableDecimalString = decimalString.nullable();
 
@@ -206,10 +213,10 @@ export const portfolioHoldingSchema: z.ZodType<PortfolioHoldingDTO> = z.object({
   name: z.string().min(1),
   decimals: z.number().int().nonnegative(),
   amount: decimalString,
-  priceUsd: nullableDecimalString,
-  valueUsd: nullableDecimalString,
+  priceKrw: nullableDecimalString,
+  valueKrw: nullableDecimalString,
   priceStatus: z.enum(["priced", "illiquid", "no_market", "unknown"]),
-  costUsd: nullableDecimalString,
+  costKrw: nullableDecimalString,
   costStatus: z.enum(["ready", "partial", "unknown", "fx_unavailable"]),
   trackedAmount: nullableDecimalString,
   canonicalAssetId: z.string().min(1).nullable(),
@@ -218,11 +225,13 @@ export const portfolioHoldingSchema: z.ZodType<PortfolioHoldingDTO> = z.object({
 export const walletSummarySchema: z.ZodType<WalletSummaryDTO> = z.object({
   address: z.string().min(1),
   verificationMethod: z.string().min(1),
-  totalValueUsd: decimalString,
+  totalValueKrw: decimalString,
   chainIds: z.array(z.number().int()),
   holdingsCount: z.number().int().nonnegative(),
   unpricedCount: z.number().int().nonnegative(),
 });
+
+export const holdingsFxSchema: z.ZodType<HoldingsFxDTO> = z.object({ usdKrw: decimalString, day: z.string() });
 
 export const portfolioHoldingsSchema: z.ZodType<PortfolioHoldingsDTO> = z.object({
   walletAddresses: z.array(z.string()),
@@ -232,9 +241,10 @@ export const portfolioHoldingsSchema: z.ZodType<PortfolioHoldingsDTO> = z.object
   truncatedChainIds: z.array(z.number().int()),
   unresolvedCount: z.number().int().nonnegative(),
   droppedCount: z.number().int().nonnegative(),
-  totalValueUsd: decimalString,
+  totalValueKrw: decimalString,
   unpricedCount: z.number().int().nonnegative(),
   asOf: z.string(),
+  fx: holdingsFxSchema,
 });
 
 // ── 등록한 지갑 목록 ─────────────────────────────────────────────────────────

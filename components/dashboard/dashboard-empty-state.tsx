@@ -55,10 +55,10 @@ export function DashboardEmptyState({ countryCode, provenance = "mock" }: { coun
         <p className="mt-2 text-xs text-zinc-400">룰셋 비교와 데모 계산은 지갑 없이도 쓸 수 있습니다.</p>
       </section>
 
-      {/* 채워질 자리를 보여주는 플레이스홀더. 값은 대시보드 빈 상태와 같은 "—". */}
+      {/* 채워질 자리를 보여주는 플레이스홀더. 값은 대시보드 빈 상태와 같은 "-". */}
       <section className="mt-6 grid gap-3" aria-hidden="true">
-        <SummaryCard label="예상 손익" value="—" supportingText="지갑을 연결하면 계산됩니다." />
-        <SummaryCard label="계산 대상 이벤트" value="—" supportingText="지갑을 연결하면 채워집니다." />
+        <SummaryCard label="예상 손익" value="-" supportingText="지갑을 연결하면 계산됩니다." />
+        <SummaryCard label="계산 대상 이벤트" value="-" supportingText="지갑을 연결하면 채워집니다." />
       </section>
 
       <section className="mt-8">

@@ -233,7 +233,7 @@ describe("불러오기 모달", () => {
   it("조회 단계에서는 몇 개 체인이 끝났는지 스크린리더에 알린다", () => {
     renderModal(running(SCAN_STEP_INDEX, 2_000, 1));
     // 단계 이름만 읽으면 진척이 없는 것처럼 들린다.
-    expect(screen.getByText(`${IMPORT_STEPS[SCAN_STEP_INDEX].label} — 체인 3곳 중 1곳 완료`)).toBeTruthy();
+    expect(screen.getByText(`${IMPORT_STEPS[SCAN_STEP_INDEX].label}: 체인 3곳 중 1곳 완료`)).toBeTruthy();
   });
 
   it("진행 중인 단계만 무엇을 기다리는지 말한다", () => {

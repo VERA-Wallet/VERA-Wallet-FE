@@ -66,7 +66,7 @@ const FLOW_TEXT_CLASS: Record<AssetFlow, string> = {
 /**
  * 손익 판정 행에서 합산한 **실현 손익 금액**. 상세의 "손익은 이렇게 나왔습니다" 근거표가 쓰는 것과
  * **같은 소스**(amountKind==="gain")라 목록과 상세가 갈리지 않는다. 손익 판정이 없는 건
- * (NFT·수령분·자기 지갑 간 이체·보류·중복·제외로 rows가 빔)은 null → 목록은 "—"로 둔다.
+ * (NFT·수령분·자기 지갑 간 이체·보류·중복·제외로 rows가 빔)은 null → 목록은 "-"로 둔다.
  * 세무 엔진을 다시 돌리지 않고 이미 계산된 값을 합칠 뿐이다.
  */
 function gainAmount(rows: JudgmentRow[]): string | null {
@@ -305,11 +305,11 @@ function EventDetails({
           사용자가 받은 다리를 "무관"이 아니라 "나중 처분의 원가"로 읽는다. */}
       {swapInLeg ? (
         <section className="mt-4 rounded-lg bg-zinc-50 p-3">
-          <h3 className="text-sm font-semibold text-zinc-700">스왑 구성 — 한 거래, 두 다리</h3>
+          <h3 className="text-sm font-semibold text-zinc-700">스왑 구성: 한 거래, 두 다리</h3>
           <div className="mt-2 space-y-2 text-sm">
             <p className="text-zinc-700">
               <span className="font-semibold text-rose-700">내보낸 자산</span> {formatSignedTokenAmount(event)} {assetTicker(event)}
-              <span className="text-zinc-500"> — 손익은 아래 근거표가 말합니다.</span>
+              <span className="text-zinc-500"> · 손익은 아래 근거표가 말합니다.</span>
             </p>
             <div className="rounded-lg bg-white p-3">
               <p className="font-semibold text-emerald-700">받은 자산 {formatSignedTokenAmount(swapInLeg)} {assetTicker(swapInLeg)}</p>
@@ -319,7 +319,7 @@ function EventDetails({
               {needsReview(swapInLeg) ? (
                 <p className="mt-1 rounded bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800">확인 필요 · {reviewReason(swapInLeg)}</p>
               ) : null}
-              <p className="mt-1 text-zinc-500">지금 내는 세금이 아닙니다 — 이 자산을 나중에 팔 때의 원가가 됩니다(손익 이연).</p>
+              <p className="mt-1 text-zinc-500">지금 내는 세금이 아닙니다. 이 자산을 나중에 팔 때의 원가가 됩니다(손익 이연).</p>
             </div>
           </div>
         </section>
@@ -417,19 +417,19 @@ function EventDetails({
                   <div>
                     <dt className="text-zinc-500">보유일</dt>
                     {/* 여러 취득분을 소비하면 보유기간이 하나로 정해지지 않는다.
-                        "—"만 두면 기록이 없는 것과 구분되지 않는다. */}
+                        "-"만 두면 기록이 없는 것과 구분되지 않는다. */}
                     <dd className="mt-1 font-medium text-zinc-900">
                       {row.holdingDays !== null
                         ? `${row.holdingDays}일`
                         : row.lots > 1
                           ? "취득분마다 다름"
-                          : "—"}
+                          : "-"}
                     </dd>
                   </div>
                   <div>
                     <dt className="text-zinc-500">취득일</dt>
                     <dd className="mt-1 font-medium text-zinc-900">
-                      {row.acquiredAt ? formatDate(row.acquiredAt) : row.lots > 1 ? "취득분마다 다름" : "—"}
+                      {row.acquiredAt ? formatDate(row.acquiredAt) : row.lots > 1 ? "취득분마다 다름" : "-"}
                     </dd>
                   </div>
                   <div><dt className="text-zinc-500">소비한 취득분</dt><dd className="mt-1 font-medium text-zinc-900">{row.lots}개</dd></div>
@@ -493,9 +493,9 @@ function EventDetails({
           <summary className="cursor-pointer text-sm font-semibold text-zinc-700 marker:text-zinc-400">이 거래가 없었다면</summary>
           <p className="mt-2 text-sm text-zinc-700">
             {isZero(marginalContribution)
-              ? "총액이 그대로입니다 — 부담에 영향 없음"
+              ? "총액이 그대로입니다. 부담에 영향 없음"
               : isNegative(marginalContribution)
-                ? <>이 거래를 지우면 부담이 늘어납니다 — 취득원가가 사라지기 때문입니다 · {formatFiat(marginalContribution, currency)}</>
+                ? <>이 거래를 지우면 부담이 늘어납니다. 취득원가가 사라지기 때문입니다 · {formatFiat(marginalContribution, currency)}</>
                 : formatFiat(marginalContribution, currency)}
           </p>
           <p className="mt-1 text-sm text-zinc-500">부담을 건별로 나눠 넣을 수 없어, 이 거래를 뺀 경우의 차이를 보입니다.</p>
@@ -876,7 +876,7 @@ function EventRow({
       </div>
       {/* 오른쪽 칸은 방향과 무관하게 같은 뜻을 가진다.
           1줄: **거래 당시 평가액**(이벤트 통화 그대로). 수량 줄의 −/+는 지갑 기준 방향이고, 이 줄은 그 수량의 가치라
-          부호·색 없이 중립으로 둔다. 가격 미확인이면 "—". 손익을 이 자리에 두면 "-563 USDC / -₩33,767"처럼
+          부호·색 없이 중립으로 둔다. 가격 미확인이면 "-". 손익을 이 자리에 두면 "-563 USDC / -₩33,767"처럼
           방향 부호와 손익 부호가 한 행에 섞여 3만 원어치를 보냈다고 읽힌다(실제 가치는 77만 원).
           2줄: **실현 손익**(처분 행에만). 상세의 손익 근거표와 같은 판정 행(amountKind==="gain")을 합산하므로
           목록과 상세가 갈리지 않는다. 눈에 보이는 라벨을 붙여 1줄의 평가액과 뜻이 섞이지 않게 하고,
@@ -891,7 +891,7 @@ function EventRow({
               {hideBalances ? "•••••" : formatFiat(event.fiat_value, event.fiat_currency)}
             </span>
           ) : (
-            <span className="text-[0.9375rem] font-bold tabular-nums text-zinc-400">—</span>
+            <span className="text-[0.9375rem] font-bold tabular-nums text-zinc-400">-</span>
           )}
           {gain !== null ? (
             hideBalances ? (
@@ -1299,7 +1299,7 @@ export function DashboardView({ countryCode, provenance = "mock" }: { countryCod
           label="예상 손익"
           value={
             headline === undefined
-              ? "—"
+              ? "-"
               : headline.computableEventCount === 0
                 ? "계산할 거래 없음"
                 : hideBalances
@@ -1316,7 +1316,7 @@ export function DashboardView({ countryCode, provenance = "mock" }: { countryCod
         <SummaryCard
           // 실제 과세 여부는 판정 그룹(취득·비과세·상계 소멸…)이 정하므로 "과세 대상"이라 부르면 과장이다.
           label="계산 대상 이벤트"
-          value={headline !== undefined ? `${headline.computableEventCount}건` : "—"}
+          value={headline !== undefined ? `${headline.computableEventCount}건` : "-"}
           supportingText={
             summaryFresh.data
               ? estimate !== undefined && estimate.status !== "UNDETERMINED"
@@ -1380,9 +1380,9 @@ export function DashboardView({ countryCode, provenance = "mock" }: { countryCod
         <details className="mt-3">
           <summary className="cursor-pointer text-xs font-medium text-zinc-400">배지 뜻</summary>
           <div className="mt-2 space-y-1 text-sm text-zinc-600">
-            <p>분류 — 온체인에서 일어난 일(수신·송금·교환·내부 이동·미분류). 상세에서 직접 바꿀 수 있습니다.</p>
-            <p>판정 — 이 거래가 세금 계산에서 어떻게 쓰였는지(과세·취득·비과세·이연 등). 거주국 룰셋이 정하며 나라마다 다릅니다.</p>
-            <p>앰버 배지 — 확인이 필요한 문제. 정상 상태는 배지를 달지 않습니다.</p>
+            <p>분류: 온체인에서 일어난 일(수신·송금·교환·내부 이동·미분류). 상세에서 직접 바꿀 수 있습니다.</p>
+            <p>판정: 이 거래가 세금 계산에서 어떻게 쓰였는지(과세·취득·비과세·이연 등). 거주국 룰셋이 정하며 나라마다 다릅니다.</p>
+            <p>앰버 배지: 확인이 필요한 문제. 정상 상태는 배지를 달지 않습니다.</p>
           </div>
         </details>
         {/* 원장에서 빠진 것들을 반드시 말한다. 조용히 빼면 목록이 완전한 것처럼 보이면서 거래가 사라진다.
@@ -1478,8 +1478,8 @@ export function DashboardView({ countryCode, provenance = "mock" }: { countryCod
           <p role="status" className="mt-3 border-l-2 border-zinc-200 pl-2 text-xs text-zinc-400">
             {eventsStale && events.data
               ? (eventsFresh.state === "error"
-                  ? "갱신하지 못했습니다 — 마지막으로 받은 상태 표시"
-                  : "갱신 중 — 마지막으로 받은 상태 표시")
+                  ? "갱신하지 못했습니다. 마지막으로 받은 상태 표시"
+                  : "갱신 중. 마지막으로 받은 상태 표시")
               : null}
             {eventsStale && events.data && events.data?.truncated ? " · " : null}
             {events.data?.truncated ? (

@@ -7,7 +7,7 @@ import { Providers } from "./providers";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "VeraWallet — 온체인 거래 명세",
+  title: "VeraWallet: 온체인 거래 명세",
   description: "VeraWallet 온체인 거래 명세",
 };
 

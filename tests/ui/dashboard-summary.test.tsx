@@ -47,7 +47,7 @@ describe("dashboard summary", () => {
     ports.getSummary.mockReturnValue(new Promise(() => {}));
     ports.estimate.mockReturnValue(new Promise(() => {}));
     renderDashboard();
-    expect(screen.getByText("예상 손익").parentElement).toHaveTextContent("—");
+    expect(screen.getByText("예상 손익").parentElement).toHaveTextContent("-");
     expect(screen.getByText("예상 손익").parentElement).not.toHaveTextContent("₩0");
   });
 

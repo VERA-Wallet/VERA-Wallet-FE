@@ -33,7 +33,7 @@ export const portugal: RuleSetDefinition = {
   topics: [
     { topic: "CAPITAL_GAINS", status: "CONFIRMED", basis: "CIRS Categoria G (2023 국가예산법)", note: "365일 이상 보유 시 전액 면세" },
     { topic: "STAKING", status: "CONFIRMED", basis: "CIRS Categoria E", note: "365일 면세 미적용" },
-    { topic: "CRYPTO_TO_CRYPTO", status: "CONFIRMED", basis: "CIRS", note: "보유기간 승계는 출처 상충 — 1차 확인 필요" },
+    { topic: "CRYPTO_TO_CRYPTO", status: "CONFIRMED", basis: "CIRS", note: "보유기간 승계는 출처 상충. 1차 확인 필요" },
     { topic: "LOSS_OFFSET", status: "CONFIRMED", basis: "CIRS", note: "단기 손실만 동종 이익과 상계" },
     { topic: "DEFI_LP", status: "UNDETERMINED", basis: "명문 규정 부재" },
     { topic: "WRAPPING", status: "UNDETERMINED", basis: "명문 규정 부재" },
@@ -85,7 +85,7 @@ export const portugal: RuleSetDefinition = {
       notes: [
         "365일 이상 보유 후 처분은 전액 면세입니다(증권형 토큰 제외).",
         "크립토→크립토 교환은 과세되지 않고 취득원가와 보유기간이 승계됩니다.",
-        "스테이킹은 Categoria E로 별도 28% — 보유기간 면세가 적용되지 않습니다.",
+        "스테이킹은 Categoria E로 별도 28%. 보유기간 면세가 적용되지 않습니다.",
         ...ledger.warnings,
       ],
       limitations: ledger.limitations,

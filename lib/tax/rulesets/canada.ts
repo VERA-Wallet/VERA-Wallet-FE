@@ -269,7 +269,7 @@ export const canada: RuleSetDefinition = {
         ...(gt(prior.pending, ZERO)
           ? [
               limitationOf(
-                `이전 기간 부인 손실 ${prior.pending}가 아직 보유 중인 대체 취득분 원가에 남아 있습니다 —${PENDING_ACB_SUFFIX}`,
+                `이전 기간 부인 손실 ${prior.pending}가 아직 보유 중인 대체 취득분 원가에 남아 있습니다.${PENDING_ACB_SUFFIX}`,
                 [],
               ),
             ]

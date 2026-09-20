@@ -160,8 +160,8 @@ export function ImportProgressModal({
               ? "거래를 모두 불러왔습니다."
               : progress.stepIndex === SCAN_STEP_INDEX
                 ? // 조회 단계에서는 "몇 번째 체인인지"가 곧 진척이다. 단계 이름만 읽으면 멈춘 것처럼 들린다.
-                  `${currentStep.label} — 체인 ${chains.length}곳 중 ${progress.scannedChainCount}곳 완료`
-                : `${currentStep.label} — ${currentStep.runningText}`}
+                  `${currentStep.label}: 체인 ${chains.length}곳 중 ${progress.scannedChainCount}곳 완료`
+                : `${currentStep.label}: ${currentStep.runningText}`}
         </p>
 
         {slow ? (

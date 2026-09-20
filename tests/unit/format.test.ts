@@ -23,8 +23,8 @@ describe("금액 표기는 값을 숨기지 않는다", () => {
     expect(formatFiat("1015.40", "EUR")).toBe("€1,015.40");
   });
 
-  it("null은 —, 숫자가 아니면 원문을 그대로 보인다", () => {
-    expect(formatFiat(null, "EUR")).toBe("—");
+  it("null은 -, 숫자가 아니면 원문을 그대로 보인다", () => {
+    expect(formatFiat(null, "EUR")).toBe("-");
     expect(formatFiat("n/a", "EUR")).toBe("n/a EUR");
   });
 

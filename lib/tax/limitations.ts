@@ -25,7 +25,7 @@ export const EXCLUSION_SUFFIX = " 상태인 이벤트는 계산에서 제외했�
 export const EXCLUDED_ID_SUFFIX = " 확인이 필요해 계산에서 제외했습니다.";
 
 /** 부인된 손실을 대체 취득분 원가에 반영하지 못했다는 경고의 고정 꼬리. */
-export const DENIED_ACB_SUFFIX = " 대체 취득분 원가에 더하지 않았습니다 — 이후 처분 손익이 과대될 수 있습니다.";
+export const DENIED_ACB_SUFFIX = " 대체 취득분 원가에 더하지 않았습니다. 이후 처분 손익이 과대될 수 있습니다.";
 
 /** 아직 팔지 않은 대체 취득분에 이연 원가가 남아 있다는 경고의 고정 꼬리. */
 export const PENDING_ACB_SUFFIX = " 그 자산을 팔 때 반영됩니다.";
@@ -37,17 +37,17 @@ export const ZERO_BASIS_SUFFIX = " 취득가액 0으로 계산했습니다.";
  * 한국 의제취득가액(2026-12-31 시가)을 반영하지 못했다는 근사의 고정 꼬리.
  * 법정 취득가액은 Max(시가, 실제 취득가액)이므로, 실제 취득가액만 쓰면 손익이 과대될 수 있다.
  */
-export const DEEMED_COST_SUFFIX = " 의제취득가액(2026-12-31 시가)을 확인하지 못해 실제 취득가액으로 계산했습니다 — 손익이 과대될 수 있습니다.";
+export const DEEMED_COST_SUFFIX = " 의제취득가액(2026-12-31 시가)을 확인하지 못해 실제 취득가액으로 계산했습니다. 손익이 과대될 수 있습니다.";
 
 /** 무상취득분 취득가액 규정이 없어 수령 시 FMV를 원가로 썼다는 근사의 고정 꼬리. */
-export const RECEIPT_COST_SUFFIX = " 무상취득분 취득가액 규정이 없어 수령 시 FMV를 취득가액으로 계산했습니다 — 0원으로 보면 처분 시 과세분이 커집니다.";
+export const RECEIPT_COST_SUFFIX = " 무상취득분 취득가액 규정이 없어 수령 시 FMV를 취득가액으로 계산했습니다. 0원으로 보면 처분 시 과세분이 커집니다.";
 
 /**
  * 거주자별 총평균법이 부분집계로 계산됐다는 근사의 고정 꼬리.
  * 총평균법은 그 거주자의 모든 출처(거래소·지갑)를 합산해야 하나, 아직 지갑 단위로만 통산해
  * 평균단가의 분모가 실제보다 작을 수 있다 — 예상 부담은 잠정치다.
  */
-export const COST_METHOD_SUFFIX = " 거주자별 총평균법은 그 사람의 모든 출처를 합산해야 하나, 아직 지갑 단위로만 통산해 평균단가가 실제와 다를 수 있습니다 — 예상 부담은 잠정치입니다.";
+export const COST_METHOD_SUFFIX = " 거주자별 총평균법은 그 사람의 모든 출처를 합산해야 하나, 아직 지갑 단위로만 통산해 평균단가가 실제와 다를 수 있습니다. 예상 부담은 잠정치입니다.";
 
 /** 거래일 환율이 없어 계산에서 제외했다는 고정 꼬리(앞에는 이벤트 id). */
 export const FX_RATE_SUFFIX = " 거래일 환율(ECB 기준)을 확인하지 못해 계산에서 제외했습니다.";
@@ -56,7 +56,7 @@ export const FX_RATE_SUFFIX = " 거래일 환율(ECB 기준)을 확인하지 못
  * 이벤트 통화를 룰셋 통화로 환산했다는 근사의 고정 꼬리(앞에는 "KRW → USD"처럼 통화쌍).
  * 세무 당국이 정한 환율·기준일(고시환율·월평균 등)과 다를 수 있으므로 근사로 분류한다.
  */
-export const FX_CONVERSION_SUFFIX = " 금액은 거래일의 ECB 기준환율로 환산했습니다 — 세무 당국이 정한 환율·기준일과 다를 수 있습니다.";
+export const FX_CONVERSION_SUFFIX = " 금액은 거래일의 ECB 기준환율로 환산했습니다. 세무 당국이 정한 환율·기준일과 다를 수 있습니다.";
 
 /**
  * 답이 얼마나 흔들리는지의 순서.
@@ -204,8 +204,8 @@ const MESSAGE_PLAIN: ReadonlyMap<string, Plain> = new Map<string, Plain>([
   [LIMITATION_MESSAGE.DUPLICATE_ID, { title: "같은 거래가 두 번 들어와 첫 건만 계산했습니다." }],
 ]);
 
-/** 원장(ledger.ts)이 내는 모양 그대로: "원장에 없는 수량 <수량> <심볼> — 취득가액 0으로…". 수량은 십진 문자열만 받는다. */
-const ZERO_BASIS_PATTERN = /^원장에 없는 수량 (\d+(?:\.\d+)?) (\S+) —/;
+/** 원장(ledger.ts)이 내는 모양 그대로: "원장에 없는 수량 <수량> <심볼>: 취득가액 0으로…". 수량은 십진 문자열만 받는다. */
+const ZERO_BASIS_PATTERN = /^원장에 없는 수량 (\d+(?:\.\d+)?) (\S+):/;
 
 const ZERO_BASIS_PLAIN: Plain = {
   title: "이 지갑에 산 기록이 없는 수량을 팔았습니다.",

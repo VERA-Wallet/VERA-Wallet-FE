@@ -167,7 +167,7 @@ describe("보고서 앱 화면", () => {
     await screen.findByText("2027년 귀속 · 한국 · 거주자별 총평균법");
 
     await waitFor(() => expect(ports.estimate).toHaveBeenCalledWith(expect.objectContaining({ assumeEffective: true })));
-    expect(screen.getByText(/시행 가정 —/)).toBeInTheDocument();
+    expect(screen.getByText(/시행 가정:/)).toBeInTheDocument();
   });
 
   it("미구독이면 금액 없이 잠금 안내와 플랜 링크만 보인다", async () => {

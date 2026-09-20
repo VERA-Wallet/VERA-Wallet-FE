@@ -110,7 +110,7 @@ export function nativeSymbol(chainId: number): string {
  * 대시보드와 세금 탭이 서로 다른 자릿수로 같은 금액을 그리던 것을 이 함수로 합쳤다.
  */
 export function formatFiat(value: string | null, currency: string): string {
-  if (value === null) return "—";
+  if (value === null) return "-";
   const parsed = parseDecimal(value);
   if (!parsed) return `${value} ${currency}`;
   try {
@@ -139,7 +139,7 @@ function parseDecimal(value: string): ParsedDecimal | null {
  * €0.01 − €0.00 − €0.00 = €0.00 같은 표시 모순이 생긴다.
  */
 export function formatFiatExact(value: string | null, currency: string): string {
-  if (value === null) return "—";
+  if (value === null) return "-";
   const parsed = parseDecimal(value);
   if (!parsed) return `${value} ${currency}`;
   try {

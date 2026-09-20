@@ -1,7 +1,7 @@
 import type { PortfolioHoldingsDTO } from "@/lib/http/dto";
 import type { Provenance } from "@/lib/http/envelope";
 import { HoldingsReadError, type HoldingsProvider } from "@/lib/ports/holdings-provider";
-import { DEMO_TOKENS, demoWalletHoldings, totalValueUsd } from "@/lib/wallet/holdings";
+import { DEMO_TOKENS, DEMO_USD_KRW, demoWalletHoldings, totalValueKrw } from "@/lib/wallet/holdings";
 
 /**
  * OFF(mock) 모드의 보유 자산 소스. 지갑 홈이 하드코딩하던 데모 지갑(ETH·USDT·USDC + 데모 시세·원가)을
@@ -26,8 +26,8 @@ export class MockHoldingsProvider implements HoldingsProvider {
       data: {
         walletAddresses: scoped,
         byWallet: scoped.map((item) => (item === registered[0]
-          ? { address: item, verificationMethod: this.verificationMethod, totalValueUsd: totalValueUsd(holdings), chainIds, holdingsCount: holdings.length, unpricedCount: 0 }
-          : { address: item, verificationMethod: this.verificationMethod, totalValueUsd: "0", chainIds: [], holdingsCount: 0, unpricedCount: 0 })),
+          ? { address: item, verificationMethod: this.verificationMethod, totalValueKrw: totalValueKrw(holdings), chainIds, holdingsCount: holdings.length, unpricedCount: 0 }
+          : { address: item, verificationMethod: this.verificationMethod, totalValueKrw: "0", chainIds: [], holdingsCount: 0, unpricedCount: 0 })),
         holdings: scoped.includes(registered[0]) ? holdings.map((holding) => ({
           chainId: holding.chainId,
           assetType: holding.contract === null ? "NATIVE" : "ERC20",
@@ -36,10 +36,10 @@ export class MockHoldingsProvider implements HoldingsProvider {
           name: holding.name,
           decimals: DEMO_TOKENS.find((token) => token.chainId === holding.chainId && token.symbol === holding.symbol)!.decimals,
           amount: holding.amount,
-          priceUsd: holding.priceUsd,
-          valueUsd: holding.valueUsd,
+          priceKrw: holding.priceKrw,
+          valueKrw: holding.valueKrw,
           priceStatus: "priced",
-          costUsd: holding.costUsd,
+          costKrw: holding.costKrw,
           costStatus: "ready",
           trackedAmount: holding.amount,
           canonicalAssetId: holding.symbol.toLowerCase(),
@@ -48,9 +48,11 @@ export class MockHoldingsProvider implements HoldingsProvider {
         truncatedChainIds: [],
         unresolvedCount: 0,
         droppedCount: 0,
-        totalValueUsd: scoped.includes(registered[0]) ? totalValueUsd(holdings) : "0",
+        totalValueKrw: scoped.includes(registered[0]) ? totalValueKrw(holdings) : "0",
         unpricedCount: 0,
         asOf: this.now().toISOString(),
+        // 데모 시세는 이 환율로 옮긴 원화다. 화면이 실데이터와 같은 문장으로 환산 근거를 말한다.
+        fx: { usdKrw: DEMO_USD_KRW, day: this.now().toISOString().slice(0, 10) },
       },
     };
   }

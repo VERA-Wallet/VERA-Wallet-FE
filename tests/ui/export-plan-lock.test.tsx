@@ -118,7 +118,7 @@ describe("내보내기 플랜 잠금", () => {
     expect(csv).toHaveAttribute("data-locked", "download");
     expect(screen.getByRole("button", { name: /세무사 전달용 내려받기/ })).toBeDisabled();
     // 하단 안내는 플랜이 필요하다고 말하고, 플랜은 탭에 없으니 이 링크가 앱 안의 진입로다.
-    expect(screen.getByText("무료 플랜 100건까지 · 현재 100건 — 플랜이 필요합니다")).toBeInTheDocument();
+    expect(screen.getByText("무료 플랜 100건까지 · 현재 100건 (플랜 필요)")).toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: /플랜 보기/ }).length).toBeGreaterThan(0);
     // 파일 행 수와 과금 건수는 다를 수 있다. 캡션은 자기 기준과 자기 수를 함께 말해야 한다.
     expect(screen.getByText(/건수는 계산 대상 이벤트 기준입니다 · 현재 100건/)).toBeInTheDocument();
@@ -138,7 +138,7 @@ describe("내보내기 플랜 잠금", () => {
   it("한도를 넘고 플랜이 없으면 다운로드가 잠기고 플랜으로 가는 문이 열린다", async () => {
     renderWith(250, null);
 
-    const banner = await screen.findByText("무료 플랜 100건까지 · 현재 250건 — 플랜이 필요합니다");
+    const banner = await screen.findByText("무료 플랜 100건까지 · 현재 250건 (플랜 필요)");
     expect(banner).toBeInTheDocument();
     expect(banner.closest("a")).toHaveAttribute("href", "/plan");
     expect(screen.getByRole("button", { name: "직접 신고용 내려받기" })).toBeDisabled();
@@ -166,7 +166,7 @@ describe("내보내기 플랜 잠금", () => {
     // 카드가 1,000건이라 적어 놓고 무제한으로 열어 주면 광고와 동작이 갈린다.
     renderWith(planDefinition("plus").exportLimit + 1, plusPlan);
 
-    expect(await screen.findByText(/플러스 플랜 1,000건까지 · 현재 1,001건 — 상위 플랜이 필요합니다/)).toBeInTheDocument();
+    expect(await screen.findByText(/플러스 플랜 1,000건까지 · 현재 1,001건 \(상위 플랜 필요\)/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "직접 신고용 내려받기" })).toBeDisabled();
     // 한도 초과여도 구독자는 금액을 본다 — 잠기는 것은 다운로드다.
     expect(await screen.findByText("₩5,000,000")).toBeInTheDocument();

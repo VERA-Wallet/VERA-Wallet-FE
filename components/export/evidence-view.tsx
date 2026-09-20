@@ -213,7 +213,7 @@ export function EvidenceView({ merkleRoot: root }: { merkleRoot: string }) {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <dt className="text-xs text-zinc-500">블록</dt>
-                      <dd className="mt-0.5 font-medium text-zinc-900">{detail.blockNumber ?? "—"}</dd>
+                      <dd className="mt-0.5 font-medium text-zinc-900">{detail.blockNumber ?? "-"}</dd>
                     </div>
                     <div>
                       <dt className="text-xs text-zinc-500">봉인한 판정</dt>
@@ -245,11 +245,11 @@ export function EvidenceView({ merkleRoot: root }: { merkleRoot: string }) {
                 <p className="mt-2 break-all font-mono text-xs text-zinc-900">{recomputedRoot}</p>
                 {intact ? (
                   <p className="mt-2 text-sm leading-6 text-zinc-500">
-                    기록된 루트와 같습니다. 아래 판정을 같은 규칙으로 묶으면 체인의 해시가 나옵니다 — 한 건이라도 바뀌면 값이 달라집니다.
+                    기록된 루트와 같습니다. 아래 판정을 같은 규칙으로 묶으면 체인의 해시가 나옵니다. 한 건이라도 바뀌면 값이 달라집니다.
                   </p>
                 ) : (
                   <p className="mt-2 text-sm leading-6 text-red-700">
-                    기록된 루트와 다릅니다. 문서가 바뀌었거나 손상됐습니다 — 아래 판정은 체인의 해시가 덮는 내용이 아닙니다.
+                    기록된 루트와 다릅니다. 문서가 바뀌었거나 손상됐습니다. 아래 판정은 체인의 해시가 덮는 내용이 아닙니다.
                   </p>
                 )}
               </Card>
@@ -397,7 +397,7 @@ function JudgmentLeafRow({
             </>
           )}
           <p className="mt-2 text-xs leading-5 text-zinc-500">
-            이 잎과 형제 해시만으로 루트가 나옵니다 — 나머지 거래를 보이지 않고도 이 판정 하나가 봉인됐음을 증명할 수 있습니다.
+            이 잎과 형제 해시만으로 루트가 나옵니다. 나머지 거래를 보이지 않고도 이 판정 하나가 봉인됐음을 증명할 수 있습니다.
           </p>
         </div>
       )}

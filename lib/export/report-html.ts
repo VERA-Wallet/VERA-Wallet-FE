@@ -104,7 +104,7 @@ function cover(
   // 대상 지갑은 파일에 실제로 들어간 거래에서 읽는다 — 등록만 하고 거래가 없는 지갑을 "대상"이라 적지 않는다.
   const wallets = [...new Set(events.map((event) => event.wallet_address.toLowerCase()))].sort();
   const walletHtml = wallets.length === 0
-    ? "—"
+    ? "-"
     : `<span class="mono">${wallets.map((address) => escapeHtml(address)).join("</span><br><span class=\"mono\">")}</span>`;
   const badge = estimate ? STATUS_BADGE[estimate.status] : null;
   const period = estimate?.period ?? null;
@@ -123,7 +123,7 @@ function cover(
     ${metaRow("과세기간", escapeHtml(period ? halfOpenPeriodLabel(period) : "기간 미정"))}
     ${metaRow("거래 건수", `${escapeHtml(events.length.toLocaleString("ko-KR"))}건`)}
     ${metaRow("작성 시각", escapeHtml(generatedAtText(meta.generatedAt)))}
-    ${metaRow("계산 신뢰도", escapeHtml(estimate ? filingConfidenceNote(estimate) : "—"))}
+    ${metaRow("계산 신뢰도", escapeHtml(estimate ? filingConfidenceNote(estimate) : "-"))}
     ${metaRow("대상 지갑", walletHtml, true)}
     ${meta.anchor ? metaRow("계산 근거 머클루트", `<span class="mono">${escapeHtml(meta.anchor.merkleRoot)}</span>`, true) : ""}
   </dl>
@@ -142,7 +142,7 @@ function headline(estimate: TaxEstimate | null, filing: readonly ReportRow[], me
   }
   const row = filingRow(filing, "예상 합계 부담");
   const assumption = meta.assumeEffective
-    ? `<p class="assumption">시행 가정 — ${escapeHtml(String(estimate.taxYear))}년 거래에 ${escapeHtml(String(meta.effectiveYear ?? ""))}년 시행 규칙(${escapeHtml(estimate.method)})을 적용했다고 <strong>가정한</strong> 금액이며, 현재 확정된 실제 부담이 아닙니다.</p>`
+    ? `<p class="assumption">시행 가정: ${escapeHtml(String(estimate.taxYear))}년 거래에 ${escapeHtml(String(meta.effectiveYear ?? ""))}년 시행 규칙(${escapeHtml(estimate.method)})을 적용했다고 <strong>가정한</strong> 금액이며, 현재 확정된 실제 부담이 아닙니다.</p>`
     : "";
   return `<section class="headline">
     <p class="headline-label">예상 합계 부담</p>
@@ -299,7 +299,7 @@ const INLINE_ID_MAX_LENGTH = 24;
 
 function eventIdsCell(raw: string): string {
   const ids = raw.split(",").map((id) => id.trim()).filter((id) => id.length > 0);
-  if (ids.length === 0) return `<td class="ids">—</td>`;
+  if (ids.length === 0) return `<td class="ids">-</td>`;
   const inline = ids.every((id) => id.length <= INLINE_ID_MAX_LENGTH) ? ids.slice(0, 4) : [];
   const rest = ids.length - inline.length;
   const tail = inline.length > 0

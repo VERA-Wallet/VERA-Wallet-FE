@@ -3,6 +3,7 @@
 import { plainLimitations } from "@/lib/tax/limitations";
 import Link from "next/link";
 import { useState } from "react";
+import { ChipScroller } from "@/components/ui/chip-scroller";
 import { ProvenanceChip } from "@/components/ui/provenance-chip";
 import { AMOUNT_KIND_LABEL, GROUP_SHORT_LABEL, JudgmentBadge } from "@/components/ui/judgment-badge";
 import { formatFiat } from "@/lib/format";
@@ -394,7 +395,8 @@ export function TaxSimulator({
   return (
     <main className="min-h-dvh px-5 py-8">
       <header data-surface="tax-simulator" className="flex items-start justify-between gap-3">
-        <div>
+        {/* min-w-0: flex 아이템의 기본 min-width:auto는 문단의 최소 내용 폭까지만 줄어들어 옆 배지를 밀어낸다. */}
+        <div className="min-w-0">
           <p className="text-sm font-semibold text-primary-500">VeraWallet</p>
           <h1 className="mt-2 text-3xl font-bold tracking-tight text-zinc-900">
             {taxYear === currentYear ? "올해 세금" : `${taxYear}년 세금`}
@@ -453,21 +455,23 @@ export function TaxSimulator({
       ) : null}
 
       <section className="mt-6" aria-label="국가 선택">
-        {/* 12개 룰셋을 세로로 쌓으면 첫 화면이 칩으로 다 찬다 — 가로 스크롤 스트립으로 접는다. */}
-        <div className="-mx-5 flex snap-x gap-2 overflow-x-auto px-5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {/* 12개 룰셋을 세로로 쌓으면 첫 화면이 칩으로 다 찬다. 가로 스크롤 스트립으로 접는다.
+            대시보드 필터와 같은 ChipScroller다: 스크롤바를 숨긴 채 넘치는 쪽 페이드와 (포인터 기기의) 화살표로
+            "오른쪽에 더 있다"를 말한다. 스크롤바만 숨긴 줄은 데스크톱에서 마지막 칩이 잘린 채 끝나고 넘길 문이 없었다. */}
+        <ChipScroller>
           {(rulesets.data ?? []).map((ruleset) => (
             <button
               key={ruleset.code}
               type="button"
               aria-pressed={ruleset.code === country}
-              className={`shrink-0 snap-start whitespace-nowrap rounded-full border px-3 py-1.5 text-sm font-semibold ${ruleset.code === country ? "border-primary-500 bg-primary-500 text-white" : "border-zinc-300 bg-white text-zinc-700"}`}
+              className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-sm font-semibold ${ruleset.code === country ? "border-primary-500 bg-primary-500 text-white" : "border-zinc-300 bg-white text-zinc-700"}`}
               onClick={() => setCountry(ruleset.code)}
             >
               {ruleset.label}
               {ruleset.demoPriority ? <span className="ml-1 text-xs opacity-80">{ruleset.demoPriority}순위</span> : null}
             </button>
           ))}
-        </div>
+        </ChipScroller>
 
         {rulesets.isLoading ? <p className="text-sm text-zinc-500">룰셋을 불러오는 중입니다</p> : null}
         {rulesetsFailed ? (
@@ -597,8 +601,9 @@ export function TaxSimulator({
                   </p>
                   <p className="mt-1 text-sm text-zinc-500">실효 {result.totals.effectiveRatePercent}%</p>
                 </div>
-                {/* 답을 이루는 세 덩어리. 답보다 작게 둔다. */}
-                <dl className="mt-3 grid grid-cols-3 gap-2">
+                {/* 답을 이루는 세 덩어리. 답보다 작게 둔다. 세로 행이다: 3칸 격자는 칸 폭이 120px쯤이라
+                    십억 원대 금액이 칸 밖으로 넘쳤다(2026-09-20 실데이터). 행은 금액이 아무리 길어도 오른쪽에 그대로 앉는다. */}
+                <dl className="mt-3 divide-y divide-zinc-100 rounded-card border border-zinc-200 bg-white px-4 shadow-card">
                   {[
                     { label: "과세 대상", value: result.totals.taxableGains, note: null, showNoteWhenZero: false },
                     // exemptGains는 독일 보유기간 면세뿐 아니라 호주 50% 할인·캐나다 inclusion 비포함분·
@@ -609,12 +614,14 @@ export function TaxSimulator({
                     { label: "과세표준 제외", value: result.totals.exemptGains, note: "면세·할인·공제 합계", showNoteWhenZero: false },
                     { label: "수령 소득", value: result.totals.incomeTotal, note: null, showNoteWhenZero: false },
                   ].map((item) => (
-                    <div key={item.label} className="rounded-card border border-zinc-200 bg-white p-3 shadow-card">
-                      <dt className="text-xs text-zinc-500">{item.label}</dt>
-                      <dd className="mt-1 text-sm font-bold text-zinc-900">{formatFiat(item.value, result.currency)}</dd>
-                      {item.note !== null && (item.showNoteWhenZero || item.value !== "0") ? (
-                        <p className="mt-0.5 text-[11px] leading-4 text-zinc-400">{item.note}</p>
-                      ) : null}
+                    <div key={item.label} className="flex items-start justify-between gap-4 py-2.5">
+                      <dt className="min-w-0 text-sm text-zinc-500">
+                        {item.label}
+                        {item.note !== null && (item.showNoteWhenZero || item.value !== "0") ? (
+                          <span className="mt-0.5 block text-[11px] leading-4 text-zinc-400">{item.note}</span>
+                        ) : null}
+                      </dt>
+                      <dd className="shrink-0 text-right text-sm font-bold tabular-nums text-zinc-900">{formatFiat(item.value, result.currency)}</dd>
                     </div>
                   ))}
                 </dl>
@@ -849,7 +856,7 @@ export function TaxSimulator({
                 href="/connect-wallet"
                 className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm text-zinc-400"
               >
-                내 지갑 이벤트 — 연결 필요
+                내 지갑 이벤트 (연결 필요)
               </Link>
             ) : (
               <button

@@ -24,10 +24,10 @@ const holdings: { data: PortfolioHoldingsDTO; provenance: Provenance } = {
   data: {
     walletAddresses: [A.toLowerCase(), B.toLowerCase()],
     byWallet: [
-      { address: A.toLowerCase(), verificationMethod: "watch_only", totalValueUsd: "2.91", chainIds: [1, 10, 137, 8453, 42161], holdingsCount: 9, unpricedCount: 0 },
-      { address: B.toLowerCase(), verificationMethod: "siwe", totalValueUsd: "0", chainIds: [], holdingsCount: 0, unpricedCount: 0 },
+      { address: A.toLowerCase(), verificationMethod: "watch_only", totalValueKrw: "4050", chainIds: [1, 10, 137, 8453, 42161], holdingsCount: 9, unpricedCount: 0 },
+      { address: B.toLowerCase(), verificationMethod: "siwe", totalValueKrw: "0", chainIds: [], holdingsCount: 0, unpricedCount: 0 },
     ],
-    holdings: [], skippedChainIds: [], truncatedChainIds: [], unresolvedCount: 0, droppedCount: 0, totalValueUsd: "2.91", unpricedCount: 1, asOf: "2026-09-11T06:30:00.000Z",
+    holdings: [], skippedChainIds: [], truncatedChainIds: [], unresolvedCount: 0, droppedCount: 0, totalValueKrw: "4050", unpricedCount: 1, asOf: "2026-09-11T06:30:00.000Z", fx: { usdKrw: "1390", day: "2026-09-11" },
   },
 };
 
@@ -48,17 +48,17 @@ describe("wallets list (지갑 탭)", () => {
     const rows = await screen.findAllByRole("link", { name: /포트폴리오 열기/ });
     expect(rows).toHaveLength(2);
     expect(rows[0]).toHaveAttribute("href", `/wallets/${A.toLowerCase()}`);
-    expect(await screen.findByText("US$2.91", { selector: "[data-surface='wallet-row'] p" })).toBeInTheDocument();
+    expect(await screen.findByText("₩4,050", { selector: "[data-surface='wallet-row'] p" })).toBeInTheDocument();
     expect(rows[0]).toHaveTextContent("0xF8D09e…B1EFAD");
     expect(screen.getByLabelText("네트워크 Ethereum, Optimism, Polygon, Base, Arbitrum")).toBeInTheDocument();
     for (const gone of ["미검증", "소유 증명됨", "등록한 주소", "브라우저 지갑", "네트워크 ·", "자산 9개", "포트폴리오"]) {
       expect(rows[0].textContent).not.toContain(gone);
     }
-    expect(rows[1]).toHaveTextContent("US$0.00");
+    expect(rows[1]).toHaveTextContent("₩0");
     expect(rows[1].querySelector("[aria-label^='네트워크']")).toBeNull();
     const total = container.querySelector('[data-surface="wallets-total"]')!;
     expect(total).toHaveTextContent("전체 평가액");
-    expect(total).toHaveTextContent("US$2.91");
+    expect(total).toHaveTextContent("₩4,050");
     expect(total).toHaveTextContent("지갑 2개 합산");
     expect(total).toHaveTextContent("시세 없는 자산 1개 제외");
     expect(screen.getByRole("tab", { name: "지갑" })).toHaveAttribute("aria-selected", "true");
@@ -95,21 +95,21 @@ describe("wallets list (지갑 탭)", () => {
     expect(rows).toHaveLength(2);
     expect(container.querySelector('[data-surface="wallets-total"]')).toHaveAttribute("aria-busy", "true");
     expect(screen.getByRole("status")).toHaveTextContent("지갑 2개의 잔액을 확인하는 중입니다");
-    expect(screen.queryByText("US$0.00")).toBeNull();
+    expect(screen.queryByText("₩0")).toBeNull();
     expect(rows[0]).toHaveTextContent("0xF8D09e…B1EFAD");
   });
 
-  it("keeps the wallet list when the balance read fails: headline says why, rows say US$? and 잔액 미확인", async () => {
+  it("keeps the wallet list when the balance read fails: headline says why, rows say ₩? and 잔액 미확인", async () => {
     const user = userEvent.setup();
     ports.getHoldings.mockRejectedValueOnce(new Error("offline"));
     const { container } = renderList();
     expect(await screen.findByText(/잔액 서버에서 응답을 받지 못했습니다/)).toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: /포트폴리오 열기/ })).toHaveLength(2);
-    expect(screen.getAllByText("US$?")).toHaveLength(2);
+    expect(screen.getAllByText("₩?")).toHaveLength(2);
     expect(screen.getAllByText("잔액 미확인")).toHaveLength(2);
-    expect(screen.queryByText("US$0.00")).toBeNull();
+    expect(screen.queryByText("₩0")).toBeNull();
     await user.click(screen.getByRole("button", { name: "다시 시도" }));
-    expect(await screen.findByText("US$2.91", { selector: "[data-surface='wallets-total'] span" })).toBeInTheDocument();
+    expect(await screen.findByText("₩4,050", { selector: "[data-surface='wallets-total'] span" })).toBeInTheDocument();
     expect(container.querySelector('[data-surface="wallets-total-error"]')).toBeNull();
   });
 
