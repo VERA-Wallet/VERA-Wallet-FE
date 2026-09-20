@@ -34,7 +34,8 @@ const BACKEND_OWNED_PATHS = new Set([
 const FORWARDED_HEADERS = ["accept", "accept-language", "content-type", "content-length", "user-agent"] as const;
 
 function isBackendOwned(pathname: string): boolean {
-  return BACKEND_OWNED_PATHS.has(pathname) || pathname === "/api/events" || pathname.startsWith("/api/events/");
+  // 지갑 등록 해제(`DELETE /api/auth/wallets/:address`)는 바인딩과 그 거래·커서를 BE가 함께 지운다. 하위 경로도 BE 소유다.
+  return BACKEND_OWNED_PATHS.has(pathname) || pathname === "/api/events" || pathname.startsWith("/api/events/") || pathname.startsWith("/api/auth/wallets/");
 }
 
 /**
@@ -74,6 +75,7 @@ export const config = {
     "/api/auth/verify",
     "/api/auth/wallet/watch",
     "/api/auth/wallets",
+    "/api/auth/wallets/:address",
     "/api/auth/session",
     "/api/auth/logout",
     "/api/events",

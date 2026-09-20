@@ -1,7 +1,7 @@
 import "client-only";
 
 import { decodeResponse } from "@/lib/http/error-codec";
-import { registeredWalletsSchema, type RegisteredWalletsDTO } from "@/lib/http/dto";
+import { registeredWalletsSchema, removedWalletSchema, type RegisteredWalletsDTO, type RemovedWalletDTO } from "@/lib/http/dto";
 import type { WalletsProvider } from "@/lib/ports/wallets-provider";
 import { HoldingsFetchError } from "@/lib/adapters/http/holdings-provider.http";
 
@@ -11,6 +11,12 @@ export class HttpWalletsProvider implements WalletsProvider {
 
   async getWallets(): Promise<RegisteredWalletsDTO> {
     const response = await decodeResponse(await this.fetcher("/api/auth/wallets"), registeredWalletsSchema);
+    if ("data" in response && "meta" in response) return response.data;
+    throw new HoldingsFetchError(response.error.code, response.error.message);
+  }
+
+  async removeWallet(address: string): Promise<RemovedWalletDTO> {
+    const response = await decodeResponse(await this.fetcher(`/api/auth/wallets/${encodeURIComponent(address)}`, { method: "DELETE" }), removedWalletSchema);
     if ("data" in response && "meta" in response) return response.data;
     throw new HoldingsFetchError(response.error.code, response.error.message);
   }

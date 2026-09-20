@@ -65,6 +65,7 @@ ON 모드(`VERAWALLET_BACKEND_ORIGIN` 설정)에서 어떤 경로가 어디로 �
 | `POST /api/auth/verify` | BE | 서명 검증과 지갑 바인딩 |
 | `GET /api/auth/session` | BE | 세션 판정의 단일 진실 소스 |
 | `POST /api/auth/logout` | BE | 쿠키 만료를 BE가 발급해야 실제로 끊긴다 |
+| `DELETE /api/auth/wallets/:address` | BE | 지갑 등록 해제. 바인딩과 그 거래·동기화 커서를 BE가 함께 지우고 원장 캐시를 비운다 |
 | `/api/events` (+ 하위 전체, `GET`·`PATCH`) | BE | 목록·요약·상세와 `PATCH /api/events/:id` 재분류까지 |
 | `GET /api/anchor-proof` | BE | 앵커 증명 |
 | `POST /api/tax/estimate` | **FE** | BE 세금 계층은 역년 고정·단일 세율·KR 무조건 UNDETERMINED로 FE 12개국 엔진보다 충실도가 낮다 |

@@ -12,7 +12,7 @@ afterEach(() => {
 
 type Handler = (request: Request, context?: { params: Promise<{ id: string }> }) => Promise<Response>;
 
-const routes: Array<[string, () => Promise<Handler>, "GET" | "POST" | "PATCH", boolean]> = [
+const routes: Array<[string, () => Promise<Handler>, "GET" | "POST" | "PATCH" | "DELETE", boolean]> = [
   ["events", async () => (await import("@/app/api/events/route")).GET as Handler, "GET", false],
   ["event by id", async () => (await import("@/app/api/events/[id]/route")).GET as Handler, "GET", true],
   ["event summary", async () => (await import("@/app/api/events/summary/route")).GET as Handler, "GET", false],
@@ -23,6 +23,7 @@ const routes: Array<[string, () => Promise<Handler>, "GET" | "POST" | "PATCH", b
   ["tax rulesets", async () => (await import("@/app/api/tax/rulesets/route")).GET as Handler, "GET", false],
   ["portfolio holdings", async () => (await import("@/app/api/portfolio/holdings/route")).GET as Handler, "GET", false],
   ["registered wallets", async () => (await import("@/app/api/auth/wallets/route")).GET as Handler, "GET", false],
+  ["remove wallet", async () => (await import("@/app/api/auth/wallets/[address]/route")).DELETE as unknown as Handler, "DELETE", true],
   // PATCH도 같은 게이트를 쓴다. GET만 고정하면 PATCH에서 래퍼가 빠져도 통과한다.
   ["event by id reclassify", async () => (await import("@/app/api/events/[id]/route")).PATCH as Handler, "PATCH", true],
 ];

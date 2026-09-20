@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { holdingsProvider, walletsProvider } from "@/lib/composition-root.client";
 
 export const holdingsQueryKey = ["portfolio", "holdings"] as const;
@@ -25,5 +25,24 @@ export function useRegisteredWallets() {
     queryKey: walletsQueryKey,
     queryFn: () => walletsProvider.getWallets(),
     staleTime: 30_000,
+  });
+}
+
+/**
+ * 지갑 등록 해제. 성공하면 이 지갑을 보던 모든 캐시를 비운다 — 목록·잔액뿐 아니라 원장·요약·세금 추정까지.
+ * 그 지갑의 거래가 원장에서 빠졌으므로 대시보드·리포트가 옛 스냅샷을 계속 말하면 안 된다.
+ */
+export function useRemoveWallet() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (address: string) => walletsProvider.removeWallet(address),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: walletsQueryKey }),
+        queryClient.invalidateQueries({ queryKey: holdingsQueryKey }),
+        queryClient.invalidateQueries({ queryKey: ["events"] }),
+        queryClient.invalidateQueries({ queryKey: ["tax"] }),
+      ]);
+    },
   });
 }

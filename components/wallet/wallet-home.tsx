@@ -1,11 +1,13 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { demoDefiPositions, demoNftHoldings, holdingsFromDto, walletChains } from "@/lib/wallet/holdings";
 import { HoldingsFetchError } from "@/lib/adapters/http/holdings-provider.http";
-import { useHoldings, useRegisteredWallets } from "@/lib/queries/holdings";
+import { useHoldings, useRegisteredWallets, useRemoveWallet } from "@/lib/queries/holdings";
+import { BottomSheet } from "@/components/ui/bottom-sheet";
 import { WalletPortfolio } from "@/components/wallet/wallet-portfolio";
 import { NotFoundView } from "@/components/ui/not-found-view";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -24,7 +26,11 @@ import { shortHash } from "@/lib/format";
  * 등록하지 않은 주소는 404 화면이다 — 서버가 아니라 목록이 판정한다(주소 형식은 라우트가 먼저 거른다).
  */
 export function WalletHome({ walletAddress }: { walletAddress: string }) {
+  const router = useRouter();
   const wallets = useRegisteredWallets();
+  // 등록 해제. 확인 시트를 거쳐야 하고, 끝나면 목록으로 돌아간다 — 지운 지갑의 화면에 머무를 이유가 없다.
+  const removal = useRemoveWallet();
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const registered = useMemo(() => wallets.data?.wallets.find((wallet) => wallet.walletAddress.toLowerCase() === walletAddress.toLowerCase()) ?? null, [wallets.data, walletAddress]);
   const query = useHoldings(walletAddress);
   const provenance = query.data?.provenance ?? "mock";
@@ -68,7 +74,17 @@ export function WalletHome({ walletAddress }: { walletAddress: string }) {
   // URL은 소문자 주소다. 화면에는 등록 시 저장된 체크섬 표기를 쓴다 — 복사한 주소가 원본과 같아야 한다.
   const displayAddress = registered?.walletAddress ?? query.data.data.walletAddresses[0] ?? walletAddress;
 
+  const remove = () => {
+    removal.mutate(displayAddress, {
+      onSuccess: () => {
+        setConfirmOpen(false);
+        router.push("/wallets");
+      },
+    });
+  };
+
   return (
+    <>
     <WalletPortfolio
       address={displayAddress}
       chains={chains}
@@ -85,8 +101,54 @@ export function WalletHome({ walletAddress }: { walletAddress: string }) {
       }}
       freshness={freshness}
       verification={registered?.verificationMethod ?? query.data.data.byWallet[0]?.verificationMethod ?? null}
+      onRemove={() => setConfirmOpen(true)}
     />
+    <BottomSheet open={confirmOpen} onClose={() => { if (!removal.isPending) setConfirmOpen(false); }} title="지갑 삭제">
+      <h2 className="text-lg font-bold text-zinc-900">이 지갑을 삭제할까요?</h2>
+      <p className="mt-1 break-all font-mono text-xs text-zinc-500">{displayAddress}</p>
+      {/* 무엇이 사라지고 무엇이 남는지를 먼저 말한다 — "삭제"만 크게 띄우면 사용자는 거래까지 지워지는 줄 모른다. */}
+      <ul className="mt-3 list-disc space-y-1.5 pl-5 text-sm leading-6 text-zinc-600">
+        <li>이 지갑에서 불러온 거래가 원장·세금 계산·리포트에서 빠집니다.</li>
+        <li>직접 고친 분류·금액도 함께 사라집니다. 다시 등록하면 처음부터 다시 불러옵니다.</li>
+        <li>다른 등록 지갑과 이 지갑 사이의 이동은 소유를 증명할 지갑이 없어져 일반 전송으로 다시 판정됩니다.</li>
+        <li>체인에 이미 기록한 계산 근거는 지워지지 않습니다.</li>
+      </ul>
+      {removal.isError && <p role="alert" className="mt-3 text-sm text-red-600">{describeRemovalFailure(removal.error)}</p>}
+      <div className="mt-5 grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={() => setConfirmOpen(false)}
+          disabled={removal.isPending}
+          className="rounded-xl border border-zinc-200 py-3 font-semibold text-zinc-700 disabled:opacity-50"
+        >
+          취소
+        </button>
+        <button
+          type="button"
+          onClick={remove}
+          disabled={removal.isPending}
+          data-surface="wallet-remove-confirm"
+          className="rounded-xl bg-red-600 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {removal.isPending ? "삭제하는 중…" : "삭제"}
+        </button>
+      </div>
+    </BottomSheet>
+    </>
   );
+}
+
+/** 등록 해제 실패를 사용자 말로. 코드가 없으면(네트워크 등) 다시 시도를 권한다. */
+function describeRemovalFailure(error: unknown): string {
+  const code = error instanceof HoldingsFetchError ? error.code : null;
+  switch (code) {
+    case "unauthorized":
+      return "로그인이 만료되었습니다. 다시 로그인한 뒤 확인해 주세요.";
+    case "wallet_not_found":
+      return "이미 등록 해제된 지갑입니다. 지갑 목록을 새로고침해 주세요.";
+    default:
+      return "지갑을 삭제하지 못했습니다. 잠시 후 다시 시도해 주세요.";
+  }
 }
 
 /** 조회 중. 이미 아는 것(주소·등록 방식)은 그대로 두고 값 자리만 스켈레톤이다. */
