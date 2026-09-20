@@ -40,14 +40,14 @@ export const PLANS: readonly PlanDefinition[] = [
   {
     id: "plus",
     name: "플러스",
-    priceLabel: "₩69,000",
+    priceLabel: "₩9,900",
     exportLimit: 1_000,
     summary: "내보내기 1,000건까지. 무료로 쓰던 화면은 그대로입니다.",
   },
   {
     id: "pro",
     name: "프로",
-    priceLabel: "₩159,000",
+    priceLabel: "₩19,900",
     exportLimit: 10_000,
     summary: "내보내기 10,000건까지. 거래가 많은 해에 고릅니다.",
   },
