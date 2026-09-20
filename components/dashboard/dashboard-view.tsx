@@ -356,7 +356,7 @@ function EventDetails({
             모르는 주소는 지어내지 않고 축약만 보인다. */}
         <div>
           <dt className="text-zinc-500">상대</dt>
-          <dd className="mt-1 font-medium text-zinc-900">
+          <dd className="mt-1 wrap-anywhere font-medium text-zinc-900">
             {counterpartyLabel(event.counterparty, event.counterparty_label ?? null)}
             {knownContractName(event.counterparty, event.counterparty_label ?? null)
               ? <span className="ml-1 font-mono text-xs font-normal text-zinc-400">({shortHash(event.counterparty)})</span>
@@ -470,7 +470,7 @@ function EventDetails({
                     {row.inPeriod ? "" : " · 기간 밖(원가 추적용)"}
                   </p>
                 ) : null}
-                <p className="mt-1 text-zinc-500">{row.basis}</p>
+                <p className="mt-1 wrap-anywhere text-zinc-500">{row.basis}</p>
               </div>
             ))}
           </div>
@@ -508,7 +508,7 @@ function EventDetails({
       {history.length > 0 ? (
         <details className="mt-4 rounded-lg bg-zinc-50 p-3">
           <summary className="cursor-pointer text-sm font-semibold text-zinc-700 marker:text-zinc-400">재분류 이력</summary>
-          <ul className="mt-2 space-y-1 text-sm text-zinc-600">
+          <ul className="mt-2 space-y-1 text-sm wrap-anywhere text-zinc-600">
             {history.map((entry, index) => (
               <li key={`${entry.overridden_at}-${index}`}>
                 {formatDate(entry.overridden_at)} · {entry.from} → {entry.to}

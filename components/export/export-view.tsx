@@ -233,7 +233,7 @@ export function ExportView({ countryCode, provenance = "mock" }: { countryCode?:
         )}
       </div>
       <p className="mt-3 text-base leading-6 text-zinc-600">확인한 거래로 신고 근거자료를 만들어 저장합니다.</p>
-      {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+      {error && <p className="mt-3 text-sm wrap-anywhere text-red-600">{error}</p>}
 
       {/* 2. 확인 필요 배너(넛지) — 신호가 있을 때만. 강제 게이트가 아니다. */}
       {estimate && nudgeCount > 0 && (
@@ -390,17 +390,17 @@ export function ExportView({ countryCode, provenance = "mock" }: { countryCode?:
           <p className="font-semibold text-zinc-900">계산 설정</p>
           <dl className="mt-3 space-y-2 text-sm">
             <div className="flex items-start justify-between gap-3">
-              <dt className="text-zinc-500">계산 방식</dt>
-              <dd className="text-right font-medium text-zinc-900">{estimate.method}</dd>
+              <dt className="shrink-0 text-zinc-500">계산 방식</dt>
+              <dd className="min-w-0 wrap-anywhere text-right font-medium text-zinc-900">{estimate.method}</dd>
             </div>
             <div className="flex items-start justify-between gap-3">
-              <dt className="text-zinc-500">통화·국가</dt>
-              <dd className="text-right font-medium text-zinc-900">{estimate.currency} · {estimate.countryLabel}</dd>
+              <dt className="shrink-0 text-zinc-500">통화·국가</dt>
+              <dd className="min-w-0 wrap-anywhere text-right font-medium text-zinc-900">{estimate.currency} · {estimate.countryLabel}</dd>
             </div>
             {bases.length > 0 && (
               <div className="flex items-start justify-between gap-3">
                 <dt className="shrink-0 text-zinc-500">근거 조문</dt>
-                <dd className="text-right font-medium text-zinc-900">{bases.join(" · ")}</dd>
+                <dd className="min-w-0 wrap-anywhere text-right font-medium text-zinc-900">{bases.join(" · ")}</dd>
               </div>
             )}
           </dl>
@@ -571,7 +571,7 @@ export function ExportView({ countryCode, provenance = "mock" }: { countryCode?:
             {downloadLocked && <Lock aria-hidden className="size-4 shrink-0" strokeWidth={2.5} />}
             {evidenceBusy ? "기록하는 중…" : evidenceStale ? "다시 기록하기" : evidence ? "기록 완료" : "계산 근거 기록하기"}
           </button>
-          {evidenceError && <p className="mt-2 text-sm text-red-600">{evidenceError}</p>}
+          {evidenceError && <p className="mt-2 text-sm wrap-anywhere text-red-600">{evidenceError}</p>}
 
           {/* 탐색기가 있으면 링크, 없으면 거래 해시 전문. OmniOne 스테이지에는 블록 탐색기가 없어
               사용자가 조회에 쓸 수 있는 값은 이 해시뿐이다 — 누르면 401이 뜨는 링크로 대신하지 않는다. */}

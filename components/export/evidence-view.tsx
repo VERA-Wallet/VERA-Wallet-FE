@@ -153,7 +153,7 @@ export function EvidenceView({ merkleRoot: root }: { merkleRoot: string }) {
             ) : check === null ? (
               <>
                 <p className="mt-2 font-semibold">체인을 확인하지 못했습니다</p>
-                {checkError && <p className="mt-1">{checkError}</p>}
+                {checkError && <p className="mt-1 wrap-anywhere">{checkError}</p>}
               </>
             ) : check.matches ? (
               <>
@@ -192,7 +192,7 @@ export function EvidenceView({ merkleRoot: root }: { merkleRoot: string }) {
           </section>
 
           {loaded.status === "loading" && <p className="mt-5 text-sm text-zinc-500">기록을 불러오는 중…</p>}
-          {loaded.status === "error" && <p className="mt-5 text-sm text-red-600">{loaded.message}</p>}
+          {loaded.status === "error" && <p className="mt-5 text-sm wrap-anywhere text-red-600">{loaded.message}</p>}
 
           {detail && (
             <>
@@ -271,7 +271,7 @@ export function EvidenceView({ merkleRoot: root }: { merkleRoot: string }) {
                           <dt className="min-w-0 text-zinc-600">
                             {line.label}
                             {line.rate && <span className="ml-1 text-xs text-zinc-400">{line.rate}</span>}
-                            {line.basis && <span className="block text-xs text-zinc-400">{line.basis}</span>}
+                            {line.basis && <span className="block text-xs wrap-anywhere text-zinc-400">{line.basis}</span>}
                           </dt>
                           <dd className="shrink-0 font-semibold text-zinc-900">{isCountLine(line) ? `${line.amount}건` : money(line.amount)}</dd>
                         </div>
@@ -346,7 +346,7 @@ function JudgmentLeafRow({
         {LEG_LABEL[leaf.leg] && <span className="shrink-0">{LEG_LABEL[leaf.leg]}</span>}
       </div>
       <div className="mt-1 flex items-start justify-between gap-3">
-        <span className="min-w-0 font-semibold text-zinc-900">
+        <span className="min-w-0 wrap-anywhere font-semibold text-zinc-900">
           {leaf.symbol} <span className="font-normal text-zinc-500">{leaf.quantity}</span>
         </span>
         <span className="shrink-0 text-right font-semibold text-zinc-900">
@@ -364,7 +364,7 @@ function JudgmentLeafRow({
         {leaf.lots > 1 && <span className="text-xs text-zinc-500">{leaf.lots}개 lot</span>}
         {leaf.holdingDays !== undefined && <span className="text-xs text-zinc-500">보유 {leaf.holdingDays}일</span>}
       </div>
-      <p className="mt-1 text-xs leading-5 text-zinc-500">{leaf.basis}</p>
+      <p className="mt-1 text-xs leading-5 wrap-anywhere text-zinc-500">{leaf.basis}</p>
       {leaf.breakdown && (
         <p className="mt-1 text-xs leading-5 text-zinc-500">
           양도가액 {money(leaf.breakdown.proceeds)} − 취득가액 {money(leaf.breakdown.cost)} − 수수료 {money(leaf.breakdown.fee)}

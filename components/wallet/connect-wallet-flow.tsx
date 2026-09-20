@@ -339,7 +339,7 @@ function InlineAlert({ tone, children }: { tone: "error" | "info"; children: Rea
   return (
     <p role="alert" className={`flex items-start gap-2 px-1 text-[13px] leading-[19px] ${tone === "error" ? "text-red-600" : "text-amber-700"}`}>
       <Icon aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-      <span>{children}</span>
+      <span className="min-w-0 wrap-anywhere">{children}</span>
     </p>
   );
 }

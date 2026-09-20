@@ -90,7 +90,7 @@ function MetaItem({ term, children, mono = false }: { term: string; children: Re
   return (
     <div>
       <dt className="text-xs text-zinc-500">{term}</dt>
-      <dd className={`mt-0.5 ${mono ? "break-all font-mono text-xs text-zinc-900" : "font-medium text-zinc-900"}`}>{children}</dd>
+      <dd className={`mt-0.5 ${mono ? "break-all font-mono text-xs text-zinc-900" : "wrap-anywhere font-medium text-zinc-900"}`}>{children}</dd>
     </div>
   );
 }
@@ -316,7 +316,7 @@ export function ReportView({
   return (
     <main data-surface="report-view" className="mx-auto min-h-dvh w-full max-w-md px-5 py-8">
       {header}
-      {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+      {error && <p className="mt-3 text-sm wrap-anywhere text-red-600">{error}</p>}
 
       <div className="mt-4 flex items-center justify-between gap-3">
         <p className="text-xs leading-5 text-zinc-500">인쇄에서 &lsquo;PDF로 저장&rsquo;을 고르면 이 보고서가 파일이 됩니다.</p>
@@ -353,7 +353,7 @@ export function ReportView({
             <section data-surface="report-headline" className="mt-5 rounded-card border border-primary-200 bg-primary-50/50 p-5">
               <p className="text-xs font-semibold text-primary-600">예상 합계 부담</p>
               <p className="mt-1 text-3xl font-bold tracking-tight text-zinc-900 tabular-nums">{cellText(headlineRow?.금액, currency)}</p>
-              <p className="mt-1 text-sm text-zinc-600">{String(headlineRow?.근거 ?? "산출 소득세 + 개인지방소득세")}</p>
+              <p className="mt-1 text-sm wrap-anywhere text-zinc-600">{String(headlineRow?.근거 ?? "산출 소득세 + 개인지방소득세")}</p>
               {assumeEffective && (
                 <p className="mt-3 border-t border-dashed border-primary-200 pt-3 text-sm leading-6 text-amber-900">
                   시행 가정: {estimate.taxYear}년 거래에 {effectiveYear ?? ""}년 시행 규칙({estimate.method})을 적용했다고{" "}
@@ -390,7 +390,7 @@ export function ReportView({
                         <dt className="min-w-0">
                           <span className={ROLE_LABEL_CLASS[spec.role]}>{label}</span>
                           {row.근거 !== undefined && String(row.근거).length > 0 && (
-                            <span className="block text-xs text-zinc-400">{String(row.근거)}</span>
+                            <span className="block text-xs wrap-anywhere text-zinc-400">{String(row.근거)}</span>
                           )}
                         </dt>
                         <dd className={`shrink-0 text-right tabular-nums ${ROLE_AMOUNT_CLASS[spec.role]}`}>{cellText(row.금액, currency)}</dd>
@@ -418,7 +418,7 @@ export function ReportView({
                         return (
                           <li key={String(row.자산)} className="rounded-card border border-zinc-200 p-3">
                             <div className="flex items-center justify-between gap-2">
-                              <p className="font-semibold text-zinc-900">{String(row.자산)}</p>
+                              <p className="min-w-0 wrap-anywhere font-semibold text-zinc-900">{String(row.자산)}</p>
                               <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${deemed ? "bg-amber-100 text-amber-800" : "bg-zinc-100 text-zinc-600"}`}>
                                 의제취득가액 {deemed ? "적용" : "미적용"}
                               </span>

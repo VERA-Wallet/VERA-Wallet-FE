@@ -162,7 +162,7 @@ function LimitationSection({ limitations }: { limitations: Limitation[] }) {
             </div>
             <p className="mt-1 text-sm leading-6 wrap-anywhere text-zinc-700">{row.title}</p>
             {row.detail ? <p className="text-sm leading-6 wrap-anywhere text-zinc-900">{row.detail}</p> : null}
-            {row.action ? <p className="mt-1 text-xs leading-5 text-zinc-500">{row.action}</p> : null}
+            {row.action ? <p className="mt-1 text-xs leading-5 wrap-anywhere text-zinc-500">{row.action}</p> : null}
           </li>
         ))}
       </ul>
@@ -697,11 +697,11 @@ export function TaxSimulator({
             <ul className="mt-2 divide-y divide-zinc-100 rounded-card border border-zinc-200 bg-white shadow-card">
               {result.lines.map((line) => (
                 <li key={line.key} className="flex items-start justify-between gap-3 p-3">
-                  <div>
+                  <div className="min-w-0 wrap-anywhere">
                     <p className="text-sm font-medium text-zinc-800">{line.label}</p>
                     {line.basis ? <p className="mt-0.5 text-xs text-zinc-400">{line.basis}</p> : null}
                   </div>
-                  <div className="text-right">
+                  <div className="shrink-0 text-right">
                     <p className="text-sm font-semibold text-zinc-900">
                       {line.unit === "count" ? `${line.amount}건` : formatFiat(line.amount, result.currency)}
                     </p>
@@ -742,10 +742,10 @@ export function TaxSimulator({
                       <span className="text-sm font-semibold text-amber-900">{TOPIC_LABEL[question.topic]}</span>
                       <StatusBadge status={question.status} />
                     </div>
-                    <p className="mt-1 text-sm text-amber-900">{question.reason}</p>
+                    <p className="mt-1 text-sm wrap-anywhere text-amber-900">{question.reason}</p>
                     {question.benchmark ? (
                       // 확정되면 어떻게 되는지를 접어두면 아무도 보지 않는다. 본문에 둔다.
-                      <p className="mt-2 rounded-lg bg-white/70 p-2 text-xs leading-5 text-amber-900">
+                      <p className="mt-2 rounded-lg bg-white/70 p-2 text-xs leading-5 wrap-anywhere text-amber-900">
                         확정되면 → {question.benchmark}
                       </p>
                     ) : null}
@@ -766,7 +766,7 @@ export function TaxSimulator({
           {result.requiredInputs.length > 0 ? (
             <details className="mt-4 rounded-card border border-zinc-200 bg-white p-4 shadow-card" aria-label="추가 입력">
               <summary className="cursor-pointer font-bold text-zinc-900 marker:text-zinc-400">지갑 데이터 밖에서 필요한 입력</summary>
-              <ul className="mt-3 list-disc pl-5 text-sm text-zinc-600">
+              <ul className="mt-3 list-disc pl-5 text-sm wrap-anywhere text-zinc-600">
                 {result.requiredInputs.map((input) => <li key={input}>{input}</li>)}
               </ul>
             </details>
@@ -776,7 +776,7 @@ export function TaxSimulator({
           {ruleNotes.length > 0 ? (
           <details className="mt-4 rounded-card border border-zinc-200 bg-white p-4 shadow-card" aria-label="계산 근거">
             <summary className="cursor-pointer font-bold text-zinc-900 marker:text-zinc-400">계산 근거와 가정</summary>
-            <ul className="mt-3 list-disc pl-5 text-sm text-zinc-600">
+            <ul className="mt-3 list-disc pl-5 text-sm wrap-anywhere text-zinc-600">
               {/* 한계는 위 "확인이 필요한 거래"가 이미 말했다. 여기서 또 말하면
                   같은 문장이 두 곳에 떠서 어느 쪽이 최신인지 알 수 없다. */}
               {ruleNotes.map((note) => <li key={note}>{note}</li>)}
@@ -801,8 +801,8 @@ export function TaxSimulator({
                   {yearEndAssets.map((asset) => (
                     <li key={asset.asset} data-year-end-asset={asset.asset} className="rounded-card border border-zinc-200 bg-white p-3 shadow-card">
                       <div className="flex items-baseline justify-between gap-3">
-                        <span className="font-semibold text-zinc-900">{asset.symbol}</span>
-                        <span className="text-xs text-zinc-500">처분 수량 {asset.quantity}</span>
+                        <span className="min-w-0 wrap-anywhere font-semibold text-zinc-900">{asset.symbol}</span>
+                        <span className="shrink-0 text-xs text-zinc-500">처분 수량 {asset.quantity}</span>
                       </div>
                       <label className="mt-2 block text-sm font-medium text-zinc-700" htmlFor={`fmv-${asset.asset}`}>
                         2026-12-31 시가 (원/단위)
