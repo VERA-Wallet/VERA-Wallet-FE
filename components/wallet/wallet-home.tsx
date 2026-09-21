@@ -35,7 +35,7 @@ export function WalletHome({ walletAddress }: { walletAddress: string }) {
   const query = useHoldings(walletAddress);
   const provenance = query.data?.provenance ?? "mock";
   const holdings = useMemo(() => (query.data ? holdingsFromDto(query.data.data.holdings) : []), [query.data]);
-  // NFT·디파이는 mock(데모 지갑)에서만 그린다. 실지갑에 데모 NFT를 섞으면 상단 총액이 존재하지 않는 2만 달러를 말한다.
+  // NFT·디파이는 mock(데모 지갑)에서만 그린다. 실지갑에 데모 NFT를 섞으면 상단 총액이 존재하지 않는 수천만 원을 말한다.
   const nfts = useMemo(() => (provenance === "mock" ? demoNftHoldings() : []), [provenance]);
   const defi = useMemo(() => (provenance === "mock" ? demoDefiPositions() : []), [provenance]);
   // 자산이 실제로 놓여 있는 체인. 불러오기 모달과 같은 소스라 화면 간 체인 목록이 어긋나지 않는다.
@@ -93,6 +93,7 @@ export function WalletHome({ walletAddress }: { walletAddress: string }) {
       defi={defi}
       provenance={query.data.provenance}
       asOf={query.data.data.asOf}
+      fx={query.data.data.fx}
       coverage={{
         skippedChainIds: query.data.data.skippedChainIds,
         truncatedChainIds: query.data.data.truncatedChainIds,
@@ -195,6 +196,8 @@ function describeFailure(error: unknown): { kind: "session" | "retry"; message: 
     case "service_unavailable":
     case "upstream_unavailable":
       return { kind: "retry", message: "잔액 서버에서 응답을 받지 못했습니다. 잠시 후 다시 시도해 주세요." };
+    case "fx_unavailable":
+      return { kind: "retry", message: "환율 서버에서 응답을 받지 못해 원화 평가액을 계산하지 못했습니다. 잠시 후 다시 시도해 주세요." };
     case "rate_limited":
       return { kind: "retry", message: "조회가 너무 잦아 잠시 제한되었습니다. 잠시 후 다시 시도해 주세요." };
     default:

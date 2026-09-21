@@ -10,7 +10,8 @@ import { div, type Decimal } from "@/lib/tax/decimal";
  *   응답이 소수 5자리로 잘려 USD 0.00067처럼 유효숫자 2자리가 되기 때문이다(약 8% 오차).
  * - ECB는 영업일에만 고시한다. 주말·연휴 거래는 **직전 영업일** 환율을 쓴다(세무 관행과 같다). 그래서 요청
  *   범위 앞쪽을 LOOKBACK_DAYS만큼 더 받아 첫 거래일이 연휴여도 직전 값을 찾는다.
- * - 과거 날짜의 환율은 바뀌지 않으므로 프로세스 메모리에 영구 캐시한다. 오늘 값은 오후에 갱신되므로 캐시하지 않는다.
+ * - 과거 날짜의 환율은 바뀌지 않으므로 프로세스 메모리에 영구 캐시한다. 오늘 값은 오후에 갱신되므로 TODAY_TTL_MS 동안만
+ *   캐시한다. 잔액 화면이 열릴 때마다 같은 값을 다시 받아 오던 왕복(관측 0.3초)을 줄이되, 고시가 바뀌면 몇 분 안에 따라간다.
  * - 소스가 응답하지 못하면 빈 표 대신 FxRateUnavailableError를 던진다. 빈 표는 "환율 없음"으로 읽혀 모든 이벤트가
  *   조용히 제외되고, 화면은 "계산할 거래 없음"이라는 거짓말을 하게 된다.
  */
@@ -18,6 +19,8 @@ const DEFAULT_BASE_URL = "https://api.frankfurter.dev/v1";
 const CROSS_BASE = "EUR";
 const LOOKBACK_DAYS = 10;
 const DEFAULT_TIMEOUT_MS = 8_000;
+/** 오늘 환율의 캐시 수명. ECB는 하루 한 번 고시하므로 몇 분 묵은 값이 틀릴 일은 없다. */
+const TODAY_TTL_MS = 10 * 60_000;
 const DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 type Options = {
@@ -26,6 +29,8 @@ type Options = {
   timeoutMs?: number;
   /** 테스트에서 "오늘"을 고정한다(캐시 경계). */
   today?: () => string;
+  /** 테스트에서 시계를 고정한다(오늘 값 캐시 만료). */
+  now?: () => number;
 };
 
 export function shiftDay(day: string, delta: number): string {
@@ -63,6 +68,7 @@ function toDecimal(value: unknown): Decimal | undefined {
 
 export class FrankfurterFxRateProvider implements FxRateProvider {
   private readonly cache = new Map<string, Decimal>();
+  private readonly todayCache = new Map<string, { rate: Decimal; expiresAt: number }>();
 
   constructor(private readonly options: Options = {}) {}
 
@@ -73,9 +79,11 @@ export class FrankfurterFxRateProvider implements FxRateProvider {
       for (const day of dates) table.set(day, "1");
       return table;
     }
+    const today = (this.options.today ?? utcToday)();
+    const now = (this.options.now ?? Date.now)();
     const wanted = [...new Set(dates)].sort();
     const missing = wanted.filter((day) => {
-      const hit = this.cache.get(cacheKey(from, to, day));
+      const hit = day < today ? this.cache.get(cacheKey(from, to, day)) : this.freshToday(cacheKey(from, to, day), now);
       if (hit === undefined) return true;
       table.set(day, hit);
       return false;
@@ -84,7 +92,6 @@ export class FrankfurterFxRateProvider implements FxRateProvider {
 
     const series = await this.fetchSeries(shiftDay(missing[0], -LOOKBACK_DAYS), missing[missing.length - 1], [from, to]);
     const publishedDays = [...series.keys()].sort();
-    const today = (this.options.today ?? utcToday)();
     for (const day of missing) {
       const source = latestOnOrBefore(publishedDays, day);
       if (source === undefined) continue;
@@ -95,8 +102,19 @@ export class FrankfurterFxRateProvider implements FxRateProvider {
       const rate = div(toPerEur, fromPerEur);
       table.set(day, rate);
       if (day < today) this.cache.set(cacheKey(from, to, day), rate);
+      else this.todayCache.set(cacheKey(from, to, day), { rate, expiresAt: now + TODAY_TTL_MS });
     }
     return table;
+  }
+
+  private freshToday(key: string, now: number): Decimal | undefined {
+    const hit = this.todayCache.get(key);
+    if (hit === undefined) return undefined;
+    if (hit.expiresAt <= now) {
+      this.todayCache.delete(key);
+      return undefined;
+    }
+    return hit.rate;
   }
 
   private async fetchSeries(start: string, end: string, currencies: string[]): Promise<Map<string, Record<string, Decimal>>> {

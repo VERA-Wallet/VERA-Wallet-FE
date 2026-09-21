@@ -47,9 +47,9 @@ describe("GET /api/portfolio/holdings (FE-owned route)", () => {
     expect(body.meta.provenance).toBe("mock");
     expect(body.data.walletAddresses).toEqual(["0xabc"]);
     expect(body.data.holdings.map((holding: { symbol: string; costStatus: string }) => [holding.symbol, holding.costStatus])).toEqual([["ETH", "ready"], ["USDT", "ready"], ["USDC", "ready"]]);
-    expect(body.data.totalValueUsd).toBe("3750");
+    expect(body.data.totalValueKrw).toBe("5062500");
     expect(body.data.droppedCount).toBe(0);
-    expect(body.data.byWallet).toEqual([{ address: "0xabc", verificationMethod: "siwe", totalValueUsd: "3750", chainIds: [1, 137, 8453], holdingsCount: 3, unpricedCount: 0 }]);
+    expect(body.data.byWallet).toEqual([{ address: "0xabc", verificationMethod: "siwe", totalValueKrw: "5062500", chainIds: [1, 137, 8453], holdingsCount: 3, unpricedCount: 0 }]);
   });
 
   it("validates ?address= before any provider runs, and scopes the mock provider to that wallet (404 when unregistered)", async () => {
@@ -67,7 +67,7 @@ describe("GET /api/portfolio/holdings (FE-owned route)", () => {
   it("ON 모드: passes the BE provenance through and preserves BE rejections by status and code", async () => {
     vi.stubEnv("VERAWALLET_BACKEND_ORIGIN", "https://be.example");
     requireDidSession.mockResolvedValue(session("0xabc"));
-    getHoldings.mockResolvedValue({ provenance: "live", data: { walletAddresses: ["0xabc"], holdings: [], skippedChainIds: [], truncatedChainIds: [], unresolvedCount: 0, totalValueUsd: "0", unpricedCount: 0, asOf: "2026-09-11T05:00:00.000Z" } });
+    getHoldings.mockResolvedValue({ provenance: "live", data: { walletAddresses: ["0xabc"], holdings: [], skippedChainIds: [], truncatedChainIds: [], unresolvedCount: 0, totalValueKrw: "0", unpricedCount: 0, asOf: "2026-09-11T05:00:00.000Z" } });
     const live = await call();
     expect(live.status).toBe(200);
     expect((await live.json()).meta.provenance).toBe("live");

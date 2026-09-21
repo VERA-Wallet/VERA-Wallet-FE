@@ -19,12 +19,12 @@ export interface Holding {
   contract: string | null;
   isNft: boolean;
   amount: string; // 사람이 읽는 수량(십진 문자열)
-  priceUsd: string | null; // 단가(USD, 십진 문자열). 시세가 없으면 null.
-  valueUsd: string | null; // 평가액 = amount × priceUsd (USD). 시세가 없으면 null.
+  priceKrw: string | null; // 단가(KRW, 십진 문자열). 시세가 없으면 null.
+  valueKrw: string | null; // 평가액 = amount × priceKrw (KRW). 시세가 없으면 null.
   priceStatus: HoldingPriceStatus;
-  // 취득원가(USD, 십진 문자열). 원장의 이동평균 원가를 환산한 값이며 세무 엔진이 아니라 **표시 산술**의 입력이다.
+  // 취득원가(KRW, 십진 문자열). 원장의 이동평균 원가를 환산한 값이며 세무 엔진이 아니라 **표시 산술**의 입력이다.
   // 원장이 자산을 모르거나 환율이 없으면 null — costStatus가 이유를 말한다.
-  costUsd: string | null;
+  costKrw: string | null;
   costStatus: HoldingCostStatus;
   /** 표시용 정식 자산 키. 같은 키의 다른 체인 행을 화면이 하나로 합친다. null이면 합치지 않는다. */
   canonicalAssetId: string | null;
@@ -42,10 +42,10 @@ export function holdingsFromDto(items: readonly PortfolioHoldingDTO[]): Holding[
       contract: item.contract,
       isNft: false,
       amount: item.amount,
-      priceUsd: item.priceUsd,
-      valueUsd: item.valueUsd,
+      priceKrw: item.priceKrw,
+      valueKrw: item.valueKrw,
       priceStatus: item.priceStatus,
-      costUsd: item.costUsd,
+      costKrw: item.costKrw,
       costStatus: item.costStatus,
       canonicalAssetId: item.canonicalAssetId,
     }))
@@ -70,10 +70,10 @@ export interface HoldingGroup {
   members: Holding[];
   chainIds: number[];
   amount: string;
-  priceUsd: string | null;
-  valueUsd: string | null;
+  priceKrw: string | null;
+  valueKrw: string | null;
   unpricedCount: number;
-  costUsd: string | null;
+  costKrw: string | null;
   costStatus: HoldingCostStatus;
 }
 
@@ -90,22 +90,22 @@ export function groupHoldings(holdings: readonly Holding[]): HoldingGroup[] {
     const members = [...bucket].sort(byValueDesc);
     const first = members[0];
     let amount = "0";
-    let valueUsd: string | null = null;
+    let valueKrw: string | null = null;
     let unpricedCount = 0;
-    let costUsd: string | null = "0";
+    let costKrw: string | null = "0";
     let costStatus: HoldingCostStatus = "ready";
     for (const member of members) {
       amount = addDecimal(amount, member.amount);
-      if (member.valueUsd === null) unpricedCount += 1;
-      else valueUsd = addDecimal(valueUsd ?? "0", member.valueUsd);
-      if (member.costStatus === "ready" && member.costUsd !== null) {
-        if (costUsd !== null) costUsd = addDecimal(costUsd, member.costUsd);
+      if (member.valueKrw === null) unpricedCount += 1;
+      else valueKrw = addDecimal(valueKrw ?? "0", member.valueKrw);
+      if (member.costStatus === "ready" && member.costKrw !== null) {
+        if (costKrw !== null) costKrw = addDecimal(costKrw, member.costKrw);
       } else {
-        costUsd = null;
+        costKrw = null;
         costStatus = worseCostStatus(costStatus, member.costStatus);
       }
     }
-    if (costStatus === "ready" && costUsd === null) costStatus = "unknown";
+    if (costStatus === "ready" && costKrw === null) costStatus = "unknown";
     groups.push({
       key,
       symbol: first.symbol,
@@ -114,10 +114,10 @@ export function groupHoldings(holdings: readonly Holding[]): HoldingGroup[] {
       members,
       chainIds: [...new Set(members.map((member) => member.chainId))],
       amount,
-      priceUsd: members.find((member) => member.priceUsd !== null)?.priceUsd ?? null,
-      valueUsd,
+      priceKrw: members.find((member) => member.priceKrw !== null)?.priceKrw ?? null,
+      valueKrw,
       unpricedCount,
-      costUsd,
+      costKrw,
       costStatus,
     });
   }
@@ -130,17 +130,17 @@ function worseCostStatus(a: HoldingCostStatus, b: HoldingCostStatus): HoldingCos
 }
 
 /** 묶음의 평가손익. 멤버 전부 시세가 있고 원가가 ready일 때만 — 아니면 null. */
-export function groupGainUsd(group: HoldingGroup): string | null {
-  if (group.valueUsd === null || group.unpricedCount > 0 || group.costUsd === null || group.costStatus !== "ready") return null;
-  return subtractDecimal(group.valueUsd, group.costUsd);
+export function groupGainKrw(group: HoldingGroup): string | null {
+  if (group.valueKrw === null || group.unpricedCount > 0 || group.costKrw === null || group.costStatus !== "ready") return null;
+  return subtractDecimal(group.valueKrw, group.costKrw);
 }
 
-function byValueDesc(left: { valueUsd: string | null; key: string }, right: { valueUsd: string | null; key: string }): number {
-  if (left.valueUsd !== null && right.valueUsd !== null) {
-    const byValue = compareDecimal(right.valueUsd, left.valueUsd);
+function byValueDesc(left: { valueKrw: string | null; key: string }, right: { valueKrw: string | null; key: string }): number {
+  if (left.valueKrw !== null && right.valueKrw !== null) {
+    const byValue = compareDecimal(right.valueKrw, left.valueKrw);
     if (byValue !== 0) return byValue;
-  } else if (left.valueUsd !== null) return -1;
-  else if (right.valueUsd !== null) return 1;
+  } else if (left.valueKrw !== null) return -1;
+  else if (right.valueKrw !== null) return 1;
   return left.key < right.key ? -1 : left.key > right.key ? 1 : 0;
 }
 
@@ -201,11 +201,11 @@ function roundedDiv(numerator: bigint, divisor: bigint): bigint {
  * 세무 엔진이 아니라 **표시 산술**이다 — 원가가 0이면 수익률을 정의할 수 없어 null.
  * 부호는 손익을 따른다("12.5" / "-5.56" / "0").
  */
-export function returnPercent(costUsd: string, gainUsd: string): string | null {
-  const scale = Math.max(fractionLength(costUsd), fractionLength(gainUsd));
-  const cost = toScaledInt(costUsd, scale);
+export function returnPercent(costKrw: string, gainKrw: string): string | null {
+  const scale = Math.max(fractionLength(costKrw), fractionLength(gainKrw));
+  const cost = toScaledInt(costKrw, scale);
   if (cost === BigInt(0)) return null;
-  const gain = toScaledInt(gainUsd, scale);
+  const gain = toScaledInt(gainKrw, scale);
   const absCost = cost < BigInt(0) ? -cost : cost;
   // 백분율을 소수 2자리(× 100)까지 스케일해 반올림한다: gain / cost × 100 × 100.
   return fromScaledInt(roundedDiv(gain * BigInt(10000), absCost), 2);
@@ -215,14 +215,14 @@ export function returnPercent(costUsd: string, gainUsd: string): string | null {
  * 손익을 낼 수 있는 행인가. 시세와 원가가 있고 원가가 잔액 **전량**을 덮어야 한다 —
  * 원장이 잔액의 절반만 알면(partial) 그 원가로 낸 손익은 부풀려진 숫자라 내지 않는다.
  */
-export function hasGainBasis(holding: Holding): holding is Holding & { valueUsd: string; costUsd: string } {
-  return holding.valueUsd !== null && holding.costUsd !== null && holding.costStatus === "ready";
+export function hasGainBasis(holding: Holding): holding is Holding & { valueKrw: string; costKrw: string } {
+  return holding.valueKrw !== null && holding.costKrw !== null && holding.costStatus === "ready";
 }
 
 /** 보유 자산 한 줄의 평가손익(평가액 − 취득원가, USD). 근거가 없으면 null — 0이 아니다. */
-export function holdingGainUsd(holding: Holding): string | null {
+export function holdingGainKrw(holding: Holding): string | null {
   if (!hasGainBasis(holding)) return null;
-  return subtractDecimal(holding.valueUsd, holding.costUsd);
+  return subtractDecimal(holding.valueKrw, holding.costKrw);
 }
 
 /**
@@ -231,17 +231,17 @@ export function holdingGainUsd(holding: Holding): string | null {
  * 원가가 있는 행이 하나도 없으면 손익은 0이 아니라 null이다.
  */
 export interface HoldingsGainSummary {
-  valueUsd: string;
-  costUsd: string | null;
-  gainUsd: string | null;
+  valueKrw: string;
+  costKrw: string | null;
+  gainKrw: string | null;
   returnPercent: string | null;
   /** 시세·원가가 없거나 원가가 잔액 일부만 덮어 손익 합산에서 빠진 행 수. */
   excluded: number;
 }
 
 export function holdingsGainSummary(holdings: Holding[]): HoldingsGainSummary {
-  const valueUsd = totalValueUsd(holdings);
-  let costUsd: string | null = null;
+  const valueKrw = totalValueKrw(holdings);
+  let costKrw: string | null = null;
   let gainValue = "0";
   let excluded = 0;
   for (const holding of holdings) {
@@ -249,12 +249,12 @@ export function holdingsGainSummary(holdings: Holding[]): HoldingsGainSummary {
       excluded += 1;
       continue;
     }
-    costUsd = addDecimal(costUsd ?? "0", holding.costUsd);
-    gainValue = addDecimal(gainValue, holding.valueUsd);
+    costKrw = addDecimal(costKrw ?? "0", holding.costKrw);
+    gainValue = addDecimal(gainValue, holding.valueKrw);
   }
-  if (costUsd === null) return { valueUsd, costUsd: null, gainUsd: null, returnPercent: null, excluded };
-  const gainUsd = subtractDecimal(gainValue, costUsd);
-  return { valueUsd, costUsd, gainUsd, returnPercent: returnPercent(costUsd, gainUsd), excluded };
+  if (costKrw === null) return { valueKrw, costKrw: null, gainKrw: null, returnPercent: null, excluded };
+  const gainKrw = subtractDecimal(gainValue, costKrw);
+  return { valueKrw, costKrw, gainKrw, returnPercent: returnPercent(costKrw, gainKrw), excluded };
 }
 
 /** 십진 문자열 비교(a<b:-1, a>b:1, 같음:0). */
@@ -265,26 +265,28 @@ export function compareDecimal(a: string, b: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
-/** 보유 자산 전체 평가액 합(USD). 시세 없는 행은 0이 아니라 **빠진다** — 호출자가 `unpricedCount`로 그 사실을 말한다. */
-export function totalValueUsd(holdings: Holding[]): string {
-  return holdings.reduce((total, holding) => (holding.valueUsd === null ? total : addDecimal(total, holding.valueUsd)), "0");
+/** 보유 자산 전체 평가액 합(KRW). 시세 없는 행은 0이 아니라 **빠진다** — 호출자가 `unpricedCount`로 그 사실을 말한다. */
+export function totalValueKrw(holdings: Holding[]): string {
+  return holdings.reduce((total, holding) => (holding.valueKrw === null ? total : addDecimal(total, holding.valueKrw)), "0");
 }
 
 /** 시세가 없어 총액에서 빠진 행 수. */
 export function unpricedCount(holdings: Holding[]): number {
-  return holdings.filter((holding) => holding.valueUsd === null).length;
+  return holdings.filter((holding) => holding.valueKrw === null).length;
 }
 
 // ── 데모 보유 자산 ───────────────────────────────────────────────────────────
 // OFF(mock) 모드의 데모 지갑. `MockHoldingsProvider`가 이 표를 API 계약으로 감싸 돌려주고, BE MOCK_MODE의
 // 데모 지갑도 같은 자산·수량이라 두 모드가 같은 화면을 그린다. ON 모드에서는 쓰이지 않는다.
-// costUsd는 데모용 mock 취득 평가액(USD)이다. 실시간 원가 추적이 아니라, 평가손익·수익률을 화면이
+// costKrw는 데모용 mock 취득 평가액(KRW)이다. 실시간 원가 추적이 아니라, 평가손익·수익률을 화면이
 // **표시만** 하도록 그럴듯한 값을 담는다: ETH는 이익, USDT는 소폭 손실, USDC는 소폭 이익.
-export const DEMO_TOKENS: ReadonlyArray<{ symbol: string; name: string; chainId: number; contract: string | null; decimals: number; amount: string; priceUsd: string; costUsd: string }> = [
-  { symbol: "ETH", name: "Ethereum", chainId: 1, contract: null, decimals: 18, amount: "0.75", priceUsd: "3200.00", costUsd: "1800.00" },
+// 시세·원가는 BE MOCK_MODE의 USD 시세(ETH 3,200·스테이블 1.00)를 US$1 = ₩1,350(DEMO_USD_KRW)으로 옮긴 원화다.
+export const DEMO_USD_KRW = "1350";
+export const DEMO_TOKENS: ReadonlyArray<{ symbol: string; name: string; chainId: number; contract: string | null; decimals: number; amount: string; priceKrw: string; costKrw: string }> = [
+  { symbol: "ETH", name: "Ethereum", chainId: 1, contract: null, decimals: 18, amount: "0.75", priceKrw: "4320000", costKrw: "2430000" },
   // USDT (PoS) on Polygon — BE spam-filter CONTRACT_ALLOWLIST와 같은 캐노니컬 주소.
-  { symbol: "USDT", name: "Tether USD", chainId: 137, contract: "0xc2132d05d31c914a87c6611c10748aeb04b58e8f", decimals: 6, amount: "850", priceUsd: "1.00", costUsd: "900.00" },
-  { symbol: "USDC", name: "USD Coin", chainId: 8453, contract: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913", decimals: 6, amount: "500", priceUsd: "1.00", costUsd: "480.00" },
+  { symbol: "USDT", name: "Tether USD", chainId: 137, contract: "0xc2132d05d31c914a87c6611c10748aeb04b58e8f", decimals: 6, amount: "850", priceKrw: "1350", costKrw: "1215000" },
+  { symbol: "USDC", name: "USD Coin", chainId: 8453, contract: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913", decimals: 6, amount: "500", priceKrw: "1350", costKrw: "648000" },
 ];
 
 /**
@@ -301,14 +303,14 @@ export function demoWalletHoldings(): Holding[] {
     contract: token.contract,
     isNft: false,
     amount: token.amount,
-    priceUsd: token.priceUsd,
-    valueUsd: multiplyDecimal(token.amount, token.priceUsd),
+    priceKrw: token.priceKrw,
+    valueKrw: multiplyDecimal(token.amount, token.priceKrw),
     priceStatus: "priced" as const,
-    costUsd: token.costUsd,
+    costKrw: token.costKrw,
     costStatus: "ready" as const,
     canonicalAssetId: token.symbol.toLowerCase(),
   })).sort((left, right) => {
-    const byValue = compareDecimal(right.valueUsd, left.valueUsd);
+    const byValue = compareDecimal(right.valueKrw, left.valueKrw);
     if (byValue !== 0) return byValue;
     return left.symbol < right.symbol ? -1 : left.symbol > right.symbol ? 1 : 0;
   });
@@ -324,18 +326,18 @@ export interface NftHolding {
   tokenId: string;
   chainId: number;
   chainName: string;
-  floorUsd: string; // 데모 바닥가(USD)
-  valueUsd: string; // = floorUsd (1점)
+  floorKrw: string; // 데모 바닥가(KRW)
+  valueKrw: string; // = floorKrw (1점)
 }
 
-const DEMO_NFTS: ReadonlyArray<{ collection: string; shortName: string; tokenId: string; chainId: number; floorUsd: string }> = [
-  { collection: "Bored Ape Yacht Club", shortName: "BAYC", tokenId: "4521", chainId: 1, floorUsd: "8000" },
-  { collection: "Pudgy Penguins", shortName: "PPG", tokenId: "777", chainId: 1, floorUsd: "5200" },
-  { collection: "Azuki", shortName: "AZUKI", tokenId: "1234", chainId: 1, floorUsd: "3100" },
-  { collection: "Doodles", shortName: "DOODLE", tokenId: "88", chainId: 1, floorUsd: "1200" },
+const DEMO_NFTS: ReadonlyArray<{ collection: string; shortName: string; tokenId: string; chainId: number; floorKrw: string }> = [
+  { collection: "Bored Ape Yacht Club", shortName: "BAYC", tokenId: "4521", chainId: 1, floorKrw: "10800000" },
+  { collection: "Pudgy Penguins", shortName: "PPG", tokenId: "777", chainId: 1, floorKrw: "7020000" },
+  { collection: "Azuki", shortName: "AZUKI", tokenId: "1234", chainId: 1, floorKrw: "4185000" },
+  { collection: "Doodles", shortName: "DOODLE", tokenId: "88", chainId: 1, floorKrw: "1620000" },
 ];
 
-/** 지갑 홈 NFT 탭의 데모 보유 목록. 바닥가(USD) 내림차순 정렬. */
+/** 지갑 홈 NFT 탭의 데모 보유 목록. 바닥가(KRW) 내림차순 정렬. */
 export function demoNftHoldings(): NftHolding[] {
   return DEMO_NFTS.map((nft) => ({
     key: `${nft.chainId}:${nft.shortName}:${nft.tokenId}`,
@@ -344,10 +346,10 @@ export function demoNftHoldings(): NftHolding[] {
     tokenId: nft.tokenId,
     chainId: nft.chainId,
     chainName: chainLabel(nft.chainId),
-    floorUsd: nft.floorUsd,
-    valueUsd: nft.floorUsd,
+    floorKrw: nft.floorKrw,
+    valueKrw: nft.floorKrw,
   })).sort((left, right) => {
-    const byValue = compareDecimal(right.valueUsd, left.valueUsd);
+    const byValue = compareDecimal(right.valueKrw, left.valueKrw);
     if (byValue !== 0) return byValue;
     return left.key < right.key ? -1 : left.key > right.key ? 1 : 0;
   });
@@ -366,7 +368,7 @@ export interface DefiPosition {
   asset: string; // "ETH / USDC" 등
   chainId: number;
   chainName: string;
-  valueUsd: string;
+  valueKrw: string;
   apy: string | null; // "3.2%" 등, 없으면 null
 }
 
@@ -376,13 +378,13 @@ const DEFI_KIND_LABEL: Record<DefiKind, string> = {
   lending: "예치",
 };
 
-const DEMO_DEFI: ReadonlyArray<{ protocol: string; kind: DefiKind; asset: string; chainId: number; valueUsd: string; apy: string | null }> = [
-  { protocol: "Uniswap v3", kind: "liquidity", asset: "ETH / USDC", chainId: 1, valueUsd: "3200", apy: null },
-  { protocol: "Lido", kind: "staking", asset: "stETH", chainId: 1, valueUsd: "2100", apy: "3.2%" },
-  { protocol: "Aave v3", kind: "lending", asset: "USDC", chainId: 137, valueUsd: "1500", apy: "4.1%" },
+const DEMO_DEFI: ReadonlyArray<{ protocol: string; kind: DefiKind; asset: string; chainId: number; valueKrw: string; apy: string | null }> = [
+  { protocol: "Uniswap v3", kind: "liquidity", asset: "ETH / USDC", chainId: 1, valueKrw: "4320000", apy: null },
+  { protocol: "Lido", kind: "staking", asset: "stETH", chainId: 1, valueKrw: "2835000", apy: "3.2%" },
+  { protocol: "Aave v3", kind: "lending", asset: "USDC", chainId: 137, valueKrw: "2025000", apy: "4.1%" },
 ];
 
-/** 지갑 홈 디파이 탭의 데모 포지션. 평가액(USD) 내림차순 정렬. */
+/** 지갑 홈 디파이 탭의 데모 포지션. 평가액(KRW) 내림차순 정렬. */
 export function demoDefiPositions(): DefiPosition[] {
   return DEMO_DEFI.map((position) => ({
     key: `${position.chainId}:${position.protocol}:${position.asset}`,
@@ -392,19 +394,19 @@ export function demoDefiPositions(): DefiPosition[] {
     asset: position.asset,
     chainId: position.chainId,
     chainName: chainLabel(position.chainId),
-    valueUsd: position.valueUsd,
+    valueKrw: position.valueKrw,
     apy: position.apy,
   })).sort((left, right) => {
-    const byValue = compareDecimal(right.valueUsd, left.valueUsd);
+    const byValue = compareDecimal(right.valueKrw, left.valueKrw);
     if (byValue !== 0) return byValue;
     return left.key < right.key ? -1 : left.key > right.key ? 1 : 0;
   });
 }
 
-/** 토큰·NFT·디파이 평가액을 합친 포트폴리오 총액(USD). 시세 없는 토큰은 빠진다(`unpricedCount`). */
-export function portfolioTotalUsd(tokens: Holding[], nfts: NftHolding[], defi: DefiPosition[]): string {
-  const rest: Array<{ valueUsd: string }> = [...nfts, ...defi];
-  return rest.reduce((total, item) => addDecimal(total, item.valueUsd), totalValueUsd(tokens));
+/** 토큰·NFT·디파이 평가액을 합친 포트폴리오 총액(KRW). 시세 없는 토큰은 빠진다(`unpricedCount`). */
+export function portfolioTotalKrw(tokens: Holding[], nfts: NftHolding[], defi: DefiPosition[]): string {
+  const rest: Array<{ valueKrw: string }> = [...nfts, ...defi];
+  return rest.reduce((total, item) => addDecimal(total, item.valueKrw), totalValueKrw(tokens));
 }
 
 // ── 보유 체인 ────────────────────────────────────────────────────────────────

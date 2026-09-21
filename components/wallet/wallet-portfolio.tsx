@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
+import type { HoldingsFxDTO } from "@/lib/http/dto";
 import type { Provenance } from "@/lib/http/envelope";
 import { MockProvenanceChip } from "@/components/ui/provenance-chip";
 import { AssetLogo } from "@/components/ui/asset-logo";
@@ -13,10 +14,10 @@ import type { SessionWalletVerification } from "@/lib/ports/session-snapshot";
 import { chainLabel, formatFiat, shortHash } from "@/lib/format";
 import {
   compareDecimal,
-  groupGainUsd,
+  groupGainKrw,
   groupHoldings,
   holdingsGainSummary,
-  portfolioTotalUsd,
+  portfolioTotalKrw,
   returnPercent,
   unpricedCount,
   type DefiPosition,
@@ -63,14 +64,14 @@ function initials(text: string): string {
  * 색만으로 구분하지 못하는 사용자를 위해 부호(`+`/`−`)를 늘 함께 둔다. 손익은 원장 취득원가로
  * 계산한 **표시 산술**이다(세무 엔진이 아니다). 시세나 원가가 없으면 숫자 대신 이유를 쓴다 — 0으로 그리지 않는다.
  */
-function GainInline({ gainUsd, costUsd, reason }: { gainUsd: string | null; costUsd: string | null; reason?: string }): React.JSX.Element | null {
+function GainInline({ gainKrw, costKrw, reason }: { gainKrw: string | null; costKrw: string | null; reason?: string }): React.JSX.Element | null {
   // 원가 확인 여부는 화면에 쓰지 않는다(2026-09-11 결정). 근거가 없으면 시세가 없다는 사실만 말하고, 그 외엔 비운다.
-  if (gainUsd === null || costUsd === null) return reason ? <span className="text-zinc-400">{reason}</span> : null;
-  const direction = compareDecimal(gainUsd, "0");
+  if (gainKrw === null || costKrw === null) return reason ? <span className="text-zinc-400">{reason}</span> : null;
+  const direction = compareDecimal(gainKrw, "0");
   const tone = direction > 0 ? "text-receive" : direction < 0 ? "text-dispose" : "text-zinc-500";
-  const percent = returnPercent(costUsd, gainUsd);
-  // formatFiat은 음수에 이미 `-`를 붙인다 — 양수일 때만 `+`를 더한다.
-  const gainText = `${direction > 0 ? "+" : ""}${formatFiat(gainUsd, "USD")}`;
+  const percent = returnPercent(costKrw, gainKrw);
+  // formatFiat은 음수에 이미 `-`를 붙인다. 양수일 때만 `+`를 더한다.
+  const gainText = `${direction > 0 ? "+" : ""}${formatFiat(gainKrw, "KRW")}`;
   const percentText = percent === null ? null : `${direction > 0 ? "+" : ""}${percent}%`;
   return (
     <span className={`tabular-nums ${tone}`}>
@@ -101,8 +102,8 @@ function GroupRow({ group }: { group: HoldingGroup }) {
   const [open, setOpen] = useState(false);
   const first = group.members[0];
   const multi = group.members.length > 1;
-  const gain = groupGainUsd(group);
-  const reason = group.valueUsd === null
+  const gain = groupGainKrw(group);
+  const reason = group.valueKrw === null
     ? "시세 미확인"
     : group.unpricedCount > 0
       ? `${group.unpricedCount}개 체인 시세 미확인`
@@ -134,12 +135,12 @@ function GroupRow({ group }: { group: HoldingGroup }) {
             {group.symbol}
             {multi ? <span className="ml-1.5 text-xs font-medium text-zinc-400">{group.chainIds.length}개 체인</span> : null}
           </p>
-          <p className="mt-0.5 truncate text-sm text-zinc-500">{formatFiat(group.priceUsd, "USD")}</p>
+          <p className="mt-0.5 truncate text-sm text-zinc-500">{formatFiat(group.priceKrw, "KRW")}</p>
         </div>
         <div className="shrink-0 text-right">
-          <p className="font-semibold tabular-nums text-zinc-900">{formatFiat(group.valueUsd, "USD")}</p>
+          <p className="font-semibold tabular-nums text-zinc-900">{formatFiat(group.valueKrw, "KRW")}</p>
           <p className="mt-0.5 text-xs font-medium">
-            <GainInline gainUsd={gain} costUsd={group.costUsd} reason={reason} />
+            <GainInline gainKrw={gain} costKrw={group.costKrw} reason={reason} />
           </p>
           <p className="mt-0.5 text-xs tabular-nums text-zinc-400">
             {group.amount} {group.symbol}
@@ -156,7 +157,7 @@ function GroupRow({ group }: { group: HoldingGroup }) {
               <ChainIcon chainId={member.chainId} size={16} />
               <span className="min-w-0 flex-1 truncate text-zinc-700">{member.chainName}</span>
               <span className="text-right">
-                <span className="block tabular-nums font-semibold text-zinc-900">{formatFiat(member.valueUsd, "USD")}</span>
+                <span className="block tabular-nums font-semibold text-zinc-900">{formatFiat(member.valueKrw, "KRW")}</span>
                 <span className="block text-xs tabular-nums text-zinc-400">{member.amount} {member.symbol}</span>
               </span>
             </li>
@@ -170,7 +171,7 @@ function GroupRow({ group }: { group: HoldingGroup }) {
 /**
  * 토큰 탭 상단 요약. 보이는 토큰들의 전체 평가액·평가손익·수익률을 한눈에 보인다.
  * NFT·디파이는 취득원가가 없어 이 요약은 **토큰 보유분**만 집계한다 —
- * 상단 큰 총액(portfolioTotalUsd)과 뜻이 갈리지 않도록 무엇을 집계했는지 라벨로 밝힌다.
+ * 상단 큰 총액(portfolioTotalKrw)과 뜻이 갈리지 않도록 무엇을 집계했는지 라벨로 밝힌다.
  * 시세·원가가 없는 행은 손익에서 빠지고, 몇 건이 빠졌는지 함께 말한다.
  */
 function TokenHoldingsSummary({ holdings }: { holdings: Holding[] }): React.JSX.Element {
@@ -178,11 +179,11 @@ function TokenHoldingsSummary({ holdings }: { holdings: Holding[] }): React.JSX.
   return (
     <div data-surface="wallet-holdings-summary" className="mt-3 rounded-card border border-zinc-100 p-4 shadow-card">
       <p className="text-xs text-zinc-500">보유 토큰 평가액</p>
-      <p className="mt-1 text-2xl font-bold tabular-nums text-zinc-900">{formatFiat(summary.valueUsd, "USD")}</p>
+      <p className="mt-1 text-2xl font-bold tabular-nums text-zinc-900">{formatFiat(summary.valueKrw, "KRW")}</p>
       <p className="mt-1 text-sm font-semibold">
         <span className="text-zinc-500">평가손익 </span>
-        <GainInline gainUsd={summary.gainUsd} costUsd={summary.costUsd} />
-        {summary.excluded > 0 && summary.gainUsd !== null ? <span className="font-normal text-zinc-400"> · {summary.excluded}개 제외</span> : null}
+        <GainInline gainKrw={summary.gainKrw} costKrw={summary.costKrw} />
+        {summary.excluded > 0 && summary.gainKrw !== null ? <span className="font-normal text-zinc-400"> · {summary.excluded}개 제외</span> : null}
       </p>
     </div>
   );
@@ -217,7 +218,7 @@ function NftCard({ nft }: { nft: NftHolding }) {
       </p>
       <p className="truncate text-xs text-zinc-500">{nft.collection}</p>
       <p className="mt-1 text-sm font-semibold tabular-nums text-zinc-900">
-        {formatFiat(nft.floorUsd, "USD")} <span className="text-xs font-normal text-zinc-400">바닥가</span>
+        {formatFiat(nft.floorKrw, "KRW")} <span className="text-xs font-normal text-zinc-400">바닥가</span>
       </p>
     </li>
   );
@@ -246,7 +247,7 @@ function DefiRow({ position }: { position: DefiPosition }) {
         <p className="mt-0.5 truncate text-sm text-zinc-500">{meta}</p>
       </div>
       <div className="shrink-0 text-right">
-        <p className="font-semibold tabular-nums text-zinc-900">{formatFiat(position.valueUsd, "USD")}</p>
+        <p className="font-semibold tabular-nums text-zinc-900">{formatFiat(position.valueKrw, "KRW")}</p>
         <p className="mt-0.5 text-xs text-zinc-400">{position.chainName}</p>
       </div>
     </li>
@@ -270,6 +271,7 @@ export function WalletPortfolio({
   defi,
   provenance,
   asOf,
+  fx = null,
   coverage,
   freshness,
   verification = null,
@@ -285,6 +287,8 @@ export function WalletPortfolio({
   provenance: Provenance;
   /** 토큰 조회 시각(ISO). live일 때 "언제 기준"인지 말한다. */
   asOf: string | null;
+  /** 시세(USD)를 원화로 옮긴 환율. live일 때 환산 근거를 말한다. */
+  fx?: HoldingsFxDTO | null;
   /** 조회가 불완전하다는 사실들 — 화면이 "전부 보여준다"고 단정하지 않게 한다. */
   coverage?: { skippedChainIds: number[]; truncatedChainIds: number[]; unresolvedCount: number; droppedCount: number };
   /** 데이터가 있는 채로 다시 조회 중이거나 배경 재조회가 실패했을 때. 이전 값을 "지금 것"처럼 단정하지 않게 알린다. */
@@ -299,7 +303,7 @@ export function WalletPortfolio({
   const [copied, setCopied] = useState(false);
 
   // live면 NFT·디파이는 아직 조회하지 않으므로(빈 목록으로 들어온다) 총액은 토큰뿐이다. mock이면 데모 지갑 전체를 더한다.
-  const total = useMemo(() => portfolioTotalUsd(tokens, nfts, defi), [tokens, nfts, defi]);
+  const total = useMemo(() => portfolioTotalKrw(tokens, nfts, defi), [tokens, nfts, defi]);
   const unpriced = useMemo(() => unpricedCount(tokens), [tokens]);
   const coverageNotes = useMemo(() => coverageNotesOf(coverage), [coverage]);
   const nftDefiSupported = provenance === "mock";
@@ -378,16 +382,16 @@ export function WalletPortfolio({
         </div>
 
         <p data-surface="wallet-total" className="mt-5 text-4xl font-bold tracking-tight text-zinc-900">
-          {formatFiat(total, "USD")}
+          {formatFiat(total, "KRW")}
         </p>
         {provenance === "mock" ? (
           <p className="mt-1 flex items-center gap-2 text-xs text-zinc-400">
             <MockProvenanceChip />
-            <span>데모 예시 데이터(USD) 기준입니다 — 실시간 시세·잔액이 아닙니다.</span>
+            <span>데모 예시 데이터(원화) 기준입니다. 실시간 시세·잔액이 아닙니다.</span>
           </p>
         ) : (
           <p data-surface="wallet-total-note" className="mt-1 text-xs text-zinc-400">
-            토큰 평가액 — 온체인 잔액과 DexScreener 시세{asOf ? ` (${formatAsOf(asOf)} 기준)` : ""}. 취득원가는 오늘 환율로 USD 환산. NFT·디파이는 아직 조회하지 않습니다.
+            토큰 평가액: 온체인 잔액 × DexScreener 시세(USD){fx ? `, US$1 = ${formatFiat(fx.usdKrw, "KRW")}로 환산` : ""}{asOf ? ` (${formatAsOf(asOf)} 기준)` : ""}. 취득원가는 원장의 원화 그대로입니다. NFT·디파이는 아직 조회하지 않습니다.
             {unpriced > 0 ? ` 시세 없는 자산 ${unpriced}개는 총액에서 뺐습니다.` : ""}
           </p>
         )}
