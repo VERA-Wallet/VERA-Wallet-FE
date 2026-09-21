@@ -28,6 +28,9 @@ export default defineConfig({
       ...(process.env.VERAWALLET_MOCK_MODE ? { VERAWALLET_MOCK_MODE: process.env.VERAWALLET_MOCK_MODE } : {}),
       // 세금 화면의 통화 환산은 외부 환율 API(ECB) 대신 고정표를 쓴다 — e2e가 네트워크·환율 변동에 흔들리지 않게.
       VERAWALLET_FX_SOURCE: "fixed",
+      // BE에 /api/report-anchor가 아직 없다 — 켜 두면 g002·g003의 다운로드 케이스가 등록 실패로 타임아웃한다.
+      // 로컬에서 게이트를 켠 채 시험하려면 REPORT_ANCHOR_GATE=on pnpm test:e2e로 덮는다.
+      REPORT_ANCHOR_GATE: process.env.REPORT_ANCHOR_GATE ?? "off",
       // 신원인증은 e2e에서 늘 mock QR 흐름이다. 개발 환경(.env.local)이 CX 인증창 주소를 갖고 있어도
       // 테스트가 라온 인증창(폰 필요)에 막히면 안 되므로 여기서 비운다. CX_MOCK=true로 켜는 쪽은 안 된다 —
       // `cxLoginEnabled()`가 그것까지 CX 흐름으로 치므로 버튼이 "모바일신분증으로 시작하기"로 바뀌어

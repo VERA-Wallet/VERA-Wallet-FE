@@ -29,6 +29,11 @@ function sheet(columns: readonly string[], rows: ReportRow[]): XLSX.WorkSheet {
  *
  * estimate가 없으면(빈 지갑·계산 실패) 요약·자산별·예외는 헤더만, 원장은 온체인 값으로 채운 행을 낸다 —
  * 파일은 언제나 만들 수 있어야 하고, 없는 값을 지어내지 않는다.
+ *
+ * **`workbook.Props`를 세우지 말 것.** `Props`를 안 세우면 `XLSX.write`가 zip 엔트리 시각을 0(1980-00-00)으로
+ * 쓰고 `docProps/core.xml`에 `dcterms:created`를 넣지 않아 바이트가 결정적이다(xlsx 0.18.5 실측 2026-09-21).
+ * `Props`를 세우는 순간 생성 시각이 파일에 박혀 매번 다른 바이트가 나오고, `lib/export/report-hash.ts`의
+ * 해시가 실행마다 달라진다 — 온체인에 등록한 해시를 재현할 수 없게 된다.
  */
 export function createReportWorkbook(
   events: readonly NormalizedEvent[],

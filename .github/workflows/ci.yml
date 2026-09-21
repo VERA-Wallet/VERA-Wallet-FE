@@ -119,4 +119,7 @@ jobs:
         env:
           VERAWALLET_BACKEND_CWD: ${{ github.workspace }}/be
           VERAWALLET_BACKEND_ORIGIN: http://localhost:3200
+          # BE에 /api/report-anchor가 아직 없다 — 켜 두면 g002·g003의 다운로드 케이스가 등록 실패로 타임아웃한다.
+          # 부채다: BE가 계약을 구현하면 이 줄과 playwright.config.ts의 짝을 함께 지운다(계획 §8 후속 1).
+          REPORT_ANCHOR_GATE: "off"
         run: pnpm test:e2e
