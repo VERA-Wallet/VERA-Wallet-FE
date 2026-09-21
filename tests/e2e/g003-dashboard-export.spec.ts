@@ -181,10 +181,11 @@ test.describe.serial("G003 dashboard and export contract red team", () => {
     await page.getByRole("button", { name: /데모 결제로 시작/ }).first().click();
     await expect(page.getByText(/활성 · \d{4}년/)).toBeVisible();
 
+    // 리포트 메인에는 세금 보고서와 내려받기만 있다. 앵커링 증명 카드는 계산 근거(/export/basis)로 이사했고
+    // 아래 내려받기 검증 뒤에 그 화면에서 확인한다.
     transcript.act({ type: "goto", url: "/export" });
     await page.goto("/export");
-    await expect(page.getByText("앵커링 증명")).toBeVisible();
-    await expect(page.getByText("Merkle root")).toBeVisible();
+    await expect(page.getByRole("button", { name: "직접 신고용 내려받기" })).toBeEnabled();
     const [csvDownload] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "직접 신고용 내려받기" }).click()]);
     const csvTempPath = await csvDownload.path();
     expect(csvTempPath).not.toBeNull();
@@ -210,6 +211,10 @@ test.describe.serial("G003 dashboard and export contract red team", () => {
     expect(xlsxPassed).toBeTruthy();
     await page.locator("main").screenshot({ path: exportPath, type: "jpeg", quality: 85 });
     transcript.act({ type: "screenshot", selector: "main" });
+    transcript.act({ type: "goto", url: "/export/basis" });
+    await page.goto("/export/basis");
+    await expect(page.getByText("앵커링 증명")).toBeVisible();
+    await expect(page.getByText("Merkle root")).toBeVisible();
     record(cases, "export-xlsx-and-anchor-card", "Nonempty four-sheet report workbook (요약·자산별·원장·예외) with summary values and visible proof card", { sheets: ["요약", "자산별", "원장", "예외"], proof: true }, { size: (await stat(xlsxPath)).size, sheets: workbook.SheetNames, summaryCells: Object.keys(summarySheet ?? {}).filter((key) => key.startsWith("A")) }, xlsxPassed);
 
     const proofResponse = await page.context().request.get(`/api/anchor-proof?eventId=${items[0].event.id}`);
