@@ -6,12 +6,13 @@ import { listRuleSetSummaries } from "@/lib/tax/rulesets";
 import type { TaxEstimate } from "@/lib/tax/types";
 
 const state = vi.hoisted(() => ({ plan: null as Plan | null }));
-const ports = vi.hoisted(() => ({ list: vi.fn(), getSummary: vi.fn(), getProof: vi.fn(), estimate: vi.fn(), listRuleSets: vi.fn() }));
+const ports = vi.hoisted(() => ({ list: vi.fn(), getSummary: vi.fn(), getProof: vi.fn(), latest: vi.fn(), estimate: vi.fn(), listRuleSets: vi.fn() }));
 
 vi.mock("@/lib/composition-root.client", () => ({
   eventRepository: { list: ports.list },
   summaryProvider: { getSummary: ports.getSummary },
   anchorProofProvider: { getProof: ports.getProof },
+  taxEvidenceProvider: { latest: ports.latest, record: vi.fn() },
   taxEngine: { estimate: ports.estimate, listRuleSets: ports.listRuleSets },
 }));
 
@@ -85,6 +86,7 @@ function renderWith(computableEventCount: number, plan: Plan | null) {
   state.plan = plan;
   ports.list.mockResolvedValue({ items: [], nextCursor: null });
   ports.getProof.mockResolvedValue(null);
+  ports.latest.mockResolvedValue(null);
   ports.getSummary.mockResolvedValue(summaryWith(computableEventCount));
   ports.estimate.mockResolvedValue(estimate);
   ports.listRuleSets.mockImplementation(async () => listRuleSetSummaries());
@@ -133,6 +135,7 @@ describe("리포트 플랜 잠금", () => {
     state.plan = null;
     ports.list.mockResolvedValue({ items: [], nextCursor: null });
     ports.getProof.mockResolvedValue(null);
+    ports.latest.mockResolvedValue(null);
     ports.getSummary.mockReturnValue(new Promise(() => {}));
     ports.estimate.mockReturnValue(new Promise(() => {}));
     ports.listRuleSets.mockImplementation(async () => listRuleSetSummaries());

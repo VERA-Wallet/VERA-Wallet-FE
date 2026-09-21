@@ -1,5 +1,6 @@
 "use client";
 
+import { EvidenceAnchor } from "@/components/report/evidence-anchor";
 import { StatusBadge, TOPIC_LABEL } from "@/components/report/labels";
 import { useReportContext } from "@/components/report/report-context";
 import { ReportSubPage } from "@/components/report/report-sub-page";
@@ -78,10 +79,14 @@ export function ReportBasis() {
         </section>
       ) : null}
 
+      {/* 계산 근거 기록. 이 화면의 estimate를 OmniOne 체인에 봉인하고, 봉인한 것을 근거 화면에서 끝까지 본다. */}
+      <EvidenceAnchor />
+
       {proof && <Card className="mt-5">
         <div data-surface="anchor-proof" className="flex items-center justify-between gap-3"><p className="font-semibold text-zinc-900">앵커링 증명</p><MockProvenanceChip /></div>
         <dl className="mt-4 space-y-2 text-sm text-zinc-600"><div><dt className="inline font-medium text-zinc-900">거래 </dt><dd className="inline font-mono">{shortHash(proof.tx_hash)}</dd></div><div><dt className="inline font-medium text-zinc-900">Merkle root </dt><dd className="inline font-mono">{shortHash(proof.merkle_root)}</dd></div><div><dt className="inline font-medium text-zinc-900">기록 시각 </dt><dd className="inline">{formatDateTime(proof.anchored_at)}</dd></div></dl>
-        <a className="mt-4 inline-block text-sm font-semibold text-primary-600 underline" href={proof.explorer_url} rel="noreferrer" target="_blank">탐색기에서 보기</a>
+        {/* 탐색기가 없는 체인에서는 링크를 그리지 않는다. 누르면 401이 뜨는 버튼은 증명이 아니다. */}
+        {proof.explorer_url && <a className="mt-4 inline-block text-sm font-semibold text-primary-600 underline" href={proof.explorer_url} rel="noreferrer" target="_blank">탐색기에서 보기</a>}
       </Card>}
     </ReportSubPage>
   );

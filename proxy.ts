@@ -22,6 +22,7 @@ const BACKEND_OWNED_PATHS = new Set([
   "/api/auth/session",
   "/api/auth/logout",
   "/api/anchor-proof",
+  "/api/tax-evidence",
 ]);
 
 /**
@@ -34,8 +35,9 @@ const BACKEND_OWNED_PATHS = new Set([
 const FORWARDED_HEADERS = ["accept", "accept-language", "content-type", "content-length", "user-agent"] as const;
 
 function isBackendOwned(pathname: string): boolean {
+  // 계산 근거는 BE가 루트를 다시 계산해 체인에 올린다. 하위 경로(정본 문서 조회·체인 대조)까지 BE 소유다.
   // 지갑 등록 해제(`DELETE /api/auth/wallets/:address`)는 바인딩과 그 거래·커서를 BE가 함께 지운다. 하위 경로도 BE 소유다.
-  return BACKEND_OWNED_PATHS.has(pathname) || pathname === "/api/events" || pathname.startsWith("/api/events/") || pathname.startsWith("/api/auth/wallets/");
+  return BACKEND_OWNED_PATHS.has(pathname) || pathname === "/api/events" || pathname.startsWith("/api/events/") || pathname.startsWith("/api/tax-evidence/") || pathname.startsWith("/api/auth/wallets/");
 }
 
 /**

@@ -20,6 +20,7 @@
 | `MockAuthStore`(챌린지/세션) | 공유 durable 저장소(Redis·DB)의 원자적 nonce consume + 세션 |
 | `MockEventStore`(이벤트/요약) | 백엔드 인덱싱·분류·로트 원장 API |
 | `anchorProofProvider` mock | 실제 앵커링 컨트랙트 조회 |
+| `app/api/tax-evidence` FE mock 라우트 | ON에서는 `proxy.ts`가 BE로 넘긴다. OFF 라우트는 체인 없이 흐름만 잇는 데모 경로이며 루트 계산만 실제와 같은 규칙을 쓴다 |
 | `/api/auth/did/present` mock | OmniOne SDK(CX vs 디지털아이디는 스펙 §14.2 미결) 연동 |
 
 ## 픽스처 시각 (mock 데이터)
@@ -68,6 +69,7 @@ ON 모드(`VERAWALLET_BACKEND_ORIGIN` 설정)에서 어떤 경로가 어디로 �
 | `DELETE /api/auth/wallets/:address` | BE | 지갑 등록 해제. 바인딩과 그 거래·동기화 커서를 BE가 함께 지우고 원장 캐시를 비운다 |
 | `/api/events` (+ 하위 전체, `GET`·`PATCH`) | BE | 목록·요약·상세와 `PATCH /api/events/:id` 재분류까지 |
 | `GET /api/anchor-proof` | BE | 앵커 증명 |
+| `/api/tax-evidence` (+ `/:merkleRoot`) | BE | 계산 근거를 OmniOne 체인에 올린다. 루트는 **BE가 잎에서 다시 계산**하고(FE가 준 해시를 그대로 믿지 않는다) 원본 정본 문서는 BE가 보관한다 |
 | `POST /api/tax/estimate` | **FE** | BE 세금 계층은 역년 고정·단일 세율·KR 무조건 UNDETERMINED로 FE 12개국 엔진보다 충실도가 낮다 |
 | `GET /api/tax/rulesets`, `GET /api/rulesets` | **FE** | 위와 같은 이유. FE는 12개국, BE도 12개국이지만 계산 계층이 다르다 |
 | `POST /api/auth/test-login` | **FE (ON에서 404)** | `vw_session`만 발급해 BE 세션이 되지 않는다. 열려 있으면 무의미한 가짜 세션을 만드는 함정 |
