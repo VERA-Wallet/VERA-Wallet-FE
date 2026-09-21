@@ -148,6 +148,28 @@ describe("실패 스위치", () => {
     vi.advanceTimersByTime(1_200);
     expect(getMockReportAnchor(USER, keyOf(input()))?.anchorStatus).toBe("failed");
   });
+
+  it("실패가 예정된 시도라도 pending 뷰는 아직 오지 않은 실패를 말하지 않는다", () => {
+    setMockReportAnchorFailure(true);
+    const registered = registerMockReportAnchor(USER, input());
+    expect(registered.anchorStatus).toBe("pending");
+    // 등록 시점에 못 박으면 pending이 미래 시각(등록 + 1.2초)의 실패를 달고 나간다.
+    expect(registered.failureReason).toBeNull();
+    expect(registered.lastFailureAt).toBeNull();
+
+    vi.advanceTimersByTime(1_199);
+    const stillPending = getMockReportAnchor(USER, keyOf(input()));
+    expect(stillPending?.anchorStatus).toBe("pending");
+    expect(stillPending?.failureReason).toBeNull();
+    expect(stillPending?.lastFailureAt).toBeNull();
+
+    // 정착한 뒤에야 사유와 시각이 생기고, 그 시각은 정착 시각이다.
+    vi.advanceTimersByTime(1);
+    const settled = getMockReportAnchor(USER, keyOf(input()));
+    expect(settled?.anchorStatus).toBe("failed");
+    expect(settled?.failureReason).not.toBeNull();
+    expect(settled?.lastFailureAt).toBe("2027-05-01T00:00:01.200Z");
+  });
 });
 
 describe("복합 키 — 해시가 같아도 메타가 다르면 별개 레코드", () => {
@@ -195,5 +217,15 @@ describe("resetMockReportAnchors", () => {
     resetMockReportAnchors();
     expect(mockReportAnchorCount()).toBe(0);
     expect(getMockReportAnchor(USER, keyOf(input()))).toBeNull();
+  });
+
+  it("실패 스위치도 함께 내린다 — 기록만 비우면 초기화 뒤 첫 등록이 또 실패한다", () => {
+    setMockReportAnchorFailure(true);
+    resetMockReportAnchors();
+    expect(mockReportAnchorFailing()).toBe(false);
+
+    registerMockReportAnchor(USER, input());
+    vi.advanceTimersByTime(1_200);
+    expect(getMockReportAnchor(USER, keyOf(input()))?.anchorStatus).toBe("anchored");
   });
 });

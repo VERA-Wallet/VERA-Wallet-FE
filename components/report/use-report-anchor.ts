@@ -29,6 +29,19 @@ function download(data: BlobPart, type: string, filename: string) {
 
 const sleep = (ms: number) => new Promise<void>((resolve) => { setTimeout(resolve, ms); });
 
+/** 이 상태가 말하는 파일을 정하는 값들. 하나라도 갈리면 파일이 달라지고, 그러면 등록도 다른 등록이다. */
+type AnchorOwner = {
+  kind: ReportAnchorKind;
+  country: string;
+  taxYear: number;
+  events: NormalizedEvent[];
+  estimate: TaxEstimate | null;
+};
+
+type AnchorSnapshot = Pick<ReportAnchorState, "phase" | "record" | "error" | "rejoined">;
+
+const IDLE: AnchorSnapshot = { phase: "idle", record: null, error: null, rejoined: false };
+
 export type ReportAnchorState = {
   phase: AnchorPhase;
   record: ReportAnchorRecord | null;
@@ -56,10 +69,34 @@ export type ReportAnchorState = {
 export function useReportAnchor(kind: ReportAnchorKind): ReportAnchorState {
   const { events, result, country, taxYear, activePeriod, gateEnabled, ready, downloadLocked, blockedReason } = useReportContext();
 
-  const [phase, setPhase] = useState<AnchorPhase>("idle");
-  const [record, setRecord] = useState<ReportAnchorRecord | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [rejoined, setRejoined] = useState(false);
+  // `useReportContext().result`는 `TaxEstimate | undefined`다. 파일 빌더의 계약은 `| null`이다.
+  const estimate = result ?? null;
+
+  // 상태는 **그 상태를 만든 입력과 함께** 산다. 리포트 키가 바뀌면(연도 칩이 대표적이다) 지금 보이는
+  // 등록 상태는 다른 파일의 사실이다 — 훅은 마운트된 채 입력만 갈리므로, 버리지 않으면 새 연도의
+  // 카드가 옛 파일의 `anchor-done`을 말하거나 `failed`에 걸려 버튼이 눌리지 않는다.
+  // 되돌리는 대신 신원으로 걸러 낸다: 옛 입력의 상태는 렌더가 그냥 쓰지 않으므로 리셋 렌더가 없고,
+  // 뒤늦게 돌아온 옛 흐름의 쓰기도 같은 규칙에 걸려 화면에 닿지 않는다.
+  // 비교 기준은 바이트 캐시(`cache`)와 같은 신원이어야 "파일이 같으면 상태도 같다"가 성립한다.
+  const [written, setWritten] = useState<{ owner: AnchorOwner; state: AnchorSnapshot }>(
+    () => ({ owner: { kind, country, taxYear, events, estimate }, state: IDLE }),
+  );
+  const owns = (candidate: AnchorOwner) =>
+    candidate.kind === kind &&
+    candidate.country === country &&
+    candidate.taxYear === taxYear &&
+    candidate.events === events &&
+    candidate.estimate === estimate;
+  const { phase, record, error, rejoined } = owns(written.owner) ? written.state : IDLE;
+
+  /**
+   * 이 렌더의 입력에 묶어 상태를 쓴다. 비동기가 늦게 돌아와도 그때의 입력이 찍히므로,
+   * 키가 갈린 뒤의 쓰기는 위 `owns()`에서 걸러진다.
+   */
+  const write = (patch: Partial<AnchorSnapshot>) => {
+    const owner: AnchorOwner = { kind, country, taxYear, events, estimate };
+    setWritten((previous) => ({ owner, state: { ...(owns(previous.owner) ? previous.state : IDLE), ...patch } }));
+  };
 
   // 진행 중인 흐름의 취소 플래그. 언마운트·재클릭이 이전 루프를 끈다.
   const run = useRef<{ active: boolean } | null>(null);
@@ -69,6 +106,9 @@ export function useReportAnchor(kind: ReportAnchorKind): ReportAnchorState {
   // 복원은 이 카드에서 한 번뿐이다. 호버를 반복해도 조회는 늘지 않는다.
   const restored = useRef(false);
   const mounted = useRef(true);
+  // 흐름의 세대. `start()`와 키 교체가 올린다. `restore()`는 취소 토큰을 만들지 않으므로
+  // 이 값으로 "내가 연 조회가 아직 이 카드의 사실인가"를 묻는다.
+  const seq = useRef(0);
 
   useEffect(() => {
     mounted.current = true;
@@ -78,8 +118,19 @@ export function useReportAnchor(kind: ReportAnchorKind): ReportAnchorState {
     };
   }, []);
 
-  // `useReportContext().result`는 `TaxEstimate | undefined`다. 파일 빌더의 계약은 `| null`이다.
-  const estimate = result ?? null;
+  // 화면에서 걸러 내는 것만으로는 부족하다 — 옛 입력의 흐름은 계속 돌면서 폴링을 내고, 확정되면
+  // 이제는 만들지도 않을 파일을 저장한다. 그래서 그 입력의 **마지막 렌더가 끝나는 자리**에서 끊는다.
+  // 정리 함수라 setState가 없다(효과 본문의 setState는 연쇄 렌더를 부른다). 복원 플래그도 같이 열어
+  // 새 키의 카드가 다시 한 번 조회할 수 있게 한다.
+  useEffect(
+    () => () => {
+      if (run.current) run.current.active = false;
+      run.current = null;
+      seq.current += 1;
+      restored.current = false;
+    },
+    [kind, country, taxYear, events, estimate],
+  );
 
   const fileFor = (): ReportFile => {
     const cached = cache.current;
@@ -106,16 +157,12 @@ export function useReportAnchor(kind: ReportAnchorKind): ReportAnchorState {
   };
 
   const settle = (next: ReportAnchorRecord, file: ReportFile) => {
-    setRecord(next);
-    setError(null);
-    setPhase("anchored");
+    write({ record: next, error: null, phase: "anchored" });
     save(file);
   };
 
   const fail = (reason: string, next: ReportAnchorRecord | null) => {
-    if (next) setRecord(next);
-    setError(reason);
-    setPhase("failed");
+    write({ ...(next ? { record: next } : {}), error: reason, phase: "failed" });
   };
 
   const poll = async (token: { active: boolean }, key: ReportAnchorKey, file: ReportFile) => {
@@ -125,7 +172,7 @@ export function useReportAnchor(kind: ReportAnchorKind): ReportAnchorState {
       if (!token.active) return;
       const next = await reportAnchorProvider.get(key);
       if (!token.active) return;
-      if (next) setRecord(next);
+      if (next) write({ record: next });
       if (next?.anchorStatus === "anchored") { settle(next, file); return; }
       if (next?.anchorStatus === "failed") { fail(next.failureReason ?? "등록에 실패했습니다.", next); return; }
       // 예산은 이 시도의 시작부터 센다. 떠났다 돌아온 사용자가 앞선 대기 때문에 즉시 타임아웃을 보지 않게 한다.
@@ -141,6 +188,7 @@ export function useReportAnchor(kind: ReportAnchorKind): ReportAnchorState {
     if (run.current) run.current.active = false;
     const token = { active: true };
     run.current = token;
+    seq.current += 1;
     // 이 흐름이 같은 키를 조회한다. 복원은 더 할 일이 없다 — 클릭이 카드로 전파돼 `restore()`가
     // 이어 불려도(`phase`는 아직 이 렌더의 "idle"이다) 조회가 둘이 되지 않게 여기서 플래그를 세운다.
     restored.current = true;
@@ -151,28 +199,24 @@ export function useReportAnchor(kind: ReportAnchorKind): ReportAnchorState {
       return;
     }
 
-    setError(null);
-    setRejoined(false);
-    setPhase("hashing");
+    write({ error: null, rejoined: false, phase: "hashing" });
     void (async () => {
       try {
         const file = fileFor();
         const key = keyFor(file);
         if (!token.active) return;
-        setPhase("checking");
+        write({ phase: "checking" });
         const existing = await reportAnchorProvider.get(key);
         if (!token.active) return;
         if (existing?.anchorStatus === "anchored") { settle(existing, file); return; }
         if (existing?.anchorStatus === "pending") {
           // 진행 중인 시도에 올라탄다. 여기서 POST를 내면 트랜잭션이 둘이 된다.
-          setRecord(existing);
-          setRejoined(true);
-          setPhase("waiting");
+          write({ record: existing, rejoined: true, phase: "waiting" });
           await poll(token, key, file);
           return;
         }
         // 기록이 없거나(`null`) 지난 시도가 소진됐으면(`failed`) 새 시도를 연다.
-        setPhase("registering");
+        write({ phase: "registering" });
         const next = await reportAnchorProvider.register({
           version: 1,
           algorithm: file.algorithm,
@@ -183,10 +227,10 @@ export function useReportAnchor(kind: ReportAnchorKind): ReportAnchorState {
           byteLength: file.bytes.byteLength,
         });
         if (!token.active) return;
-        setRecord(next);
+        write({ record: next });
         if (next.anchorStatus === "anchored") { settle(next, file); return; }
         if (next.anchorStatus === "failed") { fail(next.failureReason ?? "등록에 실패했습니다.", next); return; }
-        setPhase("waiting");
+        write({ phase: "waiting" });
         await poll(token, key, file);
       } catch (cause: unknown) {
         if (!token.active) return;
@@ -200,16 +244,16 @@ export function useReportAnchor(kind: ReportAnchorKind): ReportAnchorState {
     // 잠겼거나 만들 수 없는 파일은 조회할 이유도 없다. 지갑 미연결은 `blockedReason`이 이미 덮는다.
     if (!gateEnabled || !ready || downloadLocked || blockedReason !== null) return;
     restored.current = true;
+    // 조회가 도는 동안 사용자가 버튼을 눌러 흐름이 끝났을 수 있다. 느린 복원이 뒤늦게 돌아와
+    // 그 결론(예: `failed`)을 `anchored`로 덮지 않도록 시작 시점의 세대를 들고 간다.
+    const mySeq = seq.current;
     void (async () => {
       try {
         const file = fileFor();
         const existing = await reportAnchorProvider.get(keyFor(file));
-        if (!mounted.current) return;
+        if (!mounted.current || seq.current !== mySeq) return;
         // 확정된 기록만 한 줄로 말한다. 진행 중·실패는 사용자가 누른 흐름에서만 보인다.
-        if (existing?.anchorStatus === "anchored") {
-          setRecord(existing);
-          setPhase("anchored");
-        }
+        if (existing?.anchorStatus === "anchored") write({ record: existing, phase: "anchored" });
       } catch {
         // 복원 실패는 버튼을 막지 않는다. 누르면 같은 조회를 다시 탄다.
       }

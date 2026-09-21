@@ -31,6 +31,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ file
   if ((kind !== "csv" && kind !== "xlsx") || !countryCode || rawTaxYear === null || !/^\d{4}$/.test(rawTaxYear)) {
     return Response.json(error("invalid_request", "kind, countryCode and taxYear are required."), { status: 400 });
   }
+  // 경로의 해시도 POST와 같은 형식으로 본다. 검증 없이 통과시키면 아무 문자열이나 조회 키가 되어,
+  // 저장소에 절대 없을 키에 404를 돌려주는 경로가 열린다 — 400이어야 할 것이 "없음"으로 읽힌다.
+  if (!/^0x[0-9a-f]{64}$/i.test(fileHash)) {
+    return Response.json(error("invalid_request", "fileHash must be a 32-byte hex digest."), { status: 400 });
+  }
   const taxYear = Number(rawTaxYear);
 
   // 내 기록만 답한다. 남의 기록에 200을 주면 "그 파일이 존재하는가"를 묻는 오라클이 된다.

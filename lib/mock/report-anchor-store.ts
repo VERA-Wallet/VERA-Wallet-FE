@@ -30,7 +30,11 @@ type Stored = {
   outcome: "ok" | "failed";
   /** 이 시도가 확정되는 시각(epoch ms). 그 전까지는 outcome과 무관하게 pending이다. */
   anchorsAt: number;
-  /** 마지막 실패 사유·시각. pending으로 되돌아간 뒤에도 남는다 — 새 시도가 다시 실패할 때만 갈아 끼우고, 지우지는 않는다. */
+  /**
+   * **지난 시도들**의 마지막 실패 사유·시각. 이번 시도의 실패는 여기 없다 — 정착한 뒤에 `viewOf()`가
+   * 파생한다. 등록 시점에 못 박으면 pending 뷰가 아직 오지 않은 실패 시각을 달고 나간다.
+   * 새 시도를 열 때 직전 시도의 실패(그때는 이미 확정된 과거다)를 여기로 옮겨 담고, 지우지는 않는다.
+   */
   failureReason: string | null;
   lastFailureAt: string | null;
 };
@@ -73,6 +77,9 @@ export function mockReportAnchorCount(): number {
  */
 export function resetMockReportAnchors(): void {
   records.clear();
+  // 스위치도 함께 내린다. 기록만 지우면 "초기화했는데 다음 등록이 또 실패하는" 저장소가 남는다.
+  // 제어 라우트는 reset 뒤에 `failing`을 읽으므로 명시적으로 켜 달라는 요청은 그대로 통한다.
+  setMockReportAnchorFailure(false);
 }
 
 /**
@@ -93,6 +100,9 @@ function viewOf(stored: Stored, now: number): ReportAnchorRecord {
   const anchorStatus = !settled ? "pending" : stored.outcome === "failed" ? "failed" : "anchored";
   const anchored = anchorStatus === "anchored";
   const chain = anchored ? deriveChainFacts(stored) : null;
+  // 이번 시도의 실패는 정착한 뒤에야 사실이다. 정착 전에는 지난 시도의 실패만 말한다 —
+  // 그러지 않으면 pending 뷰가 미래 시각(anchorsAt)의 실패를 달고 나간다.
+  const justFailed = anchorStatus === "failed";
   return {
     fileHash: stored.fileHash,
     algorithm: stored.algorithm,
@@ -108,8 +118,8 @@ function viewOf(stored: Stored, now: number): ReportAnchorRecord {
     anchoredAt: anchored ? new Date(stored.anchorsAt).toISOString() : null,
     // OmniOne 스테이지에는 블록 탐색기가 없다 — null이 정상이다(`lib/ports/tax-evidence.ts:28` 주석과 같은 사실).
     explorerUrl: null,
-    failureReason: stored.failureReason,
-    lastFailureAt: stored.lastFailureAt,
+    failureReason: justFailed ? FAILURE_REASON : stored.failureReason,
+    lastFailureAt: justFailed ? new Date(stored.anchorsAt).toISOString() : stored.lastFailureAt,
   };
 }
 
@@ -125,7 +135,6 @@ export function registerMockReportAnchor(userKey: string, input: ReportAnchorInp
   const existing = records.get(mapKey);
 
   if (!existing) {
-    const failing = isFailing();
     const anchorsAt = now + ANCHOR_DELAY_MS;
     const stored: Stored = {
       userKey,
@@ -137,29 +146,28 @@ export function registerMockReportAnchor(userKey: string, input: ReportAnchorInp
       byteLength: input.byteLength,
       recordedAt: new Date(now).toISOString(),
       attempt: 1,
-      outcome: failing ? "failed" : "ok",
+      outcome: isFailing() ? "failed" : "ok",
       anchorsAt,
-      failureReason: failing ? FAILURE_REASON : null,
-      lastFailureAt: failing ? new Date(anchorsAt).toISOString() : null,
+      // 첫 시도에는 지난 실패가 없다. 이번 시도가 실패로 정착하면 `viewOf()`가 그때 말한다.
+      failureReason: null,
+      lastFailureAt: null,
     };
     records.set(mapKey, stored);
     return viewOf(stored, now);
   }
 
-  const currentStatus = viewOf(existing, now).anchorStatus;
-  if (currentStatus === "anchored" || currentStatus === "pending") {
-    return viewOf(existing, now);
+  const current = viewOf(existing, now);
+  if (current.anchorStatus === "anchored" || current.anchorStatus === "pending") {
+    return current;
   }
 
-  // failed → 새 시도를 연다. failureReason·lastFailureAt은 이번 시도가 다시 실패할 때만 갈아 끼운다.
-  const failing = isFailing();
+  // failed → 새 시도를 연다. 직전 실패는 이미 확정된 과거이므로 여기서 사실로 옮겨 담는다 —
+  // 이번 시도의 결말은 정착할 때 `viewOf()`가 파생한다.
+  existing.failureReason = current.failureReason;
+  existing.lastFailureAt = current.lastFailureAt;
   existing.attempt += 1;
   existing.anchorsAt = now + ANCHOR_DELAY_MS;
-  existing.outcome = failing ? "failed" : "ok";
-  if (failing) {
-    existing.failureReason = FAILURE_REASON;
-    existing.lastFailureAt = new Date(existing.anchorsAt).toISOString();
-  }
+  existing.outcome = isFailing() ? "failed" : "ok";
   return viewOf(existing, now);
 }
 

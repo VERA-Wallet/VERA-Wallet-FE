@@ -89,6 +89,9 @@ describe("리포트 파일 해시", () => {
         )}\n`,
         "utf8",
       );
+      // 갱신 실행에서 비교까지 하면, 방금 쓴 값이 아니라 import 시점에 읽힌 옛 fixture와 겨뤄
+      // "갱신했는데 실패하는" 실행이 된다. 갱신은 갱신만 한다 — 검증은 다음 평범한 실행의 몫이다.
+      return;
     }
 
     expect({ byteLength: csv.bytes.byteLength, hash: csv.hash }).toEqual(digest.csv);

@@ -108,6 +108,9 @@ afterEach(() => {
 async function renderMain(gateEnabled = true) {
   const view = renderReportPages({ pages: ["main"], countryCode: "KR", currentYear: 2027, latestActivityYear: 2027, gateEnabled });
   const csv = await screen.findByRole("button", { name: "직접 신고용 내려받기" });
+  // 계산이 도착할 때까지 기다린다. estimate는 파일의 일부라 늦게 오면 파일이 바뀌고, 게이트는
+  // 그때 등록 상태를 버린다 — 그 전에 누르는 것은 사용자가 겪을 순서가 아니라 테스트의 경주다.
+  await screen.findByText(/룰셋을 적용한 결과입니다/);
   await waitFor(() => expect(csv).toBeEnabled());
   return { ...view, csv };
 }
@@ -281,6 +284,48 @@ describe("내보내기 등록 게이트", () => {
     expect(ports.anchorGet).toHaveBeenCalledTimes(1);
     // 카드마다 자기 파일을 따로 확인한다. 한 장을 건드렸다고 다른 장이 등록을 말하지 않는다.
     expect(surface("anchor-done")?.closest("[data-anchor-kind]")).toHaveAttribute("data-anchor-kind", "csv");
+  });
+
+  it("연도를 바꾸면 앞 파일의 등록 상태를 버리고 새 키로 다시 확인한다", async () => {
+    ports.anchorGet.mockResolvedValue(anchored());
+    const { csv } = await renderMain();
+
+    fireEvent.pointerOver(cardOf("csv"));
+    await waitFor(() => expect(surface("anchor-done")).not.toBeNull());
+    expect(ports.anchorGet.mock.calls[0][0]).toMatchObject({ taxYear: 2027 });
+
+    // 연도 칩 → 바텀시트 → 다른 해. 훅은 마운트된 채 입력만 갈리는 경로다.
+    fireEvent.click(screen.getByRole("button", { name: /2027년 귀속/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /2026년 귀속/ }));
+
+    // 옛 파일의 등록 한 줄이 새 연도의 사실인 척 남지 않는다. 버튼도 다시 눌린다.
+    await waitFor(() => expect(surface("anchor-done")).toBeNull());
+    expect(csv).toBeEnabled();
+
+    // 복원도 다시 열린다 — 이번엔 새 연도의 키로 묻는다.
+    fireEvent.pointerOver(cardOf("csv"));
+    await waitFor(() => expect(ports.anchorGet).toHaveBeenCalledTimes(2));
+    expect(ports.anchorGet.mock.calls[1][0]).toMatchObject({ kind: "csv", countryCode: "KR", taxYear: 2026 });
+  });
+
+  it("느린 복원 조회는 그 사이 끝난 클릭 흐름의 결론을 덮지 않는다", async () => {
+    let finishRestore: (record: ReportAnchorRecord | null) => void = () => {};
+    ports.anchorGet
+      // 첫 호출은 카드 접촉이 연 복원 조회다. 응답을 손에 쥐고 있다가 흐름이 끝난 뒤에 돌려준다.
+      .mockReturnValueOnce(new Promise<ReportAnchorRecord | null>((resolve) => { finishRestore = resolve; }))
+      .mockResolvedValue(null);
+    ports.anchorRegister.mockResolvedValue(failed());
+    const { csv } = await renderMain();
+
+    fireEvent.pointerOver(cardOf("csv"));
+    fireEvent.click(csv);
+    expect(await screen.findByText(/체인 노드가 응답하지 않았습니다/)).toBeInTheDocument();
+
+    await act(async () => { finishRestore(anchored()); });
+
+    expect(surface("anchor-done")).toBeNull();
+    expect(surface("anchor-failed")).not.toBeNull();
+    expect(saved).toHaveLength(0);
   });
 
   it("등록 한 줄은 시각·파일 해시·거래 해시를 앞자리만 보인다", async () => {

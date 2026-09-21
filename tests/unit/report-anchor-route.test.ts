@@ -111,6 +111,19 @@ describe("GET /api/report-anchor/[fileHash]", () => {
     await expect(response.json()).resolves.toMatchObject({ error: { code: "invalid_request" } });
   });
 
+  // 경로의 해시도 POST와 같은 형식이어야 한다. 검증이 없으면 아무 문자열이나 조회 키가 되어,
+  // 400이어야 할 요청이 "그런 기록 없음"(404)으로 읽힌다.
+  it.each([
+    ["not hex at all", "not-a-hash"],
+    ["missing 0x prefix", "a".repeat(64)],
+    ["too short", `0x${"a".repeat(63)}`],
+  ])("400 when the path fileHash is %s", async (_label, hash) => {
+    requireDidSession.mockResolvedValue(session("0xabc"));
+    const response = await getRecord(hash, "?kind=csv&countryCode=KR&taxYear=2027");
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ error: { code: "invalid_request" } });
+  });
+
   it("404 when no record exists yet for that key", async () => {
     requireDidSession.mockResolvedValue(session("0xabc"));
     const response = await getRecord(FILE_HASH, "?kind=csv&countryCode=KR&taxYear=2027");
@@ -158,5 +171,16 @@ describe("POST /api/mock/report-anchor-failure", () => {
     const reset = await postFailureSwitch({ reset: true, failing: false });
     expect(reset.status).toBe(200);
     expect((await reset.json()).data).toMatchObject({ failing: false, records: 0 });
+  });
+
+  it("reset은 스위치도 내리지만, 같은 요청의 명시적 failing은 그대로 통한다", async () => {
+    requireDidSession.mockResolvedValue(session("0xabc"));
+    // reset만 보내면 스위치는 내려간다 — 기록만 비우고 실패를 남겨두지 않는다.
+    expect((await (await postFailureSwitch({ failing: true })).json()).data).toMatchObject({ failing: true });
+    expect((await (await postFailureSwitch({ reset: true })).json()).data).toMatchObject({ failing: false });
+
+    // 한 요청에서 초기화하고 다시 켜는 e2e 준비 호출은 그대로 켜진 채로 끝난다.
+    const armed = await postFailureSwitch({ reset: true, failing: true });
+    expect((await armed.json()).data).toMatchObject({ failing: true, records: 0 });
   });
 });

@@ -61,7 +61,12 @@ function AnchorDone({ record }: { record: ReportAnchorRecord }) {
           aria-label="거래 해시 복사"
           className="mt-2 text-sm font-semibold text-primary-600 underline"
           type="button"
-          onClick={() => { void navigator.clipboard.writeText(txHash).then(() => setCopied(true)); }}
+          // 카드 전체가 복원 조회의 첫 접촉을 받는다(아래 `onClick={csv.restore}`). 해시를 복사하는 것은
+          // 그 접촉이 아니므로 여기서 멈춘다 — 안 그러면 복사 한 번이 조회 한 번을 끌고 간다.
+          onClick={(event) => {
+            event.stopPropagation();
+            void navigator.clipboard.writeText(txHash).then(() => setCopied(true));
+          }}
         >
           {copied ? "복사됨" : "거래 해시 복사"}
         </button>
@@ -111,7 +116,8 @@ function AnchorStatus({ anchor }: { anchor: ReportAnchorState }) {
           className="mt-2 flex w-full items-center justify-center rounded-xl border border-primary-500 py-2.5 text-sm font-semibold text-primary-600"
           data-surface="anchor-retry"
           type="button"
-          onClick={retry}
+          // 재시도는 자기 흐름을 연다. 카드로 올라가면 복원 조회 핸들러가 한 번 더 따라붙는다.
+          onClick={(event) => { event.stopPropagation(); retry(); }}
         >
           다시 시도
         </button>

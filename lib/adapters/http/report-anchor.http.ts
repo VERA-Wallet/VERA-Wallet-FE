@@ -18,10 +18,12 @@ const reportAnchorRecordSchema = z.object({
   attempt: z.number().int().positive(),
   txHash: z.string().nullable(),
   blockNumber: z.string().nullable(),
-  anchoredAt: z.string().nullable(),
+  // 시각은 `recordedAt`과 같은 형식이어야 한다. 그냥 문자열로 두면 화면이 파싱할 수 없는 값을
+  // 받아 `formatDateTime`이 조용히 "Invalid Date"를 그린다.
+  anchoredAt: z.string().datetime().nullable(),
   explorerUrl: z.string().nullable(),
   failureReason: z.string().nullable(),
-  lastFailureAt: z.string().nullable(),
+  lastFailureAt: z.string().datetime().nullable(),
 });
 
 export class HttpReportAnchorProvider implements ReportAnchorProvider {
