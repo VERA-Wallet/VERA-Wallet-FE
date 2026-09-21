@@ -28,7 +28,8 @@ export default defineConfig({
       ...(process.env.VERAWALLET_MOCK_MODE ? { VERAWALLET_MOCK_MODE: process.env.VERAWALLET_MOCK_MODE } : {}),
       // 세금 화면의 통화 환산은 외부 환율 API(ECB) 대신 고정표를 쓴다 — e2e가 네트워크·환율 변동에 흔들리지 않게.
       VERAWALLET_FX_SOURCE: "fixed",
-      // BE에 /api/report-anchor가 아직 없다 — 켜 두면 g002·g003의 다운로드 케이스가 등록 실패로 타임아웃한다.
+      // BE origin/main은 tax-evidence(묶음 등록)를 이미 구현하지만, 이 레인은 아직 ON으로 검증하지
+      // 않았다 — 켜 두면 g002·g003의 다운로드 케이스가 등록 실패·타임아웃으로 깨질 수 있다.
       // 로컬에서 게이트를 켠 채 시험하려면 REPORT_ANCHOR_GATE=on pnpm test:e2e로 덮는다.
       REPORT_ANCHOR_GATE: process.env.REPORT_ANCHOR_GATE ?? "off",
       // 신원인증은 e2e에서 늘 mock QR 흐름이다. 개발 환경(.env.local)이 CX 인증창 주소를 갖고 있어도

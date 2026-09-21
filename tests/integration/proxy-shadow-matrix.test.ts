@@ -22,9 +22,6 @@ const routes: Array<{ name: string; method: "GET" | "POST" | "PATCH"; path: stri
   // §1-C: matcher에 빠져 있던 tax-evidence 경로. 정확 경로와 하위 경로(:path*) 둘 다 걸린다는 것을 함께 잡는다.
   { name: "tax evidence", method: "GET", path: "/api/tax-evidence" },
   { name: "tax evidence merkle root", method: "GET", path: `/api/tax-evidence/0x${"ab".repeat(32)}` },
-  // WP5(§4): report-anchor도 같은 그물로 잡는다 — 정확 경로와 하위 경로(:path*) 둘 다.
-  { name: "report anchor register", method: "POST", path: "/api/report-anchor" },
-  { name: "report anchor by hash", method: "GET", path: `/api/report-anchor/0x${"ab".repeat(32)}` },
 ];
 
 type Recorder = Awaited<ReturnType<typeof startRecorder>>;

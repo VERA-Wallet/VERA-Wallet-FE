@@ -97,9 +97,9 @@ BE가 실행 중 죽어도 앱이 알아서 mock으로 넘어가지 않는다 �
 - **DID 재제시가 지갑 바인딩을 지우지 않는다.** FE mock과 BE 모두 지갑 클레임을 보존한다. 역순(SIWE→DID) 차단은 nonce·verify의 DID 가드와 challenge 세션 귀속이 담당한다.
 - **`/api/auth/session`에는 `chainId`가 없다.** EVM 주소는 체인 불문 동일하므로 세션은 체인 클레임을 내려주지 않고, 활동 체인은 이벤트 데이터(`chain_id`)나 `POST /api/events/resync` 응답의 `chains`에서 파생한다.
 - **앵커 제출은 멱등이 아니다.** 같은 이벤트를 다시 sync하면 `tx_hash`/`anchored_at`이 바뀔 수 있다.
-- **리포트 내보내기(CSV·XLSX)의 파일 해시 등록(`report-anchor`)은 아직 BE 계약이 없다.** 계약 초안은 `docs/be-contract-draft-report-anchor.md`. 서버 env `REPORT_ANCHOR_GATE`(기본 on, fail-closed)로 게이트를 켜고 끈다.
-  - OFF(`REPORT_ANCHOR_GATE=off`): 내려받기가 해시·등록·폴링 없이 예전처럼 즉시 저장된다. mock 저장소는 등록 후 일정 시간이 지나야 `pending → anchored`로 전이하고, `POST /api/mock/report-anchor-failure`로 실패를 강제할 수 있다(e2e 전용, ON이거나 production이면 404).
-  - ON(미설정 포함, 기본값): 내려받기 전에 파일 바이트를 `keccak256`으로 해시해 `/api/report-anchor`에 등록하고, `anchored` 확정까지 최대 60초 폴링한다. **BE가 이 계약을 구현하기 전에 ON 모드로 배포하면 등록이 항상 실패해 내려받기가 전부 막힌다** — BE 구현 전 ON 모드 배포는 `REPORT_ANCHOR_GATE=off`를 반드시 넣는다.
+- **리포트 내보내기(CSV·XLSX)는 계산 근거와 한 벌로 묶여 등록된다.** 새 엔드포인트가 아니라 기존 `tax-evidence` 계약에 파일 해시 두 잎(`kind:"file"`, csv·xlsx)을 얹어 같은 루트로 올린다. 자세한 설계는 `docs/bundle-anchoring.md`. 서버 env `REPORT_ANCHOR_GATE`(기본 on, fail-closed)로 게이트를 켜고 끈다.
+  - OFF(`REPORT_ANCHOR_GATE=off`): 내려받기가 해시·등록·폴링 없이 예전처럼 즉시 저장된다. mock 저장소는 등록 후 일정 시간이 지나야 `pending → anchored`로 전이하고, `POST /api/mock/tax-evidence-failure`로 실패를 강제할 수 있다(e2e 전용, ON이거나 production이면 404).
+  - ON(미설정 포함, 기본값): 내려받기 전에 계산 근거 문서 뒤에 CSV·XLSX 해시를 붙여 루트 하나를 내고 `/api/tax-evidence`에 등록한 뒤, `anchored` 확정까지 최대 60초 폴링한다. BE `origin/main`은 이미 이 계약을 구현하고 있어 ON도 시도해 볼 수 있지만, CI는 아직 이 레인을 정기 검증하지 않으므로 배포에는 `REPORT_ANCHOR_GATE=off`를 유지한다.
 
 ## SIWE 설정이 사는 곳
 

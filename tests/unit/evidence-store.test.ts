@@ -13,7 +13,7 @@ import { buildEvidenceDocument } from "@/lib/tax/evidence";
 import { EVIDENCE_FIXTURE_ESTIMATE } from "@/tests/fixtures/evidence-estimate";
 
 /**
- * `report-anchor-store.ts`(계획 §0-F2 이식 원본)와 같은 전제로 시계를 흉내 낸다: 저장소는
+ * rev 1~4의 `report-anchor-store`(계획 §0-F2 이식 원본)와 같은 전제로 시계를 흉내 낸다: 저장소는
  * `Date.now()`를 직접 읽으므로 vitest fake timers가 그대로 통한다.
  *
  * `EvidenceRecord`에는 `attempt`·`failureReason`이 없다(계획 §0-F1) — 아래 단언은 응답에

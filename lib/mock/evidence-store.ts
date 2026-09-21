@@ -15,8 +15,8 @@ import type { EvidenceChainCheck, EvidenceDetail, EvidenceRecord } from "@/lib/p
  *
  * mock 저장소 수명주기는 이벤트·인증 저장소와 같다(globalThis 고정, 단일 프로세스 전용).
  *
- * **전이(pending → anchored/failed)·실패 스위치·재시도**는 `lib/mock/report-anchor-store.ts`에서 그대로
- * 옮겨 왔다(계획 §0-F4). 다만 `EvidenceRecord`(BE `EvidenceView`)에는 `attempt`·`failureReason`이 없다
+ * **전이(pending → anchored/failed)·실패 스위치·재시도**는 rev 1~4의 파일별 `report-anchor-store` 설계를
+ * 그대로 옮겨 왔다(계획 §0-F4). 다만 `EvidenceRecord`(BE `EvidenceView`)에는 `attempt`·`failureReason`이 없다
  * (계획 §0-F1) — `attempt`는 저장소 안에서만 tx 파생에 쓰고 응답에는 절대 싣지 않는다.
  */
 // 잎을 함께 둔다 — 근거 화면이 "루트가 무엇을 덮는지"를 보이려면 원본이 있어야 한다(BE `TaxEvidence.document`와 같은 이유).
@@ -75,7 +75,7 @@ export function resetMockEvidence(): void {
 }
 
 /**
- * 체인이 없으므로 결정적으로 파생한다(`report-anchor-store.ts`와 같은 규칙).
+ * 체인이 없으므로 결정적으로 파생한다(rev 1~4의 report-anchor-store와 같은 규칙).
  * preimage = `userKey` + 루트 + `attempt` — 사용자가 다르면 트랜잭션도 달라야 하고(사용자 간 tx 공유 금지),
  * 재시도도 다른 트랜잭션이어야 한다. 블록 번호도 같은 preimage에서 파생한다 — 체인이 없으니 카운터 대신 해시에서 뽑는다.
  */

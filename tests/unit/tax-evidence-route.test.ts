@@ -17,8 +17,8 @@ import { EVIDENCE_FIXTURE_ESTIMATE } from "@/tests/fixtures/evidence-estimate";
 const requireDidSession = vi.fn();
 vi.mock("@/lib/dal", () => ({ requireDidSession }));
 
-// 정적 import는 ESM 호이스팅으로 `vi.mock` 팩토리보다 먼저 평가돼 위 `const`를 "초기화 전 접근"으로 만든다
-// (`tests/unit/report-anchor-route.test.ts:10`과 같은 이유). 그래서 라우트를 매 호출마다 동적으로 불러온다.
+// 정적 import는 ESM 호이스팅으로 `vi.mock` 팩토리보다 먼저 평가돼 위 `const`를 "초기화 전 접근"으로 만든다.
+// 그래서 라우트를 매 호출마다 동적으로 불러온다.
 const session = (walletAddress: string | null) => ({ source: "mock" as const, didVerified: true, countryCode: "KR", walletAddress, chainId: null });
 
 async function postEvidence(body: unknown) {

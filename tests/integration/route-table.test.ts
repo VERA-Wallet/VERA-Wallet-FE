@@ -92,46 +92,11 @@ describe("hybrid proxy route table", () => {
     expect(response.headers.get("x-verawallet-fe-rewrite")).toBeTruthy();
   });
 
-  it("routes /api/report-anchor (POST) to BE", async () => {
-    // WP5(§4): 새 report-anchor 계약도 tax-evidence(:83)와 같은 판별자로 확인한다.
-    // BE에 이 계약이 아직 없어 상태코드는 404/500일 수 있으므로 상태코드가 아니라
-    // x-verawallet-fe-rewrite 유무로 "BE로 갔는가"를 본다.
-    const { cookie } = await presentDid(FE);
-    expect(cookie).toBeDefined();
-
-    const response = await fetch(`${FE}/api/report-anchor`, {
-      method: "POST",
-      headers: { "content-type": "application/json", cookie: cookie! },
-      body: JSON.stringify({
-        version: 1,
-        algorithm: "keccak256",
-        fileHash: `0x${"ab".repeat(32)}`,
-        kind: "csv",
-        countryCode: "KR",
-        taxYear: 2025,
-        byteLength: 100,
-      }),
-    });
-    expect(response.headers.get("x-verawallet-fe-rewrite")).toBeTruthy();
-  });
-
-  it("routes /api/report-anchor/{fileHash} (GET, with meta query) to BE", async () => {
-    const { cookie } = await presentDid(FE);
-    expect(cookie).toBeDefined();
-
-    const fileHash = `0x${"ab".repeat(32)}`;
-    const response = await fetch(
-      `${FE}/api/report-anchor/${fileHash}?kind=csv&countryCode=KR&taxYear=2025`,
-      { headers: { cookie: cookie! } },
-    );
-    expect(response.headers.get("x-verawallet-fe-rewrite")).toBeTruthy();
-  });
-
-  it("keeps the report-anchor mock control route closed while the proxy is on", async () => {
-    // /api/mock/report-anchor-failure는 proxy.ts의 allowlist·matcher 어디에도 없다(§2).
+  it("keeps the tax-evidence mock control route closed while the proxy is on", async () => {
+    // /api/mock/tax-evidence-failure는 proxy.ts의 allowlist·matcher 어디에도 없다(§2).
     // ON 모드에서 이 라우트는 isMockApiMode()가 false라 자체적으로 404를 내고, 그 요청은
-    // 애초에 프록시를 타지 않으므로 rewrite 헤더도 없다 — test-login(:97) 케이스와 같은 모양이다.
-    const response = await fetch(`${FE}/api/mock/report-anchor-failure`, { method: "POST" });
+    // 애초에 프록시를 타지 않으므로 rewrite 헤더도 없다 — test-login(:139) 케이스와 같은 모양이다.
+    const response = await fetch(`${FE}/api/mock/tax-evidence-failure`, { method: "POST" });
     expect(response.status).toBe(404);
     expect(response.headers.get("x-verawallet-fe-rewrite")).toBeNull();
   });
