@@ -169,7 +169,8 @@ export function Downloads({
   // 파일을 만들어 그 해시를 등록하는데, 그것은 몇백 밀리초 뒤 이 버튼이 만들 파일의 해시가 아니다.
   // 막는 것은 "오는 중"뿐이다 — 계산이 **끝났는데 결과가 없는 것**(엔진 실패·룰셋 미확인)은 정당한
   // 경로이고, 그때도 온체인 값만으로 원장을 만들 수 있다(`tests/ui/export-empty-period.test.tsx`).
-  const estimatePending = freshEstimate.state === "pending";
+  // 게이트가 꺼져 있으면 이 잠금도 없다 — 스위치를 내렸을 때는 예전 내려받기와 한 글자도 다르지 않아야 한다.
+  const estimatePending = gateEnabled && freshEstimate.state === "pending";
   const disabled = !ready || downloadLocked || blockedReason !== null || estimatePending;
 
   return (

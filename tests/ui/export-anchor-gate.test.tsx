@@ -330,6 +330,20 @@ describe("내보내기 등록 게이트", () => {
     await waitFor(() => expect(csv).toBeEnabled());
   });
 
+  it("게이트를 끄면 계산이 오는 중이어도 예전처럼 열려 있다", async () => {
+    // 스위치를 내린 배포는 이 브랜치 이전과 한 글자도 다르지 않아야 한다 — 그 잠금은 게이트의 것이다.
+    ports.estimate.mockImplementationOnce(() => new Promise(() => {}));
+    renderReportPages({ pages: ["main"], countryCode: "KR", currentYear: 2027, latestActivityYear: 2027, gateEnabled: false });
+
+    const csv = await screen.findByRole("button", { name: "직접 신고용 내려받기" });
+    await waitFor(() => expect(screen.queryByText("거래 내역을 불러오는 중입니다.")).toBeNull());
+    expect(csv).toBeEnabled();
+
+    fireEvent.click(csv);
+    await waitFor(() => expect(saved).toHaveLength(1));
+    expect(ports.anchorGet).not.toHaveBeenCalled();
+  });
+
   it("등록 중에 연도를 왕복해도 죽은 시도가 되살아나지 않는다", async () => {
     ports.anchorGet.mockResolvedValueOnce(null).mockResolvedValue(pending());
     ports.anchorRegister.mockResolvedValue(pending());
