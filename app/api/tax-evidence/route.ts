@@ -1,6 +1,7 @@
 import { error, success, unauthorizedResponse, withSessionInfrastructureError } from "@/lib/auth-route";
 import { requireDidSession } from "@/lib/dal";
 import { latestMockEvidence, recordMockEvidence } from "@/lib/mock/evidence-store";
+import { merkleRoot } from "@/lib/tax/evidence";
 import type { EvidenceLeaf } from "@/lib/tax/evidence";
 
 /**
@@ -34,11 +35,18 @@ export async function POST(request: Request) {
   }
 
   try {
-    const record = recordMockEvidence(mockUserKey(session), body.leaves);
-    // FE가 보낸 루트를 믿지 않고 대조하는 규칙은 BE와 같다 — mock에서도 같은 계약을 지킨다.
-    if (body.merkleRoot && body.merkleRoot.toLowerCase() !== record.merkleRoot.toLowerCase()) {
+    // BE와 같은 순서(evidence.service.ts): 루트를 먼저 계산·대조하고, 어긋나면 아무것도 저장하지 않는다.
+    // 먼저 저장부터 하면(옛 순서) 루트가 어긋난 문서도 저장소에 남아, 다음 조회가 "저장은 됐는데
+    // 루트가 다른" 유령 기록을 돌려준다(계획 §9의 WP0 순서 결함 근거).
+    const header = body.leaves[0];
+    if (!header || header.kind !== "header") {
+      return Response.json(error("invalid_request", "첫 잎은 헤더여야 합니다."), { status: 400 });
+    }
+    const root = merkleRoot(body.leaves);
+    if (body.merkleRoot && body.merkleRoot.toLowerCase() !== root.toLowerCase()) {
       return Response.json(error("invalid_request", "Evidence merkle root mismatch."), { status: 400 });
     }
+    const record = recordMockEvidence(mockUserKey(session), body.leaves);
     return Response.json(success(record));
   } catch (cause) {
     return Response.json(error("invalid_request", cause instanceof Error ? cause.message : "Invalid evidence."), { status: 400 });
