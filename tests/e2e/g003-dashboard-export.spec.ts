@@ -94,6 +94,14 @@ test.describe.serial("G003 dashboard and export contract red team", () => {
       expect(dashboardReady, blockers[0]).toBeTruthy();
       return;
     }
+    // 요약의 손익 단언은 요약 화면에서 끝낸다 — 목록·상세·재분류는 거래 탭(/transactions)으로 이사했다.
+    const dashboardBody = await page.locator("body").innerText();
+    expect(dashboardBody).not.toContain("₩0");
+    transcript.assert("Dashboard PnL matches the event fixture sum and does not render ₩0", dashboardBody.includes(expectedPnlText) && !dashboardBody.includes("₩0"), "body");
+
+    transcript.act({ type: "goto", url: "/transactions" });
+    await page.goto("/transactions");
+    await expect(page.locator("[data-event-id]").first()).toBeVisible();
     // 배지(확인 필요 등)는 이제 목록이 아니라 거래 상세에서만 말한다 — 가격 미확정 이벤트(event-18)의
     // 상세를 열어 사유("가격 확인 필요")가 그대로 밝혀지는지 확인한다.
     await page.locator('[data-event-id="event-18"]').first().click();
@@ -102,9 +110,6 @@ test.describe.serial("G003 dashboard and export contract red team", () => {
     await expect(unknownBadges.first()).toBeVisible();
     const unknownBadgeCount = await unknownBadges.count();
     await page.getByRole("button", { name: "닫기", exact: true }).click();
-    const dashboardBody = await page.locator("body").innerText();
-    expect(dashboardBody).not.toContain("₩0");
-    transcript.assert("Dashboard PnL matches the event fixture sum and does not render ₩0", dashboardBody.includes(expectedPnlText) && !dashboardBody.includes("₩0"), "body");
     record(cases, "dashboard-summary-and-unknown", "Fixture PnL, UNKNOWN-price reason in event detail, and zero-value suppression", { pnl: expectedPnlText, reviewCount: ">= 1", zero: "absent" }, { pnlPresent: dashboardBody.includes(expectedPnlText), unknownBadges: unknownBadgeCount, zeroPresent: dashboardBody.includes("₩0") }, dashboardBody.includes(expectedPnlText) && unknownBadgeCount >= 1 && !dashboardBody.includes("₩0"));
 
     transcript.act({ type: "click", selector: 'role=tab[name="확인 필요"]' });
@@ -176,10 +181,11 @@ test.describe.serial("G003 dashboard and export contract red team", () => {
     await page.getByRole("button", { name: /데모 결제로 시작/ }).first().click();
     await expect(page.getByText(/활성 · \d{4}년/)).toBeVisible();
 
+    // 리포트 메인에는 세금 보고서와 내려받기만 있다. 앵커링 증명 카드는 계산 근거(/export/basis)로 이사했고
+    // 아래 내려받기 검증 뒤에 그 화면에서 확인한다.
     transcript.act({ type: "goto", url: "/export" });
     await page.goto("/export");
-    await expect(page.getByText("앵커링 증명")).toBeVisible();
-    await expect(page.getByText("Merkle root")).toBeVisible();
+    await expect(page.getByRole("button", { name: "직접 신고용 내려받기" })).toBeEnabled();
     const [csvDownload] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "직접 신고용 내려받기" }).click()]);
     const csvTempPath = await csvDownload.path();
     expect(csvTempPath).not.toBeNull();
@@ -205,6 +211,10 @@ test.describe.serial("G003 dashboard and export contract red team", () => {
     expect(xlsxPassed).toBeTruthy();
     await page.locator("main").screenshot({ path: exportPath, type: "jpeg", quality: 85 });
     transcript.act({ type: "screenshot", selector: "main" });
+    transcript.act({ type: "goto", url: "/export/basis" });
+    await page.goto("/export/basis");
+    await expect(page.getByText("앵커링 증명")).toBeVisible();
+    await expect(page.getByText("Merkle root")).toBeVisible();
     record(cases, "export-xlsx-and-anchor-card", "Nonempty four-sheet report workbook (요약·자산별·원장·예외) with summary values and visible proof card", { sheets: ["요약", "자산별", "원장", "예외"], proof: true }, { size: (await stat(xlsxPath)).size, sheets: workbook.SheetNames, summaryCells: Object.keys(summarySheet ?? {}).filter((key) => key.startsWith("A")) }, xlsxPassed);
 
     const proofResponse = await page.context().request.get(`/api/anchor-proof?eventId=${items[0].event.id}`);
