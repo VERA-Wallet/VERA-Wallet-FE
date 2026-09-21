@@ -108,9 +108,7 @@ afterEach(() => {
 async function renderMain(gateEnabled = true) {
   const view = renderReportPages({ pages: ["main"], countryCode: "KR", currentYear: 2027, latestActivityYear: 2027, gateEnabled });
   const csv = await screen.findByRole("button", { name: "직접 신고용 내려받기" });
-  // 계산이 도착할 때까지 기다린다. estimate는 파일의 일부라 늦게 오면 파일이 바뀌고, 게이트는
-  // 그때 등록 상태를 버린다 — 그 전에 누르는 것은 사용자가 겪을 순서가 아니라 테스트의 경주다.
-  await screen.findByText(/룰셋을 적용한 결과입니다/);
+  // 버튼이 열리는 순간이 곧 "계산까지 확정됨"이다 — 계산이 오는 중이면 화면이 버튼을 열지 않는다.
   await waitFor(() => expect(csv).toBeEnabled());
   return { ...view, csv };
 }
@@ -298,14 +296,102 @@ describe("내보내기 등록 게이트", () => {
     fireEvent.click(screen.getByRole("button", { name: /2027년 귀속/ }));
     fireEvent.click(await screen.findByRole("button", { name: /2026년 귀속/ }));
 
-    // 옛 파일의 등록 한 줄이 새 연도의 사실인 척 남지 않는다. 버튼도 다시 눌린다.
+    // 옛 파일의 등록 한 줄이 새 연도의 사실인 척 남지 않는다.
     await waitFor(() => expect(surface("anchor-done")).toBeNull());
-    expect(csv).toBeEnabled();
+    // 새 연도의 계산이 오는 동안에는 버튼이 닫혀 있고(만들 파일이 아직 확정되지 않았다), 오면 다시 열린다.
+    await waitFor(() => expect(csv).toBeEnabled());
 
     // 복원도 다시 열린다 — 이번엔 새 연도의 키로 묻는다.
     fireEvent.pointerOver(cardOf("csv"));
     await waitFor(() => expect(ports.anchorGet).toHaveBeenCalledTimes(2));
     expect(ports.anchorGet.mock.calls[1][0]).toMatchObject({ kind: "csv", countryCode: "KR", taxYear: 2026 });
+  });
+
+  it("계산이 아직 오는 중이면 내려받기를 열지 않는다", async () => {
+    let releaseEstimate: () => void = () => {};
+    ports.estimate.mockImplementationOnce(() => new Promise((resolve) => { releaseEstimate = () => resolve(estimate); }));
+    ports.anchorGet.mockResolvedValue(null);
+    ports.anchorRegister.mockResolvedValue(anchored());
+    renderReportPages({ pages: ["main"], countryCode: "KR", currentYear: 2027, latestActivityYear: 2027, gateEnabled: true });
+
+    const csv = await screen.findByRole("button", { name: "직접 신고용 내려받기" });
+    // 원장·요약은 도착했다(`ready`). 남은 것은 계산뿐이고, 그 계산도 파일의 일부다 —
+    // 지금 만든 파일의 해시를 등록하면 곧 도착할 계산이 빠진 파일을 등록한 것이 된다.
+    await waitFor(() => expect(screen.queryByText("거래 내역을 불러오는 중입니다.")).toBeNull());
+    expect(csv).toBeDisabled();
+
+    fireEvent.click(csv);
+    await act(async () => {});
+    expect(ports.anchorGet).not.toHaveBeenCalled();
+    expect(saved).toHaveLength(0);
+
+    // 계산이 도착하면 그때 열린다.
+    await act(async () => { releaseEstimate(); });
+    await waitFor(() => expect(csv).toBeEnabled());
+  });
+
+  it("등록 중에 연도를 왕복해도 죽은 시도가 되살아나지 않는다", async () => {
+    ports.anchorGet.mockResolvedValueOnce(null).mockResolvedValue(pending());
+    ports.anchorRegister.mockResolvedValue(pending());
+    const { csv } = await renderMain();
+
+    vi.useFakeTimers();
+    fireEvent.click(csv);
+    await act(async () => {});
+    await act(async () => {});
+    expect(surface("anchor-progress")).not.toBeNull();
+    expect(ports.anchorGet).toHaveBeenCalledTimes(1);
+
+    // 2027 → 2026 → 2027. 돌아온 자리에 옛 스냅샷이 남아 있으면 폴링은 죽은 채로 버튼만 잠긴다.
+    fireEvent.click(screen.getByRole("button", { name: /2027년 귀속/ }));
+    fireEvent.click(screen.getByRole("button", { name: /2026년 귀속/ }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    fireEvent.click(screen.getByRole("button", { name: /2026년 귀속/ }));
+    fireEvent.click(screen.getByRole("button", { name: /2027년 귀속/ }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+
+    // 처음 상태로 돌아온 카드다 — 진행도 실패도 등록도 말하지 않고, 버튼은 눌린다.
+    expect(surface("anchor-progress")).toBeNull();
+    expect(surface("anchor-failed")).toBeNull();
+    expect(surface("anchor-done")).toBeNull();
+    expect(csv).toBeEnabled();
+
+    // 끊긴 폴링은 시간이 지나도 다시 돌지 않는다(조회 수 그대로) — 파일도 나가지 않는다.
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    expect(ports.anchorGet).toHaveBeenCalledTimes(1);
+    expect(saved).toHaveLength(0);
+  });
+
+  it("사용자가 시키지 않은 계산 갱신이 등록을 끊으면 그 사실을 말한다", async () => {
+    ports.anchorGet.mockResolvedValue(null);
+    let finishRegister: () => void = () => {};
+    ports.anchorRegister.mockReturnValue(new Promise<ReportAnchorRecord>((resolve) => { finishRegister = () => resolve(anchored()); }));
+    const { csv, client } = await renderMain();
+
+    // 아직 아무 시도도 없던 카드는 계산이 갱신돼도 말할 것이 없다. 첫 로딩을 경고로 만들지 않는다.
+    ports.estimate.mockResolvedValue({ ...estimate, notes: ["갱신 전"] });
+    await act(async () => { await client.invalidateQueries({ queryKey: ["tax"] }); });
+    expect(surface("anchor-failed")).toBeNull();
+    await waitFor(() => expect(csv).toBeEnabled());
+
+    fireEvent.click(csv);
+    expect(await screen.findByText("체인에 등록하는 중입니다. 등록이 끝나면 파일이 저장됩니다.")).toBeInTheDocument();
+
+    // 등록이 도는 중에 백그라운드 재조회가 다른 계산을 물어 온다. 파일이 갈리므로 이 등록은 끊긴다.
+    ports.estimate.mockResolvedValue({ ...estimate, notes: ["갱신 후"] });
+    await act(async () => { await client.invalidateQueries({ queryKey: ["tax"] }); });
+
+    // 조용히 idle로 돌아가면 사용자는 누른 적 없는 버튼 앞에 선다. 끊긴 이유를 남기고 길을 준다.
+    // (재조회 알림은 무효화 프라미스보다 한 틱 늦게 도착한다 — 그래서 단언이 아니라 기다림이다.)
+    await waitFor(() => expect(screen.getByText("계산이 갱신되어 등록을 다시 시작해야 합니다.")).toBeInTheDocument());
+    expect(surface("anchor-progress")).toBeNull();
+    expect(screen.getByRole("button", { name: "다시 시도" })).toBeInTheDocument();
+
+    // 끊긴 등록이 뒤늦게 확정돼도 파일은 나가지 않는다 — 그 바이트는 이미 이 화면의 파일이 아니다.
+    await act(async () => { finishRegister(); });
+    expect(saved).toHaveLength(0);
+    expect(surface("anchor-done")).toBeNull();
+    expect(surface("anchor-failed")).not.toBeNull();
   });
 
   it("느린 복원 조회는 그 사이 끝난 클릭 흐름의 결론을 덮지 않는다", async () => {

@@ -42,6 +42,14 @@ type AnchorSnapshot = Pick<ReportAnchorState, "phase" | "record" | "error" | "re
 
 const IDLE: AnchorSnapshot = { phase: "idle", record: null, error: null, rejoined: false };
 
+/** 사용자가 누른 흐름이 아직 돌고 있는 단계. 이 동안 버튼은 눌리지 않고, 파일이 갈리면 이 흐름이 끊긴다. */
+export function anchorInFlight(phase: AnchorPhase): boolean {
+  return phase === "hashing" || phase === "checking" || phase === "registering" || phase === "waiting";
+}
+
+/** 사용자가 시키지 않았는데 계산이 갱신돼 등록이 끊겼을 때의 사유. 조용히 사라지는 것보다 낫다. */
+const INTERRUPTED_REASON = "계산이 갱신되어 등록을 다시 시작해야 합니다.";
+
 export type ReportAnchorState = {
   phase: AnchorPhase;
   record: ReportAnchorRecord | null;
@@ -67,35 +75,58 @@ export type ReportAnchorState = {
  * 카드에 닿은 뒤에야 일어난다 — `restore()`가 그 첫 접촉을 받는다.
  */
 export function useReportAnchor(kind: ReportAnchorKind): ReportAnchorState {
-  const { events, result, country, taxYear, activePeriod, gateEnabled, ready, downloadLocked, blockedReason } = useReportContext();
+  const { events, result, freshEstimate, country, taxYear, activePeriod, gateEnabled, ready, downloadLocked, blockedReason } = useReportContext();
 
   // `useReportContext().result`는 `TaxEstimate | undefined`다. 파일 빌더의 계약은 `| null`이다.
   const estimate = result ?? null;
 
-  // 상태는 **그 상태를 만든 입력과 함께** 산다. 리포트 키가 바뀌면(연도 칩이 대표적이다) 지금 보이는
-  // 등록 상태는 다른 파일의 사실이다 — 훅은 마운트된 채 입력만 갈리므로, 버리지 않으면 새 연도의
-  // 카드가 옛 파일의 `anchor-done`을 말하거나 `failed`에 걸려 버튼이 눌리지 않는다.
-  // 되돌리는 대신 신원으로 걸러 낸다: 옛 입력의 상태는 렌더가 그냥 쓰지 않으므로 리셋 렌더가 없고,
-  // 뒤늦게 돌아온 옛 흐름의 쓰기도 같은 규칙에 걸려 화면에 닿지 않는다.
+  // 상태는 **그 상태를 만든 입력과 함께** 산다. 입력이 갈리면 지금 보이는 등록 상태는 다른 파일의
+  // 사실이다 — 훅은 마운트된 채 입력만 갈리므로, 버리지 않으면 새 연도의 카드가 옛 파일의
+  // `anchor-done`을 말하거나 죽은 `waiting`·`failed`에 걸려 버튼이 영영 눌리지 않는다.
   // 비교 기준은 바이트 캐시(`cache`)와 같은 신원이어야 "파일이 같으면 상태도 같다"가 성립한다.
   const [written, setWritten] = useState<{ owner: AnchorOwner; state: AnchorSnapshot }>(
     () => ({ owner: { kind, country, taxYear, events, estimate }, state: IDLE }),
   );
+  const ownerNow: AnchorOwner = { kind, country, taxYear, events, estimate };
+  /** 같은 문서인가. 연도·나라·종류가 같으면 사용자가 보는 리포트는 그대로다(계산만 갱신됐을 수 있다). */
+  const sameReport = (candidate: AnchorOwner) =>
+    candidate.kind === kind && candidate.country === country && candidate.taxYear === taxYear;
   const owns = (candidate: AnchorOwner) =>
-    candidate.kind === kind &&
-    candidate.country === country &&
-    candidate.taxYear === taxYear &&
-    candidate.events === events &&
-    candidate.estimate === estimate;
-  const { phase, record, error, rejoined } = owns(written.owner) ? written.state : IDLE;
+    sameReport(candidate) && candidate.events === events && candidate.estimate === estimate;
+
+  /**
+   * 입력이 갈렸을 때 이 카드가 이어받는 상태.
+   *
+   * - 다른 리포트(연도·나라·종류)면 처음부터다. 사용자가 다른 문서를 연 것이고, 옛 등록은 그 문서의 사실이다.
+   * - 같은 리포트인데 계산만 갱신됐다면(백그라운드 `["tax"]` 재조회 등) 사용자가 시킨 일이 아니다.
+   *   돌고 있던 등록은 파일이 갈려 끊기므로, 말없이 idle로 돌아가지 않고 끊긴 사실과 사유를 남긴다.
+   * - 이미 멈춘 실패는 그대로 둔다 — 파일이 바뀌었다고 "마지막으로 일어난 일"이 바뀌지는 않는다.
+   */
+  const carryOver = (previous: { owner: AnchorOwner; state: AnchorSnapshot }): AnchorSnapshot => {
+    if (!sameReport(previous.owner)) return IDLE;
+    if (anchorInFlight(previous.state.phase)) return { ...IDLE, phase: "failed", error: INTERRUPTED_REASON };
+    return previous.state.phase === "failed" ? previous.state : IDLE;
+  };
+
+  const base = owns(written.owner) ? written.state : carryOver(written);
+  if (!owns(written.owner)) {
+    // 걸러 내기만 하면 옛 스냅샷이 저장소에 그대로 남아, 같은 키로 되돌아왔을 때(연도 왕복) 되살아난다.
+    // 죽은 `waiting`이 되살아나면 폴링은 없는데 버튼만 "체인에 등록하는 중…"으로 영영 잠긴다.
+    // 그래서 숨기지 않고 렌더 중에 덮어쓴다 — React가 권하는 "입력이 바뀔 때 상태 조정"이고,
+    // `owns()` 비교가 가드라 바로 다음 렌더에서 멈춘다.
+    setWritten({ owner: ownerNow, state: base });
+  }
+  const { phase, record, error, rejoined } = base;
 
   /**
    * 이 렌더의 입력에 묶어 상태를 쓴다. 비동기가 늦게 돌아와도 그때의 입력이 찍히므로,
-   * 키가 갈린 뒤의 쓰기는 위 `owns()`에서 걸러진다.
+   * 키가 갈린 뒤의 쓰기는 다음 렌더의 `owns()`에서 다시 걸러진다.
    */
   const write = (patch: Partial<AnchorSnapshot>) => {
-    const owner: AnchorOwner = { kind, country, taxYear, events, estimate };
-    setWritten((previous) => ({ owner, state: { ...(owns(previous.owner) ? previous.state : IDLE), ...patch } }));
+    setWritten((previous) => ({
+      owner: ownerNow,
+      state: { ...(owns(previous.owner) ? previous.state : carryOver(previous)), ...patch },
+    }));
   };
 
   // 진행 중인 흐름의 취소 플래그. 언마운트·재클릭이 이전 루프를 끈다.
@@ -184,7 +215,7 @@ export function useReportAnchor(kind: ReportAnchorKind): ReportAnchorState {
   };
 
   const start = () => {
-    if (phase === "hashing" || phase === "checking" || phase === "registering" || phase === "waiting") return;
+    if (anchorInFlight(phase)) return;
     if (run.current) run.current.active = false;
     const token = { active: true };
     run.current = token;
@@ -243,6 +274,9 @@ export function useReportAnchor(kind: ReportAnchorKind): ReportAnchorState {
     if (restored.current || phase !== "idle" || run.current?.active === true) return;
     // 잠겼거나 만들 수 없는 파일은 조회할 이유도 없다. 지갑 미연결은 `blockedReason`이 이미 덮는다.
     if (!gateEnabled || !ready || downloadLocked || blockedReason !== null) return;
+    // 계산이 아직 오는 중이면 지금 만든 파일은 곧 다른 파일이 된다. 그 해시로 묻는 조회는
+    // 답이 무엇이든 이 카드의 사실이 아니다 — 계산이 도착한 뒤 새 키로 한 번 묻는다.
+    if (freshEstimate.state === "pending") return;
     restored.current = true;
     // 조회가 도는 동안 사용자가 버튼을 눌러 흐름이 끝났을 수 있다. 느린 복원이 뒤늦게 돌아와
     // 그 결론(예: `failed`)을 `anchored`로 덮지 않도록 시작 시점의 세대를 들고 간다.

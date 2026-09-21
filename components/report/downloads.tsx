@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { useReportContext } from "@/components/report/report-context";
-import { useReportAnchor, type ReportAnchorState } from "@/components/report/use-report-anchor";
+import { anchorInFlight, useReportAnchor, type ReportAnchorState } from "@/components/report/use-report-anchor";
 import { Card } from "@/components/ui/card";
 import { formatDateTime } from "@/lib/format";
 import type { SummaryDTO } from "@/lib/http/dto";
@@ -13,11 +13,6 @@ import { periodLabel } from "@/lib/period";
 import type { ReportAnchorRecord } from "@/lib/ports/report-anchor";
 import type { NormalizedEvent } from "@/lib/schema/normalized-event";
 import type { TaxEstimate } from "@/lib/tax/types";
-
-/** 등록이 끝나기 전의 단계들. 이 동안 버튼은 눌리지 않는다. */
-function inFlight(phase: ReportAnchorState["phase"]): boolean {
-  return phase === "hashing" || phase === "checking" || phase === "registering" || phase === "waiting";
-}
 
 /** 진행 중에는 버튼이 지금 무엇을 하는지 말한다. 멈춰 보이는 버튼을 남기지 않는다. */
 function buttonLabel(phase: ReportAnchorState["phase"], base: string): string {
@@ -167,10 +162,15 @@ export function Downloads({
   billableCount: number;
 }) {
   // 게이트 표시는 켜졌을 때만 그린다. 꺼져 있으면 예전 화면 그대로다(진행·성공·실패 세 줄 전부 없다).
-  const { gateEnabled } = useReportContext();
+  const { gateEnabled, freshEstimate } = useReportContext();
   const csv = useReportAnchor("csv");
   const xlsx = useReportAnchor("xlsx");
-  const disabled = !ready || downloadLocked || blockedReason !== null;
+  // 계산이 아직 오는 중이면 파일에 들어갈 값이 확정되지 않았다. 그 사이에 누른 내려받기는 계산 없는
+  // 파일을 만들어 그 해시를 등록하는데, 그것은 몇백 밀리초 뒤 이 버튼이 만들 파일의 해시가 아니다.
+  // 막는 것은 "오는 중"뿐이다 — 계산이 **끝났는데 결과가 없는 것**(엔진 실패·룰셋 미확인)은 정당한
+  // 경로이고, 그때도 온체인 값만으로 원장을 만들 수 있다(`tests/ui/export-empty-period.test.tsx`).
+  const estimatePending = freshEstimate.state === "pending";
+  const disabled = !ready || downloadLocked || blockedReason !== null || estimatePending;
 
   return (
     <Card className="mt-5">
@@ -212,7 +212,7 @@ export function Downloads({
           <button
             className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl bg-primary-500 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
             data-locked={downloadLocked ? "download" : undefined}
-            disabled={disabled || inFlight(csv.phase) || csv.phase === "failed"}
+            disabled={disabled || anchorInFlight(csv.phase) || csv.phase === "failed"}
             type="button"
             onClick={csv.start}
           >
@@ -237,7 +237,7 @@ export function Downloads({
           <button
             className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl border border-primary-500 py-3 font-semibold text-primary-600 disabled:cursor-not-allowed disabled:opacity-50"
             data-locked={downloadLocked ? "download" : undefined}
-            disabled={disabled || !summary || inFlight(xlsx.phase) || xlsx.phase === "failed"}
+            disabled={disabled || !summary || anchorInFlight(xlsx.phase) || xlsx.phase === "failed"}
             type="button"
             onClick={xlsx.start}
           >
