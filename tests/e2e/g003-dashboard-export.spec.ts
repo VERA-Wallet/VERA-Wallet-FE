@@ -94,6 +94,14 @@ test.describe.serial("G003 dashboard and export contract red team", () => {
       expect(dashboardReady, blockers[0]).toBeTruthy();
       return;
     }
+    // 요약의 손익 단언은 요약 화면에서 끝낸다 — 목록·상세·재분류는 거래 탭(/transactions)으로 이사했다.
+    const dashboardBody = await page.locator("body").innerText();
+    expect(dashboardBody).not.toContain("₩0");
+    transcript.assert("Dashboard PnL matches the event fixture sum and does not render ₩0", dashboardBody.includes(expectedPnlText) && !dashboardBody.includes("₩0"), "body");
+
+    transcript.act({ type: "goto", url: "/transactions" });
+    await page.goto("/transactions");
+    await expect(page.locator("[data-event-id]").first()).toBeVisible();
     // 배지(확인 필요 등)는 이제 목록이 아니라 거래 상세에서만 말한다 — 가격 미확정 이벤트(event-18)의
     // 상세를 열어 사유("가격 확인 필요")가 그대로 밝혀지는지 확인한다.
     await page.locator('[data-event-id="event-18"]').first().click();
@@ -102,9 +110,6 @@ test.describe.serial("G003 dashboard and export contract red team", () => {
     await expect(unknownBadges.first()).toBeVisible();
     const unknownBadgeCount = await unknownBadges.count();
     await page.getByRole("button", { name: "닫기", exact: true }).click();
-    const dashboardBody = await page.locator("body").innerText();
-    expect(dashboardBody).not.toContain("₩0");
-    transcript.assert("Dashboard PnL matches the event fixture sum and does not render ₩0", dashboardBody.includes(expectedPnlText) && !dashboardBody.includes("₩0"), "body");
     record(cases, "dashboard-summary-and-unknown", "Fixture PnL, UNKNOWN-price reason in event detail, and zero-value suppression", { pnl: expectedPnlText, reviewCount: ">= 1", zero: "absent" }, { pnlPresent: dashboardBody.includes(expectedPnlText), unknownBadges: unknownBadgeCount, zeroPresent: dashboardBody.includes("₩0") }, dashboardBody.includes(expectedPnlText) && unknownBadgeCount >= 1 && !dashboardBody.includes("₩0"));
 
     transcript.act({ type: "click", selector: 'role=tab[name="확인 필요"]' });
