@@ -3,13 +3,15 @@ import type { Hex } from "viem";
 
 import { createReportLedgerCsv } from "@/lib/export/report";
 import { createReportXlsx } from "@/lib/export/report-workbook";
-import type { ReportAnchorKind } from "@/lib/ports/report-anchor";
 import type { NormalizedEvent } from "@/lib/schema/normalized-event";
 import type { TaxEstimate } from "@/lib/tax/types";
 
+/** 내려받기 한 번의 파일 종류. 화면의 두 행(직접 신고용·세무사 전달용)과 1:1이다. */
+export type ReportFileKind = "csv" | "xlsx";
+
 /** 내려받기 한 번이 다루는 파일 하나. 바이트는 여기서 한 번만 만들고, 해시도 저장도 이 바이트로 한다. */
 export type ReportFile = {
-  kind: ReportAnchorKind;
+  kind: ReportFileKind;
   bytes: Uint8Array;
   mimeType: string;
   algorithm: "keccak256";
@@ -34,7 +36,7 @@ export function hashReportFile(bytes: Uint8Array): { algorithm: "keccak256"; has
  * estimate가 null이어도(빈 지갑·계산 실패) 파일은 만들어진다 — 두 빌더가 그렇게 설계돼 있고, 게이트는 estimate 유무와 무관하다.
  */
 export function buildReportFile(
-  kind: ReportAnchorKind,
+  kind: ReportFileKind,
   events: readonly NormalizedEvent[],
   estimate: TaxEstimate | null,
 ): ReportFile {
