@@ -15,18 +15,9 @@ function shortHash(value: string): string {
   return `${value.slice(0, 10)}…${value.slice(-8)}`;
 }
 
-/**
- * 계산 근거 기록. 귀속연도 하나의 estimate를 정본 문서로 만들어 OmniOne 체인에 봉인한다.
- *
- * 체인에 나가는 것은 머클루트 하나다. 건별 판정을 잎으로 묶은 해시라, 나중에 거래 한 건만 골라
- * "그때 이렇게 판정했다"를 나머지를 보이지 않고 증명할 수 있다. 루트는 서버가 잎에서 다시 계산한다.
- * 화면이 준 해시를 그냥 올리면 아무도 재현할 수 없는 값이 남는다.
- *
- * 계산 근거 화면(`/export/basis`)의 한 카드다. estimate·나라·연도는 리포트 한 벌이 공유하는 context에서 읽는다.
- * 여기서 따로 계산하면 같은 귀속연도에 두 답이 생긴다.
- */
-export function EvidenceAnchor() {
-  const { result, country, taxYear, ready, downloadLocked, blockedReason, walletConnected } = useReportContext();
+/** 리포트 한 벌이 공유하는 체인 기록 상태. 계산 근거 카드와 보고서 화면이 같은 규칙으로 읽는다. */
+export function useTaxEvidence() {
+  const { result, country, taxYear, walletConnected } = useReportContext();
 
   // 체인에 봉인한 계산 근거. 어느 연도의 답인지 함께 들고 있는다. 연도를 바꿀 때 상태를 비우려고
   // 효과 안에서 setState를 부르면 렌더가 연쇄된다(React Compiler가 막는다). 연도가 다르면 아래에서 안 쓴다.
@@ -64,6 +55,23 @@ export function EvidenceAnchor() {
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "계산 근거를 기록하지 못했습니다."))
       .finally(() => setBusy(false));
   };
+
+  return { evidence, stale, busy, error, record };
+}
+
+/**
+ * 계산 근거 기록. 귀속연도 하나의 estimate를 정본 문서로 만들어 OmniOne 체인에 봉인한다.
+ *
+ * 체인에 나가는 것은 머클루트 하나다. 건별 판정을 잎으로 묶은 해시라, 나중에 거래 한 건만 골라
+ * "그때 이렇게 판정했다"를 나머지를 보이지 않고 증명할 수 있다. 루트는 서버가 잎에서 다시 계산한다.
+ * 화면이 준 해시를 그냥 올리면 아무도 재현할 수 없는 값이 남는다.
+ *
+ * 계산 근거 화면(`/export/basis`)의 한 카드다. estimate·나라·연도는 리포트 한 벌이 공유하는 context에서 읽는다.
+ * 여기서 따로 계산하면 같은 귀속연도에 두 답이 생긴다.
+ */
+export function EvidenceAnchor() {
+  const { result, taxYear, ready, downloadLocked, blockedReason } = useReportContext();
+  const { evidence, stale, busy, error, record } = useTaxEvidence();
 
   if (!result) return null;
 
