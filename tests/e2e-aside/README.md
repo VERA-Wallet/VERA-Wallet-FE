@@ -25,6 +25,8 @@ tests/e2e-aside/run.sh [pat...]  # 내부에서 gate.sh 를 먼저 부른다
 - 스펙은 `PASS|FAIL|SKIP <id> — detail` 줄을 찍고, footer가 `SUMMARY`·`RESULTS_JSON`을 찍는다. 러너가 이를 모아 `reports/<timestamp>/`에 로그·JSON·스크린샷(jpg)을 남긴다.
 - 실패한 스펙이 하나라도 있으면 exit 1. `REPL output truncated`(처리되지 않은 예외)도 실패로 친다.
 - `E2E_MUTATE=1`이면 서버 상태를 바꾸는 케이스(지갑 추가 등록 등)도 돈다. 기본은 읽기 전용 + 세션 로그아웃/재로그인만.
+- **71은 OFF(mock) 모드에서만 의미가 있다.** 제어 라우트 `POST /api/mock/report-anchor-failure`가 ON 모드·production에서 404이므로 그 404를 판별자로 삼아 전부 `SKIP`한다. `REPORT_ANCHOR_GATE=off`로 띄운 서버에서도(클릭이 곧바로 파일을 내보낸다) 첫 케이스가 그 사실을 확인하고 `SKIP`으로 전환한다 — 앱이 멀쩡한데 빨간 리포트가 나오지 않게 하는 장치다. 실행: `E2E_MUTATE=1 pnpm test:e2e:aside 71`.
+  게이트를 보려면 내려받기 버튼이 눌려야 하므로, `E2E_MUTATE=1`일 때 71은 전제 둘을 스스로 갖춘다: 세션에 지갑이 없으면 보기 전용 주소를 등록하고(`POST /api/auth/wallet/watch`), 플랜 잠금이면 로컬 mock 플랜(`localStorage.vw_plan`)을 심었다가 끝에 원래 값으로 되돌린다. 끝에는 실패 스위치를 끄고 mock 앵커 저장소를 비운다.
 
 ### aside repl 함정과 하네스의 대응(`lib/harness.js`)
 
@@ -63,6 +65,7 @@ tests/e2e-aside/run.sh [pat...]  # 내부에서 gate.sh 를 먼저 부른다
 | 60 | 플랜 `/plan` | 탭 노출(곁길), 플랜 카드·과세연도, 다열 그리드 없음(448px 폭 규칙) |
 | 65 | 설정 `/settings` | 요약 톱니로 진입, 플랜→/plan·스팸 거래 보기→/transactions·로그아웃, 세금 계산 항목 없음(1차 범위 밖), 금액 가리기 스위치가 요약과 값 공유, 로그아웃→/login·재로그인 후 지갑 바인딩 유지 |
 | 70 | 리포트 `/export` | 헤더 "리포트"·귀속연도 칩·전환/복귀, 두 가지 내려받기, **잠기는 것은 내려받기뿐**(미구독: 버튼 2개 disabled + "계산은 무료예요" + 플랜 줄 / 구독: 상태 카드·게이지·과세연도별 결제), 하단 탭 "리포트" 활성, DID-only는 데모 계산 + 내려받기 차단 |
+| 71 | 리포트 내려받기의 등록 게이트 `/export` | **OFF(mock) 모드 전용 · 상태를 바꾼다.** 누르기 전에는 게이트 줄 없음, (MUTATE) 진행 중(`anchor-progress` + 버튼 "체인에 등록하는 중…" 잠김 + 파일 안 나감) → 성공 한 줄(`anchor-done` "체인에 등록됨" + 파일·tx 해시 앞 10자 + 그제서야 파일 1개), 멱등 재클릭(파일은 또 나가되 tx 해시는 그대로), 실패(`anchor-failed` + `anchor-retry` + **파일 0개**) → 실패 스위치를 끄고 "다시 시도" → 성공, 껍데기 넘침 0. 캡처 `anchor_progress`·`anchor_done`·`anchor_failed`·`anchor_retry_done` |
 | 80 | 내비·404·공통 | 4탭(요약·거래·지갑·리포트 — 세금 탭은 리포트로 합쳐짐) 한 줄·링크 이동·aria-current, 거래 탭 확인 필요 **점** 배지(숫자 없음 — 요약 API는 다리 단위, 거래 탭은 행 단위라 숫자가 갈린다), /plan·/settings 곁길 탭 노출, 온보딩 화면에서 탭 숨김, 404 뷰("거래로 이동"→/transactions), 면책 푸터 sticky, 모든 화면 가로 오버플로 없음 |
 
 ## 4. 리포트

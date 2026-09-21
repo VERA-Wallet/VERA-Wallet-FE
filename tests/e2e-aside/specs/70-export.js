@@ -26,9 +26,12 @@ else if (!s.walletAddress) {
   await run('잠기는 것은 내려받기뿐이다', async () => {
     const planStatus = await count(p, '[data-surface=plan-status]');
     const lockedButtons = await count(p, 'button[data-locked=download]');
+    // 자물쇠가 붙는 버튼은 셋이다 — 내려받기 둘과 "보고서 보기"(같은 잠금 규칙을 탄다, downloads.tsx:253-272).
+    // 이 케이스가 세는 것은 파일이 나가는 두 버튼이므로 그 둘만 고른다.
+    const lockedDownloads = await domCount(p, 'button[data-locked=download]', /내려받기$/);
     ok('금액 잠금 0개', (await count(p, '[data-locked=amount]')) === 0);
     if (planStatus === 0) {
-      ok('미구독: 내려받기 버튼 2개가 잠김(data-locked=download, disabled)', lockedButtons === 2 && await p.evaluate(() => [...document.querySelectorAll('button[data-locked=download]')].every((b) => b.disabled)), 'locked=' + lockedButtons);
+      ok('미구독: 내려받기 버튼 2개가 잠김(data-locked=download, disabled)', lockedDownloads === 2 && await p.evaluate(() => [...document.querySelectorAll('button[data-locked=download]')].every((b) => b.disabled)), 'locked=' + lockedButtons + ' 중 내려받기=' + lockedDownloads);
       ok('"계산은 무료예요. 파일로 내려받을 때만 결제해요."', await has(p, /계산은 무료예요\. 파일로 내려받을 때만 결제해요/));
       ok('플랜 줄 → /plan("무료 플랜 100건까지 · 현재 N건")', await has(p, /무료 플랜 100건까지 · 현재 [\d,]+건/) && (await count(p, 'a[href="/plan"]')) >= 1);
       ok('과세연도별 결제는 리포트에 없다(플랜 화면으로 이사)', (await count(p, '[data-surface=plan-payments]')) === 0);
