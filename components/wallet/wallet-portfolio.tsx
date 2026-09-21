@@ -137,12 +137,13 @@ function GroupRow({ group }: { group: HoldingGroup }) {
           </p>
           <p className="mt-0.5 truncate text-sm text-zinc-500">{formatFiat(group.priceKrw, "KRW")}</p>
         </div>
-        <div className="shrink-0 text-right">
+        {/* 오른쪽 열은 폭을 갖되(min-w-0) 행의 60%를 넘지 않는다. 긴 심볼이 수량 줄을 밀어 행 전체를 화면 밖으로 내보내지 않게. */}
+        <div className="min-w-0 max-w-[60%] shrink-0 text-right">
           <p className="font-semibold tabular-nums text-zinc-900">{formatFiat(group.valueKrw, "KRW")}</p>
           <p className="mt-0.5 text-xs font-medium">
             <GainInline gainKrw={gain} costKrw={group.costKrw} reason={reason} />
           </p>
-          <p className="mt-0.5 text-xs tabular-nums text-zinc-400">
+          <p className="mt-0.5 truncate text-xs tabular-nums text-zinc-400">
             {group.amount} {group.symbol}
           </p>
         </div>
@@ -156,9 +157,9 @@ function GroupRow({ group }: { group: HoldingGroup }) {
             <li key={member.key} data-surface="holding-group-member" className="flex items-center gap-2 py-2 text-sm">
               <ChainIcon chainId={member.chainId} size={16} />
               <span className="min-w-0 flex-1 truncate text-zinc-700">{member.chainName}</span>
-              <span className="text-right">
+              <span className="min-w-0 max-w-[60%] shrink-0 text-right">
                 <span className="block tabular-nums font-semibold text-zinc-900">{formatFiat(member.valueKrw, "KRW")}</span>
-                <span className="block text-xs tabular-nums text-zinc-400">{member.amount} {member.symbol}</span>
+                <span className="block truncate text-xs tabular-nums text-zinc-400">{member.amount} {member.symbol}</span>
               </span>
             </li>
           ))}

@@ -143,7 +143,7 @@ describe("스왑 두 다리는 한 행으로 묶인다", () => {
 
     // 상세: 두 다리 구성과 받은 자산의 취득가액(이연 원가), 상대 이름.
     fireEvent.click(row);
-    await screen.findByText("스왑 구성 — 한 거래, 두 다리");
+    await screen.findByText("스왑 구성: 한 거래, 두 다리");
     const sheet = screen.getByText("거래 상세").closest("div")!.parentElement!;
     expect(sheet.textContent).toContain("받은 자산 +0.31 ETH");
     expect(sheet.textContent).toContain(`취득가액 · ${formatFiat(swapIn.fiat_value, "KRW")}`);
@@ -173,7 +173,7 @@ describe("스왑 두 다리는 한 행으로 묶인다", () => {
     expect(document.querySelector('button[data-event-id="swap-in"]')).toBeNull();
 
     fireEvent.click(row);
-    await screen.findByText("스왑 구성 — 한 거래, 두 다리");
+    await screen.findByText("스왑 구성: 한 거래, 두 다리");
     const sheet = screen.getByText("거래 상세").closest("div")!.parentElement!;
     // 받은 다리의 가격 확인 필요가 취득가액 자리에서 드러난다 — 안 그러면 원가를 고칠 길이 없다.
     expect(sheet.textContent).toContain("확인 필요");

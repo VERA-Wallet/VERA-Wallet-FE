@@ -157,7 +157,7 @@ export function Downloads({
         >
           <span>
             {`${planName} 플랜 ${allowance.toLocaleString("ko-KR")}건까지 · 현재 ${billableCount.toLocaleString("ko-KR")}건`}
-            {downloadLocked && (!subscribed ? " — 플랜이 필요합니다" : " — 상위 플랜이 필요합니다")}
+            {downloadLocked && (!subscribed ? " (플랜 필요)" : " (상위 플랜 필요)")}
           </span>
           <span className={`shrink-0 font-semibold underline ${downloadLocked ? "" : "text-primary-600"}`}>플랜 보기</span>
         </Link>

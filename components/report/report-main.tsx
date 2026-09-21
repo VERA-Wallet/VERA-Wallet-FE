@@ -257,7 +257,7 @@ export function ReportMain() {
               두 연도를 대조해 잠금을 걸지는 않는다 — 그 대조에는 BE 계약이 필요하다(use-plan.ts 주석). */}
           {taxYear !== plan.taxYear && (
             <p className="mt-2 text-sm text-zinc-500">
-              활성 플랜은 {plan.taxYear}년 귀속입니다 — 지금 보는 연도는 {taxYear}년
+              활성 플랜은 {plan.taxYear}년 귀속입니다. 지금 보는 연도는 {taxYear}년
             </p>
           )}
         </Card>

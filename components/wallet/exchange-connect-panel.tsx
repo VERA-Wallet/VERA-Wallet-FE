@@ -97,7 +97,7 @@ export function ExchangeConnectPanel({
       setPending(false);
       setOpenId(null);
       setForm(EMPTY_FORM);
-      setNotice(`${exchange.name} 연동됨 — 조회 전용 권한입니다.`);
+      setNotice(`${exchange.name} 연동됨. 조회 전용 권한입니다.`);
     }, linkDelayMs);
   }
 

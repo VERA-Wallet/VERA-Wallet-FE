@@ -161,7 +161,7 @@ describe("리포트 구독 상태 카드", () => {
     renderWith(10, plusPlan, 2027);
 
     await screen.findByText("플러스 플랜 · 2026년 귀속");
-    expect(screen.getByText("활성 플랜은 2026년 귀속입니다 — 지금 보는 연도는 2027년")).toBeInTheDocument();
+    expect(screen.getByText("활성 플랜은 2026년 귀속입니다. 지금 보는 연도는 2027년")).toBeInTheDocument();
   });
 
   it("보는 연도가 활성 플랜 연도와 같으면 불일치 문구를 보이지 않는다", async () => {

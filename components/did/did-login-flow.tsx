@@ -186,7 +186,7 @@ export function DidLoginFlow({ authClient = compositionAuthClient, provenance = 
         {state === "done" && <p aria-live="polite" className="text-sm text-zinc-500">이동하고 있어요...</p>}
 
         {error && (
-          <div role="alert" className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">
+          <div role="alert" className="rounded-xl bg-red-50 px-3 py-2 text-sm wrap-anywhere text-red-700">
             {error}
             <button className="ml-2 font-semibold underline" onClick={startPresentation} type="button">다시 시도</button>
           </div>

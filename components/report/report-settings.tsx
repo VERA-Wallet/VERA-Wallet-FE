@@ -89,7 +89,7 @@ export function ReportSettings() {
     <ReportSubPage
       surface="report-settings"
       title="계산 설정"
-      lede="여기서 바꾼 값은 곧바로 계산에 들어갑니다 — 리포트로 돌아가면 예상 부담과 내려받기 파일이 그 값으로 다시 계산돼 있습니다."
+      lede="여기서 바꾼 값은 곧바로 계산에 들어갑니다. 리포트로 돌아가면 예상 부담과 내려받기 파일이 그 값으로 다시 계산돼 있습니다."
     >
       <section className="mt-6 rounded-card border border-zinc-200 bg-white p-4 shadow-card" aria-label="계산 조건">
         <h2 className="font-bold text-zinc-900">계산 조건 바꾸기</h2>
@@ -105,7 +105,7 @@ export function ReportSettings() {
                   href="/connect-wallet"
                   className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm text-zinc-400"
                 >
-                  내 지갑 이벤트 — 연결 필요
+                  내 지갑 이벤트 · 연결 필요
                 </Link>
               ) : (
                 <button

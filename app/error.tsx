@@ -25,7 +25,7 @@ export default function RouteError({
       <p className="mt-3 text-base leading-6 text-zinc-600">
         {backendUnavailable ? "서버가 정상적인 세션 응답을 주지 않았습니다. 잠시 후 다시 시도해 주세요." : "일시적인 문제일 수 있습니다. 다시 시도하거나 잠시 후 접속해 주세요."}
       </p>
-      {error.digest ? <p className="mt-2 font-mono text-xs text-zinc-400">code: {error.digest}</p> : null}
+      {error.digest ? <p className="mt-2 break-all font-mono text-xs text-zinc-400">code: {error.digest}</p> : null}
       <button
         type="button"
         className="mt-6 w-full rounded-xl bg-primary-500 py-3.5 font-semibold text-white"

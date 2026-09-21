@@ -28,7 +28,7 @@ function errorMessage(cause: unknown) {
   if (cause instanceof AuthClientError) {
     if (SIWE_CHALLENGE_MISMATCH_CODES.has(cause.code)) return "인증 요청 불일치";
     if (cause.code === "challenge_not_found") return "인증 요청을 찾을 수 없습니다. 다시 시도해 주세요.";
-    if (cause.code === "challenge_expired") return "만료됨 — 다시 시도";
+    if (cause.code === "challenge_expired") return "만료됨. 다시 시도";
     if (cause.status === 401) return "서명을 확인할 수 없습니다.";
   }
   return cause instanceof Error ? cause.message : "인증 중 오류가 발생했습니다.";
@@ -340,7 +340,7 @@ function InlineAlert({ tone, children }: { tone: "error" | "info"; children: Rea
   return (
     <p role="alert" className={`flex items-start gap-2 px-1 text-[13px] leading-[19px] ${tone === "error" ? "text-red-600" : "text-amber-700"}`}>
       <Icon aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-      <span>{children}</span>
+      <span className="min-w-0 wrap-anywhere">{children}</span>
     </p>
   );
 }

@@ -99,7 +99,7 @@ export function PlanView({ taxYear: fallbackTaxYear }: { taxYear: number }) {
       )}
 
       <p className="mt-8 text-sm leading-6 text-zinc-600">
-        플랜은 계산 결과를 바꾸지 않습니다 — 잠기는 것은 다운로드뿐입니다.
+        플랜은 계산 결과를 바꾸지 않습니다. 잠기는 것은 다운로드뿐입니다.
       </p>
       <p className="mt-1 text-sm leading-6 text-zinc-500">결제는 데모입니다. 실제 청구가 발생하지 않습니다.</p>
     </main>
