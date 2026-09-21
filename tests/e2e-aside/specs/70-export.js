@@ -28,7 +28,7 @@ else if (!s.walletAddress) {
     const lockedButtons = await count(p, 'button[data-locked=download]');
     // 자물쇠가 붙는 버튼은 셋이다 — 내려받기 둘과 "보고서 보기"(같은 잠금 규칙을 탄다, downloads.tsx:253-272).
     // 이 케이스가 세는 것은 파일이 나가는 두 버튼이므로 그 둘만 고른다.
-    const lockedDownloads = await domCount(p, 'button[data-locked=download]', /내려받기$/);
+    const lockedDownloads = await domCount(p, 'button[data-locked=download]', /내려받기/);
     ok('금액 잠금 0개', (await count(p, '[data-locked=amount]')) === 0);
     if (planStatus === 0) {
       ok('미구독: 내려받기 버튼 2개가 잠김(data-locked=download, disabled)', lockedDownloads === 2 && await p.evaluate(() => [...document.querySelectorAll('button[data-locked=download]')].every((b) => b.disabled)), 'locked=' + lockedButtons + ' 중 내려받기=' + lockedDownloads);
