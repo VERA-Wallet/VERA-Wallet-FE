@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { requireCompletedOnboarding, requireDidSession } from "@/lib/dal";
 import { ConnectWalletFlow } from "@/components/wallet/connect-wallet-flow";
+import { apiProvenance } from "@/lib/api-mode";
 
 /**
  * 지갑 등록 화면. 두 진입이 같은 화면을 쓴다.
@@ -30,6 +31,7 @@ export default async function ConnectWalletPage({ searchParams }: { searchParams
       // 이미 등록된 주소를 넘겨 같은 지갑을 다시 등록하려는 시도를 화면에서 끊는다 — 서버는 upsert라 조용히 통과한다.
       boundAddress={completed?.walletAddress ?? null}
       countryCode={session.countryCode ?? null}
+      provenance={await apiProvenance()}
     />
   );
 }

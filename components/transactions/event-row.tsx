@@ -66,7 +66,7 @@ export function EventRow({
   // 카드는 이벤트 id로 식별한다. 금액 라벨은 유효 분류에 따라 부호가 뒤집히므로(재분류 후 +0.01 → -0.01)
   // 그걸 식별자로 쓰면 "방금 고친 카드"를 다시 찾지 못한다.
   // 한 줄 레이아웃 — 왼쪽: 로고(체인은 코너 배지)·거래 타입·티커 / 오른쪽: 손익·수익률.
-  const rowClass = "flex items-center gap-3 rounded-card border border-zinc-200 bg-white px-4 py-3 text-left shadow-card";
+  const rowClass = "flex min-w-0 items-center gap-3 rounded-card border border-zinc-200 bg-white px-4 py-3 text-left shadow-card";
 
   const body = (
     <>
@@ -104,7 +104,7 @@ export function EventRow({
       </div>
       {/* 오른쪽 칸은 방향과 무관하게 같은 뜻을 가진다.
           1줄: **거래 당시 평가액**(이벤트 통화 그대로). 수량 줄의 −/+는 지갑 기준 방향이고, 이 줄은 그 수량의 가치라
-          부호·색 없이 중립으로 둔다. 가격 미확인이면 "—". 손익을 이 자리에 두면 "-563 USDC / -₩33,767"처럼
+          부호·색 없이 중립으로 둔다. 가격 미확인이면 "-". 손익을 이 자리에 두면 "-563 USDC / -₩33,767"처럼
           방향 부호와 손익 부호가 한 행에 섞여 3만 원어치를 보냈다고 읽힌다(실제 가치는 77만 원).
           2줄: **실현 손익**(처분 행에만). 상세의 손익 근거표와 같은 판정 행(amountKind==="gain")을 합산하므로
           목록과 상세가 갈리지 않는다. 눈에 보이는 라벨을 붙여 1줄의 평가액과 뜻이 섞이지 않게 하고,
@@ -122,7 +122,7 @@ export function EventRow({
               {hideBalances ? "•••••" : formatFiat(event.fiat_value, event.fiat_currency)}
             </span>
           ) : (
-            <span className="text-[0.9375rem] font-bold tabular-nums text-zinc-400">—</span>
+            <span className="text-[0.9375rem] font-bold tabular-nums text-zinc-400">-</span>
           )}
           {gain !== null ? (
             hideBalances ? (

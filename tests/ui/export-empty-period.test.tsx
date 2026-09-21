@@ -4,11 +4,12 @@ import { renderReportPages } from "@/tests/ui/helpers/report-pages";
 import { listRuleSetSummaries } from "@/lib/tax/rulesets";
 import { vi } from "vitest";
 
-const ports = vi.hoisted(() => ({ list: vi.fn(), getSummary: vi.fn(), getProof: vi.fn(), listRuleSets: vi.fn(), estimate: vi.fn() }));
+const ports = vi.hoisted(() => ({ list: vi.fn(), getSummary: vi.fn(), getProof: vi.fn(), latest: vi.fn(), listRuleSets: vi.fn(), estimate: vi.fn() }));
 vi.mock("@/lib/composition-root.client", () => ({
   eventRepository: { list: ports.list },
   summaryProvider: { getSummary: ports.getSummary },
   anchorProofProvider: { getProof: ports.getProof },
+  taxEvidenceProvider: { latest: ports.latest, record: vi.fn() },
   taxEngine: { listRuleSets: ports.listRuleSets, estimate: ports.estimate },
 }));
 
@@ -23,6 +24,7 @@ describe("빈 지갑 리포트", () => {
   it("기간이 없으면 빈 범위를 그대로 보이지 않는다", async () => {
     ports.list.mockResolvedValue({ items: [], nextCursor: null });
     ports.getProof.mockResolvedValue(null);
+    ports.latest.mockResolvedValue(null);
     ports.getSummary.mockResolvedValue({
       periodPnl: "0", computableEventCount: 0, taxableEventCount: 0, pendingReviewCount: 0,
       currency: "KRW", period: { from: "", to: "" },

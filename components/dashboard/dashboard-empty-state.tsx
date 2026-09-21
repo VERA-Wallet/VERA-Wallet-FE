@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { MockProvenanceChip } from "@/components/ui/mock-provenance-chip";
+import { ProvenanceChip } from "@/components/ui/provenance-chip";
+import type { Provenance } from "@/lib/http/envelope";
 import { SummaryCard } from "@/components/ui/summary-card";
 import { getRuleSet } from "@/lib/tax/rulesets";
 
@@ -11,7 +12,7 @@ import { getRuleSet } from "@/lib/tax/rulesets";
  * 데이터를 불러오는 단 하나의 행동(지갑 연결)으로 유도한다. 데이터 훅은 호출하지 않는다 —
  * 지갑이 없으면 /api/events가 bound-wallet 404를 주므로, 껍데기는 네트워크를 건드리지 않는다.
  */
-export function DashboardEmptyState({ countryCode }: { countryCode?: string }) {
+export function DashboardEmptyState({ countryCode, provenance = "mock" }: { countryCode?: string; provenance?: Provenance }) {
   return (
     <main className="min-h-dvh px-5 py-8">
       <header data-surface="dashboard-summary" className="flex items-start justify-between gap-3">
@@ -24,7 +25,7 @@ export function DashboardEmptyState({ countryCode }: { countryCode?: string }) {
             {countryCode ? `거주 국가: ${getRuleSet(countryCode)?.label ?? countryCode}` : "거주 국가를 확인하지 못했습니다."}
           </p>
         </div>
-        <MockProvenanceChip />
+        <ProvenanceChip provenance={provenance} />
       </header>
 
       {/* 데이터를 불러오는 단일 행동. 지갑 연결 페이지로 이동한다. */}
@@ -57,12 +58,12 @@ export function DashboardEmptyState({ countryCode }: { countryCode?: string }) {
         <p className="mt-2 text-xs text-zinc-400">리포트의 데모 계산은 지갑 없이도 쓸 수 있습니다.</p>
       </section>
 
-      {/* 채워질 자리를 보여주는 플레이스홀더. 값은 대시보드 빈 상태와 같은 "—".
+      {/* 채워질 자리를 보여주는 플레이스홀더. 값은 대시보드 빈 상태와 같은 "-".
           `grid-cols-1`을 명시한다 — 암묵 열이 가장 넓은 행의 min-content로 늘어나면
           448px 껍데기를 밀어낸다(거래 탭 목록과 같은 이유, transactions-view.tsx 주석 참고). */}
       <section className="mt-6 grid grid-cols-1 gap-3" aria-hidden="true">
-        <SummaryCard label="예상 손익" value="—" supportingText="지갑을 연결하면 계산됩니다." />
-        <SummaryCard label="계산 대상 이벤트" value="—" supportingText="지갑을 연결하면 채워집니다." />
+        <SummaryCard label="예상 손익" value="-" supportingText="지갑을 연결하면 계산됩니다." />
+        <SummaryCard label="계산 대상 이벤트" value="-" supportingText="지갑을 연결하면 채워집니다." />
       </section>
 
       <section className="mt-8">

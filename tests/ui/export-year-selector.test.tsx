@@ -8,7 +8,7 @@ import { TaxYearProvider, useTaxYear } from "@/lib/tax/tax-year-context";
 const ports = vi.hoisted(() => ({
   list: vi.fn(),
   getSummary: vi.fn(),
-  getProof: vi.fn(),
+  getProof: vi.fn(), latest: vi.fn(),
   estimate: vi.fn(),
   listRuleSets: vi.fn(),
 }));
@@ -17,6 +17,7 @@ vi.mock("@/lib/composition-root.client", () => ({
   eventRepository: { list: ports.list },
   summaryProvider: { getSummary: ports.getSummary },
   anchorProofProvider: { getProof: ports.getProof },
+  taxEvidenceProvider: { latest: ports.latest, record: vi.fn() },
   taxEngine: { estimate: ports.estimate, listRuleSets: ports.listRuleSets },
 }));
 
@@ -110,6 +111,7 @@ beforeEach(() => {
   ports.listRuleSets.mockReset();
   ports.list.mockResolvedValue({ items: [], nextCursor: null });
   ports.getProof.mockResolvedValue(null);
+  ports.latest.mockResolvedValue(null);
   ports.getSummary.mockResolvedValue(summary);
   ports.estimate.mockImplementation(async (input: { taxYear: number; assumeEffective?: boolean }) =>
     estimateFor(input.taxYear, input.assumeEffective ?? false),

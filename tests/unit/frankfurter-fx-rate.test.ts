@@ -46,14 +46,21 @@ describe("FrankfurterFxRateProvider", () => {
     expect(table.has("2026-07-19")).toBe(false);
   });
 
-  it("과거 날짜는 캐시해 두 번째 조회에 네트워크를 쓰지 않고, 오늘은 캐시하지 않는다", async () => {
+  it("과거 날짜는 영구 캐시하고, 오늘은 잠깐(10분)만 캐시한다", async () => {
     const fetchImpl = fetchOf(series);
-    const provider = new FrankfurterFxRateProvider({ fetchImpl, today: () => "2026-07-20" });
+    let clock = Date.parse("2026-07-20T09:00:00.000Z");
+    const provider = new FrankfurterFxRateProvider({ fetchImpl, today: () => "2026-07-20", now: () => clock });
     await provider.ratesFor({ from: "KRW", to: "USD", dates: ["2026-07-17", "2026-07-20"] });
     await provider.ratesFor({ from: "KRW", to: "USD", dates: ["2026-07-17"] });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+    // 오늘 값도 잠깐은 캐시에서 답한다. 잔액 화면이 열릴 때마다 같은 왕복을 하지 않기 위해서다.
     await provider.ratesFor({ from: "KRW", to: "USD", dates: ["2026-07-20"] });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    // 10분이 지나면 오늘 값은 다시 받는다(오후 고시 갱신을 따라간다). 과거 날짜는 그대로 캐시다.
+    clock += 10 * 60_000 + 1;
+    await provider.ratesFor({ from: "KRW", to: "USD", dates: ["2026-07-17", "2026-07-20"] });
     expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(String(fetchImpl.mock.calls[1][0])).toMatch(/2026-07-20\?/);
   });
 
   it("같은 통화는 네트워크 없이 1이다", async () => {

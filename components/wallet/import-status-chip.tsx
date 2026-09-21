@@ -6,11 +6,13 @@ import { BottomSheet } from "@/components/ui/bottom-sheet";
 import { ImportChainList, ImportProgressBar } from "@/components/wallet/import-chain-list";
 import { PARTIAL_IMPORT_CODE, useImportElapsed, useImportTracker } from "@/components/wallet/import-tracker-provider";
 import { chainLabel, shortHash } from "@/lib/format";
+import type { ImportProgress } from "@/lib/wallet/import-progress";
 import {
   SLOW_IMPORT_CHIP_MS,
   importScanChains,
   importStartedLabel,
   reportedEventCount,
+  reportedProgressAt,
   reportedScanProgress,
   skippedChainIds,
 } from "@/lib/wallet/import-tracker";
@@ -31,7 +33,13 @@ export function ImportStatusChip() {
   const { state, retry, modalOpen } = useImportTracker();
   const [sheetOpen, setSheetOpen] = useState(false);
   const elapsedMs = useImportElapsed(state.startedAt, CHIP_TICK_MS);
-  const chains = useMemo(() => importScanChains(state.result), [state.result]);
+  const reported = state.job?.progress ?? null;
+  const chains = useMemo(() => importScanChains(state.result, reported, state.walletAddress), [state.result, reported, state.walletAddress]);
+  // 시트에 넘기는 진행은 BE 보고뿐이다. 연출 타이머를 물리면 칩은 "불러오는 중"인데 시트는 전부 완료로 그린다.
+  const sheetProgress = useMemo<ImportProgress | null>(
+    () => (reported === null || state.status !== "running" ? null : reportedProgressAt(reported, elapsedMs, state.walletAddress)),
+    [reported, state.status, elapsedMs, state.walletAddress],
+  );
 
   const skipped = skippedChainIds(state.result);
 
@@ -43,12 +51,17 @@ export function ImportStatusChip() {
     // 연출 타이머로 "3곳 끝났다"를 지어내면 사용자는 그것을 사실로 읽는다.
     const scan = reportedScanProgress(state);
     const detail =
-      // 오래 걸린다는 사실이 어느 체인을 보는지보다 중요해지는 시점이 온다. 침묵하면 사용자는 멈췄다고 읽는다.
-      elapsedMs >= SLOW_IMPORT_CHIP_MS
-        ? "거래가 많아 시간이 걸려요"
-        : scan === null || scan.currentChain === null
-          ? `체인 ${chains.length}곳을 조회하고 있어요`
-          : `체인 ${scan.totalChainCount}곳 중 ${scan.scannedChainCount}곳 · ${scan.currentChain.chainName} 조회 중`;
+      // BE가 진척을 말해 주면 그것이 가장 좋은 답이다 — 오래 걸리는 중에도 "어디까지 왔는지"가 "오래 걸린다"보다 낫다.
+      scan !== null
+        ? scan.currentChain !== null
+          ? `체인 ${scan.totalChainCount}곳 중 ${scan.scannedChainCount}곳 · ${scan.currentChain.chainName} 조회 중`
+          : scan.scannedChainCount === scan.totalChainCount
+            ? `체인 ${scan.totalChainCount}곳 조회 끝 · 정리하는 중`
+            : (scan.note ?? `체인 ${scan.totalChainCount}곳 중 ${scan.scannedChainCount}곳 완료`)
+        : // 진척을 모를 때: 오래 걸린다는 사실이 침묵보다 낫다. 침묵하면 사용자는 멈췄다고 읽는다.
+          elapsedMs >= SLOW_IMPORT_CHIP_MS
+          ? "거래가 많아 시간이 걸려요"
+          : `체인 ${chains.length}곳을 조회하고 있어요`;
 
     return (
       <>
@@ -70,6 +83,7 @@ export function ImportStatusChip() {
           open={sheetOpen}
           onClose={() => setSheetOpen(false)}
           chains={chains}
+          progress={sheetProgress}
           walletAddress={state.walletAddress}
           elapsedMs={elapsedMs}
         />
@@ -208,19 +222,21 @@ function ProgressRing({ fraction }: { fraction: number | null }) {
  * 진행 시트. 모달과 같은 체인 목록을 쓰지만 여기엔 취소도 백그라운드도 없다 —
  * 이 창은 상태를 보여줄 뿐이고 불러오기는 창과 무관하게 끝까지 간다.
  *
- * **진행을 넘기지 않는다.** 진행 중 응답에는 체인별 사실이 없어서, 연출 타이머를 물리면
- * 칩이 "불러오는 중"이라 말하는 동안 시트는 모든 체인을 "완료"로 그린다 — 한 앱이 두 이야기를 하는 셈이다.
+ * **BE가 보고한 진행만 넘긴다.** 연출 타이머를 물리면 칩이 "불러오는 중"이라 말하는 동안
+ * 시트는 모든 체인을 "완료"로 그린다 — 한 앱이 두 이야기를 하는 셈이다. 보고가 없으면(구 BE) 모른다고 그린다.
  */
 function ImportProgressSheet({
   open,
   onClose,
   chains,
+  progress,
   walletAddress,
   elapsedMs,
 }: {
   open: boolean;
   onClose: () => void;
   chains: ComponentProps<typeof ImportChainList>["chains"];
+  progress: ImportProgress | null;
   walletAddress: string | null;
   elapsedMs: number;
 }) {
@@ -234,10 +250,10 @@ function ImportProgressSheet({
         {started !== null ? <span>{started}</span> : null}
       </p>
       <div className="mt-4">
-        <ImportProgressBar />
+        <ImportProgressBar progress={progress} />
       </div>
       <div className="mt-4">
-        <ImportChainList chains={chains} />
+        <ImportChainList chains={chains} progress={progress} />
       </div>
       <p className="mt-4 text-xs leading-5 text-zinc-400">
         이 창은 상태만 보여줘요. 닫아도 불러오기는 계속되고, 끝나면 알려드려요.

@@ -4,7 +4,7 @@ import { getSessionCookieHeaderForEventReader, requireCompletedOnboarding, requi
 import { warmUpBeEventSync } from "@/lib/adapters/http/event-repository.server";
 import { isGroundedPeriod } from "@/lib/period";
 import { taxYearFor } from "@/lib/tax/engine";
-import { isMockApiMode } from "@/lib/api-mode";
+import { apiProvenance, isMockApiMode } from "@/lib/api-mode";
 import { ReportInputsProvider } from "@/components/report/report-context";
 
 /**
@@ -66,6 +66,7 @@ export default async function ExportLayout({ children }: { children: React.React
         countryCode={completed.countryCode}
         currentYear={new Date().getFullYear()}
         latestActivityYear={await latestActivityTaxYear(completed.countryCode)}
+        provenance={await apiProvenance()}
       >
         {children}
       </ReportInputsProvider>
@@ -83,6 +84,7 @@ export default async function ExportLayout({ children }: { children: React.React
         countryCode={didSession.countryCode}
         currentYear={new Date().getFullYear()}
         walletConnected={false}
+        provenance={await apiProvenance()}
       >
         {children}
       </ReportInputsProvider>

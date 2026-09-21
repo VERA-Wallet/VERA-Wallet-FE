@@ -41,13 +41,17 @@ const beData = {
 const ok = (provenance: "mock" | "live") => envelope({ data: beData, meta: { provenance, generatedAt: today() } }, 200);
 
 describe("BeHttpHoldingsProvider boundary", () => {
-  it("reads BE holdings, converts KRW cost to USD at today's rate, and passes BE provenance through", async () => {
+  it("reads BE holdings, converts USD prices to KRW at today's rate, keeps the KRW cost as is, and passes BE provenance through", async () => {
     const fetcher = mockFetch(ok("live"));
-    // 고정표: KRW 1500/EUR, USD 1.1/EUR → 1 KRW = 0.000733… USD. 3,000,000 KRW → 2,200 USD.
+    // 고정표: KRW 1500/EUR, USD 1.1/EUR → US$1 = ₩1,363.63…. 2,400 USD → ₩3,272,727(원 단위). 원가 3,000,000 KRW는 그대로.
     const result = await new BeHttpHoldingsProvider(cookie, new FixedFxRateProvider(), today).getHoldings();
     expect(result.provenance).toBe("live");
-    expect(result.data.holdings[0]).toMatchObject({ symbol: "ETH", costUsd: "2200", costStatus: "ready" });
-    expect(result.data.holdings[1]).toMatchObject({ symbol: "USDC", costUsd: null, costStatus: "unknown", valueUsd: null });
+    expect(result.data.holdings[0]).toMatchObject({ symbol: "ETH", valueKrw: "3272727", costKrw: "3000000", costStatus: "ready" });
+    expect(result.data.holdings[0].priceKrw).toMatch(/^4363636\.36/);
+    expect(result.data.holdings[1]).toMatchObject({ symbol: "USDC", costKrw: null, costStatus: "unknown", valueKrw: null });
+    expect(result.data.totalValueKrw).toBe("3272727");
+    expect(result.data.fx).toMatchObject({ day: "2026-09-11" });
+    expect(result.data.fx.usdKrw).toMatch(/^1363\.63/);
     expect(result.data.skippedChainIds).toEqual([137]);
     // 세션 쿠키는 access-token 하나만, 경로는 BE 잔액 API.
     const [url, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
@@ -55,25 +59,36 @@ describe("BeHttpHoldingsProvider boundary", () => {
     expect(new Headers(init.headers).get("cookie")).toBe(cookie);
   });
 
-  it("scopes the BE read to one wallet with ?address= and passes byWallet through", async () => {
+  it("scopes the BE read to one wallet with ?address= and converts byWallet totals", async () => {
     const fetcher = mockFetch(ok("live"));
     const result = await new BeHttpHoldingsProvider(cookie, new FixedFxRateProvider(), today).getHoldings("0xABC");
     expect((fetcher.mock.calls[0] as unknown as [string])[0]).toBe("https://be.example/api/portfolio/holdings?address=0xABC");
-    expect(result.data.byWallet).toEqual(beData.byWallet);
+    expect(result.data.byWallet).toEqual([{ address: "0xabc", verificationMethod: "siwe", totalValueKrw: "3272727", chainIds: [1, 8453], holdingsCount: 2, unpricedCount: 1 }]);
   });
 
-  it("keeps balances and prices when the FX source is down, marking cost fx_unavailable instead of failing", async () => {
+  it("fails closed with fx_unavailable when the FX source is down: no won figure means no answer, not dollars and not 0", async () => {
     mockFetch(ok("live"));
     const down: FxRateProvider = { ratesFor: async () => { throw new FxRateUnavailableError("network", "offline"); } };
-    const result = await new BeHttpHoldingsProvider(cookie, down, today).getHoldings();
-    expect(result.data.holdings[0]).toMatchObject({ valueUsd: "2400", costUsd: null, costStatus: "fx_unavailable" });
+    const failure = await new BeHttpHoldingsProvider(cookie, down, today).getHoldings().catch((cause: unknown) => cause);
+    expect(failure).toBeInstanceOf(HoldingsReadError);
+    expect(failure).toMatchObject({ status: 502, code: "fx_unavailable" });
   });
 
-  it("does not call the FX source when no holding carries a non-USD cost", async () => {
-    mockFetch(envelope({ data: { ...beData, holdings: [beData.holdings[1]] }, meta: { provenance: "mock", generatedAt: today() } }, 200));
-    const ratesFor = vi.fn();
-    await new BeHttpHoldingsProvider(cookie, { ratesFor }, today).getHoldings();
-    expect(ratesFor).not.toHaveBeenCalled();
+  it("asks the FX source once for USD→KRW and not again for a KRW cost", async () => {
+    mockFetch(ok("live"));
+    const ratesFor = vi.fn(async () => new Map([["2026-09-11", "1390"]]));
+    const result = await new BeHttpHoldingsProvider(cookie, { ratesFor }, today).getHoldings();
+    expect(ratesFor).toHaveBeenCalledTimes(1);
+    expect(ratesFor).toHaveBeenCalledWith({ from: "USD", to: "KRW", dates: ["2026-09-11"] });
+    expect(result.data.holdings[0]).toMatchObject({ valueKrw: "3336000", costKrw: "3000000" });
+  });
+
+  it("marks only the cost fx_unavailable when the cost currency has no rate but USD→KRW does", async () => {
+    mockFetch(envelope({ data: { ...beData, holdings: [{ ...beData.holdings[0], costBasis: { currency: "EUR", totalCost: "1800", avgCost: "2400", trackedAmount: "0.75" } }] }, meta: { provenance: "live", generatedAt: today() } }, 200));
+    const ratesFor = vi.fn(async ({ from }: { from: string }) => (from === "USD" ? new Map([["2026-09-11", "1390"]]) : new Map()));
+    const result = await new BeHttpHoldingsProvider(cookie, { ratesFor }, today).getHoldings();
+    expect(ratesFor).toHaveBeenCalledTimes(2);
+    expect(result.data.holdings[0]).toMatchObject({ valueKrw: "3336000", costKrw: null, costStatus: "fx_unavailable" });
   });
 
   it("preserves the unbound-wallet 404 and the all-chains-down 503 as domain errors with their codes", async () => {
@@ -112,22 +127,26 @@ describe("BeHttpHoldingsProvider boundary", () => {
   });
 
   it("drops a malformed row and reports it, instead of turning the whole wallet into a 502", async () => {
-    // 원가 통화 필드가 빠진 행 하나 — 그 행은 0원으로 읽지도, 지갑 전체를 지우지도 않는다.
+    // 원가 통화 필드가 빠진 행 하나. 그 행은 0원으로 읽지도, 지갑 전체를 지우지도 않는다.
     mockFetch(envelope({ data: { ...beData, holdings: [{ ...beData.holdings[0], costBasis: { totalCost: "1" } }, beData.holdings[1]] }, meta: { provenance: "live", generatedAt: today() } }, 200));
     const result = await new BeHttpHoldingsProvider(cookie, new FixedFxRateProvider(), today).getHoldings();
     expect(result.data.holdings.map((holding) => holding.symbol)).toEqual(["USDC"]);
     expect(result.data.droppedCount).toBe(1);
   });
 
-  it("accepts an exponent-form DexScreener price and normalizes it", async () => {
+  it("accepts an exponent-form DexScreener price, normalizes it, and keeps sub-won precision", async () => {
     mockFetch(envelope({ data: { ...beData, holdings: [{ ...beData.holdings[1], priceUsd: "1.2e-9", valueUsd: "0.0000006", priceStatus: "priced" }] }, meta: { provenance: "live", generatedAt: today() } }, 200));
     const result = await new BeHttpHoldingsProvider(cookie, new FixedFxRateProvider(), today).getHoldings();
     expect(result.data.droppedCount).toBe(0);
-    expect(result.data.holdings[0].priceUsd).toBe("0.0000000012");
+    // 0.0000000012 USD × 1,363.63… = 0.00000163… KRW → 소수 8자리.
+    expect(result.data.holdings[0].priceKrw).toBe("0.00000164");
   });
 
-  it("refuses a ledger that reports more than one cost currency (fail closed, never convert only the first)", async () => {
-    mockFetch(envelope({ data: { ...beData, holdings: [beData.holdings[0], { ...beData.holdings[1], costBasis: { currency: "EUR", totalCost: "1", avgCost: "1", trackedAmount: "500" } }] }, meta: { provenance: "live", generatedAt: today() } }, 200));
+  it("refuses a ledger that reports more than one non-KRW cost currency (fail closed, never convert only the first)", async () => {
+    mockFetch(envelope({ data: { ...beData, holdings: [
+      { ...beData.holdings[0], costBasis: { currency: "USD", totalCost: "1", avgCost: "1", trackedAmount: "0.75" } },
+      { ...beData.holdings[1], costBasis: { currency: "EUR", totalCost: "1", avgCost: "1", trackedAmount: "500" } },
+    ] }, meta: { provenance: "live", generatedAt: today() } }, 200));
     await expect(new BeHttpHoldingsProvider(cookie, new FixedFxRateProvider(), today).getHoldings()).rejects.toMatchObject({ cause: "invalid_contract" });
   });
 });

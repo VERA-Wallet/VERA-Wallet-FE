@@ -4,11 +4,14 @@ import { chainLabel } from "@/lib/format";
 import {
   EVM_CHAIN_IDS,
   IMPORT_STEPS,
+  SCAN_STEP_INDEX,
   mockProgressAt,
+  type ChainScanDetail,
+  type ChainScanState,
   type ImportProgress,
   type ScanChain,
 } from "@/lib/wallet/import-progress";
-import type { ImportSyncJob, ImportSyncResult } from "@/lib/wallet/import-sync";
+import type { ImportSyncJob, ImportSyncProgress, ImportSyncProgressChain, ImportSyncResult } from "@/lib/wallet/import-sync";
 
 /**
  * 앱 전체가 공유하는 "지갑 거래 불러오기" 상태의 모델.
@@ -128,17 +131,107 @@ const INITIAL_SCAN_CHAINS: ScanChain[] = EVM_CHAIN_IDS.map((chainId) => ({ chain
  * 화면이 그릴 체인 목록. 응답이 오면 체인별 수집 건수가 사실로 붙고, 그 전에는 건수 없이 대상만 보여준다 —
  * 모르는 건수를 0으로 그리면 "이 체인엔 아무것도 없다"로 읽힌다.
  */
-export function importScanChains(result: ImportSyncResult | null): ScanChain[] {
-  if (result === null) return INITIAL_SCAN_CHAINS;
-  return result.chains.map((chain) => ({ chainId: chain.chainId, chainName: chainLabel(chain.chainId), txCount: chain.fetched }));
+export function importScanChains(result: ImportSyncResult | null, reported: ImportSyncProgress | null = null, walletAddress: string | null = null): ScanChain[] {
+  if (result !== null) return result.chains.map((chain) => ({ chainId: chain.chainId, chainName: chainLabel(chain.chainId), txCount: chain.fetched }));
+  if (reported === null) return INITIAL_SCAN_CHAINS;
+  // 진행 중에도 끝난 체인의 건수는 사실이다. 아직 도는 체인은 건수를 모르므로 비워 둔다.
+  const chains = reportedProgressAt(reported, 0, walletAddress).chains ?? {};
+  return INITIAL_SCAN_CHAINS.map((chain) => {
+    const txCount = chains[chain.chainId]?.txCount;
+    return txCount === undefined ? chain : { ...chain, txCount };
+  });
+}
+
+/** 진행 중 단계. 끝난 단계(done/failed)는 여기 없다. */
+const ACTIVE_PHASES: ReadonlySet<ImportSyncProgressChain["phase"]> = new Set(["fetching", "tracing", "pricing", "saving"]);
+
+const formatCount = (value: number) => value.toLocaleString("ko-KR");
+
+/** 체인 한 줄이 지금 무엇을 하는지. 사용자의 말로 쓴다 — "페이지", "trace" 같은 내부 이름은 쓰지 않는다. */
+function chainDetailText(chain: ImportSyncProgressChain): string | null {
+  switch (chain.phase) {
+    case "fetching":
+      return chain.fetched > 0 ? `거래 ${formatCount(chain.fetched)}건 받는 중` : "거래를 찾는 중";
+    case "tracing":
+      return chain.traced ? `내부 이동 확인 ${formatCount(chain.traced.done)}/${formatCount(chain.traced.total)}` : "내부 이동 확인 중";
+    case "pricing":
+      return "가격 채우는 중";
+    case "saving":
+      return chain.fetched > 0 ? `저장 중 ${formatCount(chain.saved)}/${formatCount(chain.fetched)}` : "저장 중";
+    default:
+      return null;
+  }
+}
+
+/**
+ * BE가 보고한 진척에서 화면의 진행을 만든다. 타이머는 전혀 쓰지 않는다.
+ *
+ * 작업은 사용자의 모든 지갑을 돌지만, 방금 연결한 지갑의 모달은 **그 지갑**만 말해야 한다 — 다른 지갑의 체인이
+ * 끝났다고 이 지갑의 Ethereum을 완료로 그리면 거짓이다. `walletAddress`를 주면 그 지갑의 보고만 쓰고, 보고에
+ * 그 지갑이 없으면(주소 표기 차이 등) 전체로 물러난다.
+ *
+ * 전체를 볼 때 체인 한 줄은 그 체인의 모든 지갑을 합친 것이다 — 하나라도 진행 중이면 조회 중, 전부 끝났으면
+ * 완료(하나라도 실패면 실패), 일부만 끝났으면 "지갑 n/m 완료"를 단 조회 중, 아무도 시작 안 했으면 대기.
+ * 완료한 체인의 건수는 지갑별 건수의 합이다.
+ */
+export function reportedProgressAt(reported: ImportSyncProgress, elapsedMs: number, walletAddress: string | null = null): ImportProgress {
+  const own = walletAddress === null ? [] : reported.bindings.filter((binding) => binding.walletAddress.toLowerCase() === walletAddress.toLowerCase());
+  const scope = own.length > 0 ? own : reported.bindings;
+  const chains: Record<number, ChainScanDetail> = {};
+  for (const chainId of EVM_CHAIN_IDS) {
+    const entries = scope.flatMap((binding) => binding.chains.filter((chain) => chain.chainId === chainId));
+    const active = entries.find((chain) => ACTIVE_PHASES.has(chain.phase));
+    const finished = entries.length > 0 && entries.every((chain) => chain.phase === "done" || chain.phase === "failed");
+    const failed = entries.find((chain) => chain.phase === "failed");
+    const doneCount = entries.filter((chain) => chain.phase === "done" || chain.phase === "failed").length;
+    const partial = !active && !finished && doneCount > 0;
+    const state: ChainScanState = active || partial ? "scanning" : finished ? (failed ? "failed" : "done") : "pending";
+    chains[chainId] = {
+      state,
+      // 실패한 체인은 왜 실패했는지가 곧 다음 행동이다(속도 제한이면 잠시 뒤 다시, 페이지 오류면 신고). BE가 준 사유를 그대로 보인다.
+      detail: active
+        ? chainDetailText(active)
+        : partial
+          ? `지갑 ${doneCount}/${entries.length} 완료`
+          : state === "failed"
+            ? (failed?.message ?? null)
+            : null,
+      ...(state === "done" ? { txCount: entries.reduce((sum, chain) => sum + chain.fetched, 0) } : {}),
+    };
+  }
+  const scannedChainCount = EVM_CHAIN_IDS.filter((chainId) => chains[chainId].state === "done" || chains[chainId].state === "failed").length;
+  // 체인을 다 훑었으면 남은 일은 지갑 간 연결·정리다 — 조회 단계는 지났지만 완료는 아직 아니다.
+  const stepIndex = scannedChainCount === EVM_CHAIN_IDS.length ? SCAN_STEP_INDEX + 1 : SCAN_STEP_INDEX;
+  return { phase: "running", stepIndex, elapsedMs, scannedChainCount, chains, note: queuedNote(scope, reported.bindings) };
+}
+
+/**
+ * 이 지갑의 체인이 전부 대기인데 작업은 돌고 있다면, 다른 지갑을 먼저 도는 중이다. 그 사실을 말한다.
+ * 지갑이 하나뿐이거나 이미 무언가 시작됐으면 할 말이 없다(null).
+ */
+function queuedNote(scope: ImportSyncProgress["bindings"], all: ImportSyncProgress["bindings"]): string | null {
+  const untouched = scope.every((binding) => binding.chains.every((chain) => chain.phase === "pending"));
+  if (!untouched) return null;
+  const others = all.filter((binding) => !scope.includes(binding));
+  const busy = others.filter((binding) => binding.chains.some((chain) => chain.phase !== "pending"));
+  if (busy.length === 0) return null;
+  return `다른 지갑 ${others.length}개를 먼저 불러오는 중`;
+}
+
+/** 저장까지 마친 (지갑, 체인) 쌍의 수. 하나 늘 때마다 원장에 새 행이 들어와 있다. */
+export function reportedDoneChainCount(reported: ImportSyncProgress | null): number {
+  if (reported === null) return 0;
+  return reported.bindings.reduce((sum, binding) => sum + binding.chains.filter((chain) => chain.phase === "done").length, 0);
 }
 
 /** BE가 실제로 알려준 체인별 진척. `null`은 "0곳 끝났다"가 아니라 **모른다**는 뜻이다. */
 export type ImportScanProgress = {
   scannedChainCount: number;
   totalChainCount: number;
-  /** 지금 조회 중인 체인. 모든 체인이 끝났으면 null. */
+  /** 지금 조회 중인 체인. 모든 체인이 끝났거나 아직 아무것도 시작하지 않았으면 null. */
   currentChain: ScanChain | null;
+  /** 아무 체인도 시작하지 않은 이유(다른 지갑을 먼저 도는 중). 없으면 null. */
+  note: string | null;
 };
 
 /**
@@ -153,13 +246,22 @@ export type ImportScanProgress = {
  * 화면은 고칠 것 없이 확정 표시로 바뀐다.
  */
 export function reportedScanProgress(state: ImportTrackerState): ImportScanProgress | null {
+  // BE가 진행 중 체인별 사실을 실어 주면 그것이 답이다. 체인은 병렬로 끝나므로 "지금 조회 중"은 여럿일 수 있고, 첫 것을 말한다.
+  const progress = state.job?.progress ?? null;
+  if (progress !== null && state.status === "running") {
+    const derived = reportedProgressAt(progress, 0, state.walletAddress);
+    const chains = derived.chains ?? {};
+    const current = INITIAL_SCAN_CHAINS.find((chain) => chains[chain.chainId]?.state === "scanning") ?? null;
+    const scannedChainCount = EVM_CHAIN_IDS.filter((chainId) => chains[chainId]?.state === "done" || chains[chainId]?.state === "failed").length;
+    return { scannedChainCount, totalChainCount: EVM_CHAIN_IDS.length, currentChain: current, note: derived.note ?? null };
+  }
   // 완료 결과(state.result)는 이미 끝난 사실이라 "진행"이 아니다. 진행은 작업 스냅샷만 말할 수 있다.
   const reported = state.job?.result ?? null;
   if (reported === null) return null;
   const totalChainCount = EVM_CHAIN_IDS.length;
   const scannedChainCount = Math.min(reported.chains.length, totalChainCount);
   const next = INITIAL_SCAN_CHAINS[scannedChainCount];
-  return { scannedChainCount, totalChainCount, currentChain: next ?? null };
+  return { scannedChainCount, totalChainCount, currentChain: next ?? null, note: null };
 }
 
 /**
@@ -169,7 +271,19 @@ export function reportedScanProgress(state: ImportTrackerState): ImportScanProgr
  * 이 연출은 모달 전용이다. 칩·시트는 이 값을 쓰지 않는다 — 한 줄짜리 표시에서
  * 타이머가 만든 "완료"는 사용자가 사실로 읽는다.
  */
-export function importProgressFrom(status: ImportTrackerStatus, elapsedMs: number, chainCount: number): ImportProgress {
+export function importProgressFrom(
+  status: ImportTrackerStatus,
+  elapsedMs: number,
+  chainCount: number,
+  reported: ImportSyncProgress | null = null,
+  walletAddress: string | null = null,
+): ImportProgress {
+  // BE가 진척을 보고하면 연출은 끝이다. 진행 중엔 보고를 그대로, 완료면 바로 완료를 그린다 — 기다릴 타이머가 없다.
+  if (reported !== null && status === "running") return reportedProgressAt(reported, elapsedMs, walletAddress);
+  if (reported !== null && status === "done") {
+    const { chains } = reportedProgressAt(reported, elapsedMs, walletAddress);
+    return { phase: "done", stepIndex: IMPORT_STEPS.length, elapsedMs, scannedChainCount: chainCount, chains };
+  }
   const timer = mockProgressAt(elapsedMs, chainCount);
   // 실패는 실제 응답에서만 나온다 — 타이머는 실패를 만들 수 없다.
   if (status === "failed" || status === "lost") {

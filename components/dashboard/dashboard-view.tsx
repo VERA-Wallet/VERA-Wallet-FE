@@ -13,7 +13,8 @@ import { DEFAULT_PERIOD, periodWindowLabel } from "@/lib/portfolio/period-select
 import type { PeriodSelection } from "@/lib/portfolio/period-selection";
 import { periodLabel } from "@/lib/period";
 import { freshNotice } from "@/lib/queries/fresh";
-import { MockProvenanceChip } from "@/components/ui/mock-provenance-chip";
+import { ProvenanceChip } from "@/components/ui/provenance-chip";
+import type { Provenance } from "@/lib/http/envelope";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SummaryCard } from "@/components/ui/summary-card";
 import { useHideBalances } from "@/lib/privacy/use-hide-balances";
@@ -30,7 +31,8 @@ const RECENT_COUNT = 3;
  * 지갑이 어떻게 움직였나(그래프), 이번 과세연도는 얼마인가(카드), 방금 무슨 일이 있었나(최근 거래).
  * 목록까지 여기 있던 때에는 첫 거래 행이 1,200px 아래에서 시작했고, 그 위의 요약은 아무도 읽지 않았다.
  */
-export function DashboardView({ countryCode }: { countryCode?: string }) {
+/** `provenance`는 서버 페이지가 BE 모드를 물어 계산해 준다. 이 화면의 요약·목록 응답에는 출처가 실려 오지 않는다. */
+export function DashboardView({ countryCode, provenance = "mock" }: { countryCode?: string; provenance?: Provenance }) {
   // 잔액 가리기. 서버는 저장소를 모르므로 첫 렌더는 항상 꺼짐이고, 마운트 후 저장값으로 복원한다.
   const [hideBalances, setHideBalances] = useHideBalances();
   // 이 화면이 보고 있는 기간. 헤더 문구와 그래프 창이 **이 하나**에서 나온다 —
@@ -80,7 +82,7 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
         </div>
         <div className="flex shrink-0 flex-col items-end gap-2">
           <div className="flex h-9 items-center gap-2">
-            <MockProvenanceChip />
+            <ProvenanceChip provenance={provenance} />
             {/* 설정은 탭 자리를 차지할 만큼 자주 가는 곳이 아니지만, 들어갈 문이 없으면 없는 화면이 된다. */}
             <Link href="/settings" aria-label="설정" className="rounded-lg p-1 text-zinc-400">
               <Settings aria-hidden="true" className="size-5" />
@@ -118,16 +120,16 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
 
             값 자리의 "모른다" 규칙은 두 가지다(같은 headline 미정이라도 이유가 다르다):
             거래 목록 자체가 아직 없으면(events.isLoading) 무엇을 셀지조차 모르는 것이라 스켈레톤 —
-            숫자 칸에 "—"를 두면 시각적으로 "0에 가까운 값"처럼 읽혀 완전한 무지와 구별이 안 된다.
+            숫자 칸에 "-"를 두면 시각적으로 "0에 가까운 값"처럼 읽혀 완전한 무지와 구별이 안 된다.
             반대로 거래는 이미 왔고 판정(estimate)만 다시 계산 중이면 이전 판정이 부분적으로 남아 있을 수 있어
-            그 옛 값을 단정하지 않으려 "—"를 그대로 쓴다(기존 계약 — dashboard-summary.test.tsx). */}
+            그 옛 값을 단정하지 않으려 "-"를 그대로 쓴다(기존 계약, dashboard-summary.test.tsx). */}
         <SummaryCard
           label="예상 손익"
           value={
             events.isLoading ? (
               <Skeleton className="h-8 w-28" />
             ) : headline === undefined ? (
-              "—"
+              "-"
             ) : headline.computableEventCount === 0 ? (
               "계산할 거래 없음"
             ) : hideBalances ? (
@@ -146,7 +148,7 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
         <SummaryCard
           // 실제 과세 여부는 판정 그룹(취득·비과세·상계 소멸…)이 정하므로 "과세 대상"이라 부르면 과장이다.
           label="계산 대상 이벤트"
-          value={events.isLoading ? <Skeleton className="h-8 w-16" /> : headline !== undefined ? `${headline.computableEventCount}건` : "—"}
+          value={events.isLoading ? <Skeleton className="h-8 w-16" /> : headline !== undefined ? `${headline.computableEventCount}건` : "-"}
           // 확인 필요 건수는 여기서 말하지 않는다. 요약의 pendingReviewCount는 다리(leg) 단위이고 아래 확인 필요
           // 카드·거래 탭은 스왑·브릿지를 묶은 행 단위라, 둘을 같이 두면 한 화면이 두 값을 말한다(실측 5,549 대 3,433).
           // 거래 목록 자체가 로딩 중이면 이 보조 문구도 비운다 — "과세 여부는 아직 판단하지 않았습니다"조차

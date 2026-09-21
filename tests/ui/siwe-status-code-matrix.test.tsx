@@ -37,7 +37,7 @@ const matrix: Array<[string, number, string, string]> = [
   ["OFF mock replay", 409, "already-consumed", "인증 요청 불일치"],
   ["OFF mock mismatch", 400, "challenge_mismatch", "인증 요청 불일치"],
   ["challenge not found", 400, "challenge_not_found", "인증 요청을 찾을 수 없습니다. 다시 시도해 주세요."],
-  ["expired challenge", 410, "challenge_expired", "만료됨 — 다시 시도"],
+  ["expired challenge", 410, "challenge_expired", "만료됨. 다시 시도"],
   ["invalid signature", 401, "invalid_signature", "서명을 확인할 수 없습니다."],
 ];
 

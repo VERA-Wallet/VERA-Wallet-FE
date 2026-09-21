@@ -237,12 +237,12 @@ mockModeOnly("wallet list, portfolio and add-wallet live QA", () => {
       );
 
       const total = await page.locator('[data-surface="wallet-total"]').innerText();
-      const pricesShown = /US\$/.test(total) && holdingTexts.length > 0 && holdingTexts.every((text) => text.includes("US$"));
+      const pricesShown = /₩/.test(total) && holdingTexts.length > 0 && holdingTexts.every((text) => text.includes("₩"));
       const demoLabeled = portfolioText.includes("데모 예시");
       const noVerifiedBadge = !holdingTexts.some((text) => text.includes("검증됨"));
       const honestPricing = pricesShown && demoLabeled && noVerifiedBadge;
       await check(
-        "A2 portfolio shows USD price/value labeled as demo (not passed off as live), with no 검증됨 badge",
+        "A2 portfolio shows KRW price/value labeled as demo (not passed off as live), with no 검증됨 badge",
         honestPricing,
         "[data-surface=wallet-total] and [data-surface=holding-row]",
         { total, demoLabeled, noVerifiedBadge },
@@ -250,8 +250,8 @@ mockModeOnly("wallet list, portfolio and add-wallet live QA", () => {
       recordCase(
         cases,
         "A2",
-        "Portfolio shows demo-labeled USD price/value per token and no verified badge",
-        "US$ price+value per row, '데모 예시' disclosure, and no 검증됨 badge",
+        "Portfolio shows demo-labeled KRW price/value per token and no verified badge",
+        "₩ price+value per row, '데모 예시' disclosure, and no 검증됨 badge",
         { total, demoLabeled, noVerifiedBadge, holdingRows: holdingTexts },
         honestPricing,
       );
@@ -266,8 +266,8 @@ mockModeOnly("wallet list, portfolio and add-wallet live QA", () => {
       const nftCount = await nftCards.count();
       const nftText = (await nftCards.allInnerTexts()).join(" ");
       const nftOk = nftCount >= 1 && nftText.includes("BAYC") && /US\$/.test(nftText);
-      await check("NFT tab renders a popular-collection grid with USD floor values", nftOk, "[data-surface=nft-card]", { nftCount });
-      recordCase(cases, "nft-portfolio", "NFT tab shows a grid of popular collections", "nft-card grid with collection names and USD floor values", { nftCount, hasBAYC: nftText.includes("BAYC") }, nftOk);
+      await check("NFT tab renders a popular-collection grid with KRW floor values", nftOk, "[data-surface=nft-card]", { nftCount });
+      recordCase(cases, "nft-portfolio", "NFT tab shows a grid of popular collections", "nft-card grid with collection names and KRW floor values", { nftCount, hasBAYC: nftText.includes("BAYC") }, nftOk);
       act({ type: "screenshot", selector: "body", target: nftScreenshot });
       await page.screenshot({ path: nftScreenshot, fullPage: true, type: "jpeg", quality: 85 });
 
@@ -279,8 +279,8 @@ mockModeOnly("wallet list, portfolio and add-wallet live QA", () => {
       const defiCount = await defiRows.count();
       const defiText = (await defiRows.allInnerTexts()).join(" ");
       const defiOk = defiCount >= 1 && defiText.includes("Uniswap v3") && /US\$/.test(defiText);
-      await check("디파이 tab renders protocol positions with USD values", defiOk, "[data-surface=defi-row]", { defiCount });
-      recordCase(cases, "defi-positions", "디파이 tab shows protocol positions", "defi-row list with protocols and USD values", { defiCount, hasUniswap: defiText.includes("Uniswap v3") }, defiOk);
+      await check("디파이 tab renders protocol positions with KRW values", defiOk, "[data-surface=defi-row]", { defiCount });
+      recordCase(cases, "defi-positions", "디파이 tab shows protocol positions", "defi-row list with protocols and KRW values", { defiCount, hasUniswap: defiText.includes("Uniswap v3") }, defiOk);
       act({ type: "screenshot", selector: "body", target: defiScreenshot });
       await page.screenshot({ path: defiScreenshot, fullPage: true, type: "jpeg", quality: 85 });
 

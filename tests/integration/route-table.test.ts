@@ -179,19 +179,20 @@ describe.sequential("backend outage and restart contracts", () => {
     }
   }, 120_000);
 
-  it("exposes the stale-JWT split between session and events after a BE restart", async () => {
+  it("treats a stale JWT consistently after a BE restart: session says anonymous and events say 401", async () => {
     const { cookie } = await presentDid(FE);
     expect(cookie).toBeDefined();
 
     await stopBackend();
     await startBackend({ port: 3200 });
 
-    // BE의 /api/auth/session은 jwt.verifyAsync만 하고 사용자 저장소를 조회하지 않는다.
-    // 반면 JwtStrategy.validate는 조회하므로 같은 토큰이 세션에선 살아 있고 이벤트에선 401이 된다.
+    // BE 00875ea부터 /api/auth/session도 JwtStrategy처럼 사용자 존재를 확인한다. 인메모리 재시작으로 사용자가
+    // 사라진 옛 토큰은 세션에서 익명(didVerified:false)으로 읽히고, 보호 API는 401을 낸다. 예전에는 세션만
+    // 서명 검증으로 살아 있어 "DID 인증됨 + 지갑 없음"이라는 모순이 있었다(그 계약을 이 케이스가 고정하고 있었다).
     const session = await fetch(`${FE}/api/auth/session`, { headers: { cookie: cookie! } });
     expect(session.status).toBe(200);
     const body = await session.json() as { data: { didVerified: boolean; walletAddress: string | null; chainId?: number } };
-    expect(body.data).toMatchObject({ didVerified: true, walletAddress: null });
+    expect(body.data).toMatchObject({ didVerified: false, walletAddress: null });
     // 세션 계약에서 chainId가 제거됐다 — 남아 있으면 BE가 옛 계약을 내려주는 것이다.
     expect(body.data.chainId).toBeUndefined();
 

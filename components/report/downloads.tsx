@@ -113,6 +113,37 @@ export function Downloads({
             세무사 전달용 내려받기
           </button>
         </div>
+
+        {/* 보고서: 값만 늘어놓은 격자가 아니라 계산 흐름을 보이는 문서. 앱 화면(/export/report)에서 그대로 읽고,
+            PDF는 거기서 브라우저 인쇄로 저장한다(한글 PDF를 직접 쓰려면 글꼴을 통째로 내장해야 해서).
+            귀속연도·시행 가정은 리포트 한 벌이 공유하는 프로바이더에 살아 있어 링크에 실어 나르지 않는다. */}
+        <div className="rounded-card border border-zinc-200 p-4">
+          <p className="font-semibold text-zinc-900">보고서</p>
+          <p className="mt-1 text-sm leading-6 text-zinc-500">
+            표지 · 신고 요약(기입란) · 자산별 명세 · 예외와 한계를 한 문서로. 앱 안에서 읽고, 인쇄에서
+            &lsquo;PDF로 저장&rsquo;을 고르면 파일이 됩니다.
+          </p>
+          {!disabled ? (
+            <Link
+              href="/export/report"
+              data-surface="report-open"
+              className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl border border-primary-500 py-3 font-semibold text-primary-600"
+            >
+              보고서 보기
+            </Link>
+          ) : (
+            <button
+              className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl border border-primary-500 py-3 font-semibold text-primary-600 disabled:cursor-not-allowed disabled:opacity-50"
+              data-locked={downloadLocked ? "download" : undefined}
+              data-surface="report-open"
+              disabled
+              type="button"
+            >
+              {downloadLocked && <Lock aria-hidden className="size-4 shrink-0" strokeWidth={2.5} />}
+              보고서 보기
+            </button>
+          )}
+        </div>
       </div>
 
       {summary !== null && (
@@ -126,7 +157,7 @@ export function Downloads({
         >
           <span>
             {`${planName} 플랜 ${allowance.toLocaleString("ko-KR")}건까지 · 현재 ${billableCount.toLocaleString("ko-KR")}건`}
-            {downloadLocked && (!subscribed ? " — 플랜이 필요합니다" : " — 상위 플랜이 필요합니다")}
+            {downloadLocked && (!subscribed ? " (플랜 필요)" : " (상위 플랜 필요)")}
           </span>
           <span className={`shrink-0 font-semibold underline ${downloadLocked ? "" : "text-primary-600"}`}>플랜 보기</span>
         </Link>

@@ -9,7 +9,8 @@ const anchorProofSchema = z.object({
   tx_hash: z.string().min(1),
   merkle_root: z.string().min(1),
   anchored_at: z.string().datetime(),
-  explorer_url: z.url(),
+  // 탐색기가 없는 체인(OmniOne 스테이지)에서는 null이다 — 죽은 링크를 계약으로 강제하지 않는다.
+  explorer_url: z.url().nullable(),
 });
 
 export class HttpAnchorProofProvider implements AnchorProofProvider {

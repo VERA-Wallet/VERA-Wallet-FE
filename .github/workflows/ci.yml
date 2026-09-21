@@ -18,7 +18,7 @@ on:
 # 동일 BE 커밋을 모든 BE-백드 레인이 공유한다(계약의 단일 진실 소스).
 env:
   BACKEND_REPO: VERA-Wallet/VERA-Wallet-BE
-  BACKEND_REF: a98eba2816792524786797bcd4b76ee606883eab
+  BACKEND_REF: 6cb57be963bad5810ae680f08c4b76cb9f2667c4
 
 jobs:
   # BE 불필요: 타입/린트/유닛+UI. 빠른 실패 레인.

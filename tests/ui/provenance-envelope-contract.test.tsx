@@ -43,7 +43,7 @@ describe("success envelope provenance contract", () => {
 
   it("does not change what the UI renders while MOCK_MODE is the only operating mode", async () => {
     // 배지 문구는 이번 범위에서 바꾸지 않는다. decoder만 넓혔다는 사실을 고정해 둔다.
-    const { MockProvenanceChip } = await import("@/components/ui/mock-provenance-chip");
+    const { MockProvenanceChip } = await import("@/components/ui/provenance-chip");
     const { render, screen } = await import("@testing-library/react");
     render(<MockProvenanceChip />);
     expect(screen.getByTestId("mock-provenance")).toHaveTextContent("mock 데이터");

@@ -123,6 +123,8 @@ export function ImportProgressModal({
         {/* 체인별 조회 상태. 진행 시트와 같은 컴포넌트를 쓴다 — 같은 작업을 두 화면이 다르게 말하지 않도록. */}
         <div className="mt-4">
           <ImportChainList progress={progress} chains={chains} />
+          {/* 전부 '대기'인 이유. 다른 지갑이 먼저 도는 동안 목록만 보면 멈춘 것처럼 읽힌다. */}
+          {progress.note ? <p className="mt-2 text-center text-xs text-zinc-500">{progress.note}</p> : null}
         </div>
 
         <div className="mt-5">
@@ -158,8 +160,8 @@ export function ImportProgressModal({
               ? "거래를 모두 불러왔습니다."
               : progress.stepIndex === SCAN_STEP_INDEX
                 ? // 조회 단계에서는 "몇 번째 체인인지"가 곧 진척이다. 단계 이름만 읽으면 멈춘 것처럼 들린다.
-                  `${currentStep.label} — 체인 ${chains.length}곳 중 ${progress.scannedChainCount}곳 완료`
-                : `${currentStep.label} — ${currentStep.runningText}`}
+                  `${currentStep.label}: 체인 ${chains.length}곳 중 ${progress.scannedChainCount}곳 완료`
+                : `${currentStep.label}: ${currentStep.runningText}`}
         </p>
 
         {slow ? (

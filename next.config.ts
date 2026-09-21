@@ -17,8 +17,12 @@ const devAllowedOrigins = (process.env.VERAWALLET_DEV_ALLOWED_ORIGINS ?? "")
 // 지갑 하나의 최초 동기화가 체인 5개 수집과 CoinGecko 과거 시세 조회를 동기로 끝내야 응답하므로 30초를 쉽게 넘기고,
 // 그러면 BE는 뒤에서 정상 완료하는데 불러오기 모달만 "다 불러오지 못했습니다"로 끝난다(2026-09-08 실지갑 검증에서 35초 관측).
 // 동기화를 비동기 작업+폴링으로 바꾸기 전까지의 완화책이다.
+// Docker 이미지는 `.next/standalone`(서버 실행에 필요한 파일만)을 쓴다. 항상 켜 두지 않는 이유:
+// `output: "standalone"`이면 `next start`가 경고를 내고, 로컬 dev/CI는 standalone을 쓸 일이 없다.
+// Dockerfile이 NEXT_OUTPUT=standalone을 주고 빌드한다.
 const nextConfig: NextConfig = {
   ...(devAllowedOrigins.length > 0 ? { allowedDevOrigins: devAllowedOrigins } : {}),
+  ...(process.env.NEXT_OUTPUT === "standalone" ? { output: "standalone" as const } : {}),
   experimental: { proxyTimeout: 180_000 },
 };
 

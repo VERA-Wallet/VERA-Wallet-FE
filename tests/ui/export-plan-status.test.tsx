@@ -8,12 +8,13 @@ import type { TaxEstimate } from "@/lib/tax/types";
 // 구독 상태 카드·과세연도별 결제 카드만 본다. 잠금 판정(export-plan-lock.test.tsx)과
 // estimate 배선(export-report.test.tsx)은 이미 다른 테스트가 덮으므로 여기서 다시 보지 않는다.
 const state = vi.hoisted(() => ({ plan: null as Plan | null }));
-const ports = vi.hoisted(() => ({ list: vi.fn(), getSummary: vi.fn(), getProof: vi.fn(), estimate: vi.fn(), listRuleSets: vi.fn() }));
+const ports = vi.hoisted(() => ({ list: vi.fn(), getSummary: vi.fn(), getProof: vi.fn(), latest: vi.fn(), estimate: vi.fn(), listRuleSets: vi.fn() }));
 
 vi.mock("@/lib/composition-root.client", () => ({
   eventRepository: { list: ports.list },
   summaryProvider: { getSummary: ports.getSummary },
   anchorProofProvider: { getProof: ports.getProof },
+  taxEvidenceProvider: { latest: ports.latest, record: vi.fn() },
   taxEngine: { estimate: ports.estimate, listRuleSets: ports.listRuleSets },
 }));
 
@@ -83,6 +84,7 @@ function renderWith(computableEventCount: number, plan: Plan | null, periodStart
   state.plan = plan;
   ports.list.mockResolvedValue({ items: [], nextCursor: null });
   ports.getProof.mockResolvedValue(null);
+  ports.latest.mockResolvedValue(null);
   ports.getSummary.mockResolvedValue(summaryWith(computableEventCount, periodStartYear));
   ports.estimate.mockResolvedValue(estimate);
   ports.listRuleSets.mockImplementation(async () => listRuleSetSummaries());
@@ -144,6 +146,7 @@ describe("리포트 구독 상태 카드", () => {
     state.plan = plusPlan;
     ports.list.mockResolvedValue({ items: [], nextCursor: null });
     ports.getProof.mockResolvedValue(null);
+    ports.latest.mockResolvedValue(null);
     ports.getSummary.mockReturnValue(new Promise(() => {}));
     ports.estimate.mockReturnValue(new Promise(() => {}));
     ports.listRuleSets.mockImplementation(async () => listRuleSetSummaries());
@@ -158,7 +161,7 @@ describe("리포트 구독 상태 카드", () => {
     renderWith(10, plusPlan, 2027);
 
     await screen.findByText("플러스 플랜 · 2026년 귀속");
-    expect(screen.getByText("활성 플랜은 2026년 귀속입니다 — 지금 보는 연도는 2027년")).toBeInTheDocument();
+    expect(screen.getByText("활성 플랜은 2026년 귀속입니다. 지금 보는 연도는 2027년")).toBeInTheDocument();
   });
 
   it("보는 연도가 활성 플랜 연도와 같으면 불일치 문구를 보이지 않는다", async () => {

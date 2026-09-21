@@ -1,5 +1,14 @@
 # 배포 제약 (v1 mock 단계)
 
+## 배포하는 브랜치는 `master` 하나다
+
+공개 주소(https://verawallet.pelicanlab.dev)의 Docker 이미지는 **체크아웃된 소스 그대로** 빌드된다.
+그래서 feature 브랜치를 체크아웃한 채 루트에서 `pnpm docker:up`을 하면 아직 리뷰도 병합도 되지 않은 코드가
+공개 주소에 올라간다. 배포 전에는 FE를 `master`로, BE를 `main`으로 돌려 놓고 `git status`가 비어 있는지 본다.
+내 변경을 배포에 넣는 길은 브랜치를 띄우는 것이 아니라 **PR을 `master`에 병합한 뒤 다시 빌드하는 것**이다.
+
+절차와 포트·환경변수는 배포 스택을 담은 루트 런처 폴더의 README "Docker 배포" 절에 있다(이 저장소 밖이다).
+
 이 저장소의 v1은 **mock 데이터 단계**다. 실제 백엔드·인덱서·OmniOne SDK·온체인 앵커링이 연결되지 않는 제약은 **OFF(mock) 모드에 한정**된다. ON 모드에서는 `proxy.ts`를 통해 BE에 연동한다.
 
 ## in-memory mock 저장소
@@ -20,6 +29,7 @@
 | `MockAuthStore`(챌린지/세션) | 공유 durable 저장소(Redis·DB)의 원자적 nonce consume + 세션 |
 | `MockEventStore`(이벤트/요약) | 백엔드 인덱싱·분류·로트 원장 API |
 | `anchorProofProvider` mock | 실제 앵커링 컨트랙트 조회 |
+| `app/api/tax-evidence` FE mock 라우트 | ON에서는 `proxy.ts`가 BE로 넘긴다. OFF 라우트는 체인 없이 흐름만 잇는 데모 경로이며 루트 계산만 실제와 같은 규칙을 쓴다 |
 | `/api/auth/did/present` mock | OmniOne SDK(CX vs 디지털아이디는 스펙 §14.2 미결) 연동 |
 
 ## 픽스처 시각 (mock 데이터)
@@ -65,8 +75,10 @@ ON 모드(`VERAWALLET_BACKEND_ORIGIN` 설정)에서 어떤 경로가 어디로 �
 | `POST /api/auth/verify` | BE | 서명 검증과 지갑 바인딩 |
 | `GET /api/auth/session` | BE | 세션 판정의 단일 진실 소스 |
 | `POST /api/auth/logout` | BE | 쿠키 만료를 BE가 발급해야 실제로 끊긴다 |
+| `DELETE /api/auth/wallets/:address` | BE | 지갑 등록 해제. 바인딩과 그 거래·동기화 커서를 BE가 함께 지우고 원장 캐시를 비운다 |
 | `/api/events` (+ 하위 전체, `GET`·`PATCH`) | BE | 목록·요약·상세와 `PATCH /api/events/:id` 재분류까지 |
 | `GET /api/anchor-proof` | BE | 앵커 증명 |
+| `/api/tax-evidence` (+ `/:merkleRoot`) | BE | 계산 근거를 OmniOne 체인에 올린다. 루트는 **BE가 잎에서 다시 계산**하고(FE가 준 해시를 그대로 믿지 않는다) 원본 정본 문서는 BE가 보관한다 |
 | `POST /api/tax/estimate` | **FE** | BE 세금 계층은 역년 고정·단일 세율·KR 무조건 UNDETERMINED로 FE 12개국 엔진보다 충실도가 낮다 |
 | `GET /api/tax/rulesets`, `GET /api/rulesets` | **FE** | 위와 같은 이유. FE는 12개국, BE도 12개국이지만 계산 계층이 다르다 |
 | `POST /api/auth/test-login` | **FE (ON에서 404)** | `vw_session`만 발급해 BE 세션이 되지 않는다. 열려 있으면 무의미한 가짜 세션을 만드는 함정 |

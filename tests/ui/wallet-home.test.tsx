@@ -1,12 +1,12 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PortfolioHoldingsDTO } from "@/lib/http/dto";
 import type { Provenance } from "@/lib/http/envelope";
 
 const nav = vi.hoisted(() => ({ push: vi.fn() }));
-const ports = vi.hoisted(() => ({ getHoldings: vi.fn(), getWallets: vi.fn() }));
+const ports = vi.hoisted(() => ({ getHoldings: vi.fn(), getWallets: vi.fn(), removeWallet: vi.fn() }));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: nav.push, replace: vi.fn(), refresh: vi.fn() }),
@@ -14,7 +14,7 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/composition-root.client", () => ({
   authClient: { requestNonce: vi.fn(), verify: vi.fn(), presentDid: vi.fn(), logout: vi.fn(), getSession: vi.fn() },
   holdingsProvider: { getHoldings: ports.getHoldings },
-  walletsProvider: { getWallets: ports.getWallets },
+  walletsProvider: { getWallets: ports.getWallets, removeWallet: ports.removeWallet },
 }));
 
 import { authClient } from "@/lib/composition-root.client";
@@ -47,6 +47,44 @@ beforeEach(() => {
   ports.getHoldings.mockImplementation(demoHoldings);
   ports.getWallets.mockReset();
   ports.getWallets.mockImplementation(registered);
+  ports.removeWallet.mockReset();
+});
+
+describe("wallet removal", () => {
+  it("asks first, then removes the registered (checksum) address and returns to the wallet list", async () => {
+    ports.removeWallet.mockResolvedValue({ walletAddress: WALLET, removedTransactions: 3 });
+    await renderConnected();
+
+    // 한 번 탭으로 지워지지 않는다 — 시트가 무엇이 사라지는지 먼저 말한다.
+    await userEvent.click(screen.getByRole("button", { name: "이 지갑 삭제" }));
+    expect(ports.removeWallet).not.toHaveBeenCalled();
+    expect(await screen.findByText("이 지갑을 삭제할까요?")).toBeInTheDocument();
+    expect(screen.getByText(/체인에 이미 기록한 계산 근거는 지워지지 않습니다/)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "삭제" }));
+
+    await waitFor(() => expect(ports.removeWallet).toHaveBeenCalledWith(WALLET));
+    await waitFor(() => expect(nav.push).toHaveBeenCalledWith("/wallets"));
+  });
+
+  it("cancel closes the sheet without calling the server", async () => {
+    await renderConnected();
+    await userEvent.click(screen.getByRole("button", { name: "이 지갑 삭제" }));
+    await userEvent.click(screen.getByRole("button", { name: "취소" }));
+    await waitFor(() => expect(screen.queryByText("이 지갑을 삭제할까요?")).toBeNull());
+    expect(ports.removeWallet).not.toHaveBeenCalled();
+    expect(nav.push).not.toHaveBeenCalled();
+  });
+
+  it("says why when the server refuses, and stays on the page", async () => {
+    ports.removeWallet.mockRejectedValue(new HoldingsFetchError("wallet_not_found", "Wallet is not registered to this account."));
+    await renderConnected();
+    await userEvent.click(screen.getByRole("button", { name: "이 지갑 삭제" }));
+    await userEvent.click(screen.getByRole("button", { name: "삭제" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("이미 등록 해제된 지갑입니다");
+    expect(nav.push).not.toHaveBeenCalled();
+  });
 });
 
 describe("wallet home (portfolio of one registered wallet)", () => {
@@ -57,8 +95,8 @@ describe("wallet home (portfolio of one registered wallet)", () => {
     expect(rows).toHaveLength(3);
     // Sorted by USD value descending: ETH (2,400) > USDT (850) > USDC (500).
     expect(rows[0]).toHaveTextContent("ETH");
-    expect(rows[0]).toHaveTextContent("US$3,200.00"); // unit price
-    expect(rows[0]).toHaveTextContent("US$2,400.00"); // value
+    expect(rows[0]).toHaveTextContent("₩4,320,000"); // unit price
+    expect(rows[0]).toHaveTextContent("₩3,240,000"); // value
     expect(rows[0]).toHaveTextContent("0.75 ETH"); // amount
     expect(rows[1]).toHaveTextContent("USDT");
     expect(rows[2]).toHaveTextContent("USDC");
@@ -67,7 +105,7 @@ describe("wallet home (portfolio of one registered wallet)", () => {
     expect(container.querySelector('[data-token-icon="USDT"]')).not.toBeNull();
     expect(container.querySelector('[data-token-icon="USDC"]')).not.toBeNull();
     // Portfolio total.
-    expect(screen.getByText("US$28,050.00")).toBeInTheDocument();
+    expect(screen.getByText("₩37,867,500")).toBeInTheDocument();
     // No 검증됨 badge anywhere.
     expect(screen.queryByText("검증됨")).toBeNull();
   });
@@ -76,12 +114,12 @@ describe("wallet home (portfolio of one registered wallet)", () => {
     const { container } = await renderConnected();
     const rows = container.querySelectorAll('[data-surface="holding-row"]');
 
-    // ETH: 2,400 − 1,800 cost = +US$600.00 (+33.33%), a gain → brand receive (green).
-    expect(rows[0]).toHaveTextContent("+US$600.00");
+    // ETH: 2,400 − 1,800 cost = +₩600 (+33.33%), a gain → brand receive (green).
+    expect(rows[0]).toHaveTextContent("+₩810,000");
     expect(rows[0]).toHaveTextContent("+33.33%");
     expect(rows[0].querySelector(".text-receive")).not.toBeNull();
-    // USDT: 850 − 900 cost = -US$50.00 (-5.56%), a loss → brand dispose (red).
-    expect(rows[1]).toHaveTextContent("-US$50.00");
+    // USDT: 850 − 900 cost = -₩50 (-5.56%), a loss → brand dispose (red).
+    expect(rows[1]).toHaveTextContent("-₩67,500");
     expect(rows[1]).toHaveTextContent("-5.56%");
     expect(rows[1].querySelector(".text-dispose")).not.toBeNull();
   });
@@ -90,10 +128,10 @@ describe("wallet home (portfolio of one registered wallet)", () => {
     const { container } = await renderConnected();
     const summary = container.querySelector('[data-surface="wallet-holdings-summary"]')!;
     expect(summary).not.toBeNull();
-    // value 3,750 − cost 3,180 = +US$570.00 (+17.92%).
-    expect(summary).toHaveTextContent("US$3,750.00");
+    // value 3,750 − cost 3,180 = +₩570 (+17.92%).
+    expect(summary).toHaveTextContent("₩5,062,500");
     expect(summary).toHaveTextContent("평가손익");
-    expect(summary).toHaveTextContent("+US$570.00");
+    expect(summary).toHaveTextContent("+₩769,500");
     expect(summary).toHaveTextContent("+17.92%");
     expect(summary.querySelector(".text-receive")).not.toBeNull();
   });
@@ -117,7 +155,7 @@ describe("wallet home (portfolio of one registered wallet)", () => {
     // Sorted by floor value desc: BAYC > Pudgy > Azuki > Doodles.
     expect(cards[0]).toHaveTextContent("BAYC");
     expect(cards[0]).toHaveTextContent("Bored Ape Yacht Club");
-    expect(cards[0]).toHaveTextContent("US$8,000.00");
+    expect(cards[0]).toHaveTextContent("₩10,800,000");
     // Token rows are gone on the NFT tab.
     expect(container.querySelectorAll('[data-surface="holding-row"]')).toHaveLength(0);
   });
@@ -131,7 +169,7 @@ describe("wallet home (portfolio of one registered wallet)", () => {
     expect(rows).toHaveLength(3);
     // Sorted by value desc: Uniswap v3 > Lido > Aave v3.
     expect(rows[0]).toHaveTextContent("Uniswap v3");
-    expect(rows[0]).toHaveTextContent("US$3,200.00");
+    expect(rows[0]).toHaveTextContent("₩4,320,000");
     expect(rows[1]).toHaveTextContent("스테이킹");
     expect(rows[1]).toHaveTextContent("APY 3.2%");
   });
@@ -170,7 +208,7 @@ describe("wallet home (portfolio of one registered wallet)", () => {
   it("labels the token section as demo data with the mock chip when the provenance is mock", async () => {
     await renderConnected();
     expect(screen.getByTestId("mock-provenance")).toBeInTheDocument();
-    expect(screen.getByText(/데모 예시 데이터\(USD\) 기준/)).toBeInTheDocument();
+    expect(screen.getByText(/데모 예시 데이터\(원화\) 기준/)).toBeInTheDocument();
   });
 
   it("shows a loading state first, then the portfolio — never an empty wallet while the read is pending", async () => {
@@ -233,17 +271,18 @@ describe("wallet home (portfolio of one registered wallet)", () => {
       data: {
         walletAddresses: [WALLET],
         holdings: [
-          { chainId: 1, assetType: "NATIVE", contract: null, symbol: "ETH", name: "ETH", decimals: 18, amount: "0.75", priceUsd: "3200", valueUsd: "2400", priceStatus: "priced", costUsd: "2160", costStatus: "ready", trackedAmount: "0.75", canonicalAssetId: "eth" },
-          { chainId: 8453, assetType: "ERC20", contract: "0xusdc", symbol: "USDC", name: "USD Coin", decimals: 6, amount: "500", priceUsd: "1", valueUsd: "500", priceStatus: "priced", costUsd: "240", costStatus: "partial", trackedAmount: "250", canonicalAssetId: "usdc" },
-          { chainId: 137, assetType: "ERC20", contract: "0xghost", symbol: "GHOST", name: "Ghost", decimals: 18, amount: "12", priceUsd: null, valueUsd: null, priceStatus: "unknown", costUsd: null, costStatus: "unknown", trackedAmount: null, canonicalAssetId: null },
-          { chainId: 10, assetType: "NATIVE", contract: null, symbol: "ETH", name: "ETH", decimals: 18, amount: "0.1", priceUsd: "3200", valueUsd: "320", priceStatus: "priced", costUsd: null, costStatus: "fx_unavailable", trackedAmount: "0.1", canonicalAssetId: "eth" },
+          { chainId: 1, assetType: "NATIVE", contract: null, symbol: "ETH", name: "ETH", decimals: 18, amount: "0.75", priceKrw: "3200", valueKrw: "2400", priceStatus: "priced", costKrw: "2160", costStatus: "ready", trackedAmount: "0.75", canonicalAssetId: "eth" },
+          { chainId: 8453, assetType: "ERC20", contract: "0xusdc", symbol: "USDC", name: "USD Coin", decimals: 6, amount: "500", priceKrw: "1", valueKrw: "500", priceStatus: "priced", costKrw: "240", costStatus: "partial", trackedAmount: "250", canonicalAssetId: "usdc" },
+          { chainId: 137, assetType: "ERC20", contract: "0xghost", symbol: "GHOST", name: "Ghost", decimals: 18, amount: "12", priceKrw: null, valueKrw: null, priceStatus: "unknown", costKrw: null, costStatus: "unknown", trackedAmount: null, canonicalAssetId: null },
+          { chainId: 10, assetType: "NATIVE", contract: null, symbol: "ETH", name: "ETH", decimals: 18, amount: "0.1", priceKrw: "3200", valueKrw: "320", priceStatus: "priced", costKrw: null, costStatus: "fx_unavailable", trackedAmount: "0.1", canonicalAssetId: "eth" },
         ],
-        byWallet: [{ address: WALLET, verificationMethod: "watch_only", totalValueUsd: "3220", chainIds: [1, 10, 137, 8453], holdingsCount: 4, unpricedCount: 1 }],
+        byWallet: [{ address: WALLET, verificationMethod: "watch_only", totalValueKrw: "3220", chainIds: [1, 10, 137, 8453], holdingsCount: 4, unpricedCount: 1 }],
+        fx: { usdKrw: "1390", day: "2026-09-11" },
         skippedChainIds: [42161],
         truncatedChainIds: [],
         unresolvedCount: 2,
         droppedCount: 1,
-        totalValueUsd: "3220",
+        totalValueKrw: "3220",
         unpricedCount: 1,
         asOf: "2026-09-11T05:00:00.000Z",
       },
@@ -252,12 +291,13 @@ describe("wallet home (portfolio of one registered wallet)", () => {
     const { container } = await renderConnected();
 
     expect(screen.queryByTestId("mock-provenance")).toBeNull();
-    // 상단 총액은 토큰뿐이다(2,400 + 500 + 320). 데모 NFT·디파이 24,300달러가 섞이면 안 된다.
-    expect(container.querySelector('[data-surface="wallet-total"]')).toHaveTextContent("US$3,220.00");
-    expect(screen.queryByText("US$27,520.00")).toBeNull();
+    // 상단 총액은 토큰뿐이다(2,400 + 500 + 320). 데모 NFT·디파이 3,280만 원이 섞이면 안 된다.
+    expect(container.querySelector('[data-surface="wallet-total"]')).toHaveTextContent("₩3,220");
+    expect(screen.queryByText("₩32,808,220")).toBeNull();
     const note = container.querySelector('[data-surface="wallet-total-note"]')!;
-    expect(note).toHaveTextContent("온체인 잔액과 DexScreener 시세");
-    expect(note).toHaveTextContent("취득원가는 오늘 환율로 USD 환산");
+    expect(note).toHaveTextContent("온체인 잔액 × DexScreener 시세");
+    expect(note).toHaveTextContent("US$1 = ₩1,390");
+    expect(note).toHaveTextContent("취득원가는 원장의 원화 그대로입니다");
     expect(note).toHaveTextContent("NFT·디파이는 아직 조회하지 않습니다");
     expect(note).toHaveTextContent("시세 없는 자산 1개는 총액에서 뺐습니다");
     const coverage = container.querySelector('[data-surface="wallet-coverage"]')!;
@@ -273,35 +313,35 @@ describe("wallet home (portfolio of one registered wallet)", () => {
     expect(groups[0]).toHaveAttribute("data-chains", "1,10");
     expect(groups[0]).toHaveTextContent("ETH");
     expect(groups[0]).toHaveTextContent("2개 체인");
-    expect(groups[0]).toHaveTextContent("US$2,720.00"); // 2,400 + 320
+    expect(groups[0]).toHaveTextContent("₩2,720"); // 2,400 + 320
     expect(groups[0]).toHaveTextContent("0.85 ETH");
     // 옵티미즘 쪽 원가가 없으니 묶음 손익은 내지 않는다 — 이더리움의 +240을 슬쩍 보여주지 않고, 원가 문구도 쓰지 않는다.
-    expect(groups[0]).not.toHaveTextContent("+US$240.00");
+    expect(groups[0]).not.toHaveTextContent("+₩240");
     expect(groups[0]).not.toHaveTextContent("원가");
     expect(groups[0]).not.toHaveTextContent("환율");
     const rows = container.querySelectorAll('[data-surface="holding-row"]');
     expect(rows).toHaveLength(2);
     expect(rows[0]).toHaveTextContent("USDC");
-    expect(rows[0]).not.toHaveTextContent("US$260.00"); // partial: no gain figure, and no cost wording either
+    expect(rows[0]).not.toHaveTextContent("₩260"); // partial: no gain figure, and no cost wording either
     expect(rows[0]).not.toHaveTextContent("원가");
     // 모든 행에 펼침 아이콘이 있다.
     expect(rows[0].querySelector("button[aria-expanded]")).not.toBeNull();
     expect(rows[1]).toHaveTextContent("GHOST");
     expect(rows[1]).toHaveTextContent("시세 미확인");
-    expect(rows[1]).not.toHaveTextContent("US$0.00");
+    expect(rows[1]).not.toHaveTextContent("₩0");
     // 묶음을 펼치면 체인별 내역이 나온다.
     const user0 = userEvent.setup();
     await user0.click(screen.getByRole("button", { name: "ETH 체인별 보기" }));
     const members = container.querySelectorAll('[data-surface="holding-group-member"]');
     expect(members).toHaveLength(2);
     expect(members[0]).toHaveTextContent("Ethereum");
-    expect(members[0]).toHaveTextContent("US$2,400.00");
+    expect(members[0]).toHaveTextContent("₩2,400");
     expect(members[1]).toHaveTextContent("Optimism");
     expect(members[1]).not.toHaveTextContent("환율");
 
     // 손익 요약은 원가·시세가 다 있는 ETH 한 줄만 더하고, 3줄이 빠졌다고 말한다.
     const summary = container.querySelector('[data-surface="wallet-holdings-summary"]')!;
-    expect(summary).toHaveTextContent("+US$240.00");
+    expect(summary).toHaveTextContent("+₩240");
     expect(summary).toHaveTextContent("3개 제외");
 
     // NFT·디파이 탭은 "없다"가 아니라 "아직 조회하지 않는다"고 말한다.

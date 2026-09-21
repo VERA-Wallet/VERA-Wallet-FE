@@ -6,8 +6,8 @@ import type { PortfolioHoldingsDTO } from "@/lib/http/dto";
 const dto: PortfolioHoldingsDTO = {
   walletAddresses: ["0xabc"],
   byWallet: [],
-  holdings: [{ chainId: 1, assetType: "NATIVE", contract: null, symbol: "ETH", name: "ETH", decimals: 18, amount: "0.75", priceUsd: "3200", valueUsd: "2400", priceStatus: "priced", costUsd: "2160", costStatus: "ready", trackedAmount: "0.75", canonicalAssetId: "eth" }],
-  skippedChainIds: [], truncatedChainIds: [], unresolvedCount: 0, droppedCount: 0, totalValueUsd: "2400", unpricedCount: 0, asOf: "2026-09-11T05:00:00.000Z",
+  holdings: [{ chainId: 1, assetType: "NATIVE", contract: null, symbol: "ETH", name: "ETH", decimals: 18, amount: "0.75", priceKrw: "3200", valueKrw: "2400", priceStatus: "priced", costKrw: "2160", costStatus: "ready", trackedAmount: "0.75", canonicalAssetId: "eth" }],
+  skippedChainIds: [], truncatedChainIds: [], unresolvedCount: 0, droppedCount: 0, totalValueKrw: "2400", unpricedCount: 0, asOf: "2026-09-11T05:00:00.000Z", fx: { usdKrw: "1390", day: "2026-09-11" },
 };
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 

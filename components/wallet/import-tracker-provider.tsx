@@ -11,6 +11,7 @@ import {
   clearStoredImportJob,
   isPartialImport,
   readStoredImportJob,
+  reportedDoneChainCount,
   writeStoredImportJob,
   type ImportTrackerState,
 } from "@/lib/wallet/import-tracker";
@@ -108,6 +109,8 @@ export function ImportTrackerProvider({ children }: { children: ReactNode }) {
   const walletRef = useRef<string | null>(null);
   /** 시작 시점의 원장. 끝난 뒤 다시 받은 목록에서 이 집합에 없는 것이 새 거래다. */
   const knownIdsRef = useRef<Set<string>>(new Set());
+  /** 저장까지 마친 (지갑, 체인) 쌍의 수. 늘어날 때마다 원장을 다시 받아 큰 지갑도 끝난 체인부터 보이게 한다. */
+  const doneChainsRef = useRef(0);
 
   /**
    * 무엇이 새로 들어왔는지를 **다시 받은 목록에서** 센다.
@@ -155,6 +158,7 @@ export function ImportTrackerProvider({ children }: { children: ReactNode }) {
       // 목록을 본 적이 없으면 빈 원장으로 본다 — 첫 지갑에서는 그 뒤에 나타나는 모든 거래가 실제로 새 거래다.
       const knownEventIds = snapshotEventIds(queryClient) ?? [];
       knownIdsRef.current = new Set(knownEventIds);
+      doneChainsRef.current = 0;
 
       setState({
         ...IDLE_IMPORT_TRACKER_STATE,
@@ -170,6 +174,15 @@ export function ImportTrackerProvider({ children }: { children: ReactNode }) {
         // jobId를 처음 아는 지점. 여기서 남겨야 새로고침이 같은 작업을 이어받는다 — 다시 접수하면 작업이 하나 더 생긴다.
         writeStoredImportJob({ jobId: job.jobId, startedAt, walletAddress });
         setState((previous) => (previous.status === "running" ? { ...previous, jobId: job.jobId, job } : previous));
+        // BE가 체인 하나를 저장할 때마다 그 체인의 거래는 이미 원장에 있다. 끝날 때까지 기다리면 큰 지갑은
+        // 몇 분 동안 빈 화면이다 — 보이는 조회만 다시 받는다(구독자 없는 화면까지 받을 이유는 없다).
+        const doneChains = reportedDoneChainCount(job.progress ?? null);
+        if (doneChains > doneChainsRef.current) {
+          doneChainsRef.current = doneChains;
+          void queryClient.invalidateQueries({ queryKey: eventQueryKey });
+          void queryClient.invalidateQueries({ queryKey: eventSummaryQueryKey });
+          void queryClient.invalidateQueries({ queryKey: holdingsQueryKey });
+        }
       };
 
       const settled = resume

@@ -189,11 +189,11 @@ export function EventDetails({
           사용자가 받은 다리를 "무관"이 아니라 "나중 처분의 원가"로 읽는다. */}
       {swapInLeg ? (
         <section className="mt-4 rounded-lg bg-zinc-50 p-3">
-          <h3 className="text-sm font-semibold text-zinc-700">스왑 구성 — 한 거래, 두 다리</h3>
+          <h3 className="text-sm font-semibold text-zinc-700">스왑 구성: 한 거래, 두 다리</h3>
           <div className="mt-2 space-y-2 text-sm">
             <p className="text-zinc-700">
               <span className="font-semibold text-rose-700">내보낸 자산</span> {formatSignedTokenAmount(event)} {assetTicker(event)}
-              <span className="text-zinc-500"> — 손익은 아래 근거표가 말합니다.</span>
+              <span className="text-zinc-500"> · 손익은 아래 근거표가 말합니다.</span>
             </p>
             <div className="rounded-lg bg-white p-3">
               <p className="font-semibold text-emerald-700">받은 자산 {formatSignedTokenAmount(swapInLeg)} {assetTicker(swapInLeg)}</p>
@@ -203,7 +203,7 @@ export function EventDetails({
               {needsReview(swapInLeg) ? (
                 <p className="mt-1 rounded bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800">확인 필요 · {reviewReason(swapInLeg)}</p>
               ) : null}
-              <p className="mt-1 text-zinc-500">지금 내는 세금이 아닙니다 — 이 자산을 나중에 팔 때의 원가가 됩니다(손익 이연).</p>
+              <p className="mt-1 text-zinc-500">지금 내는 세금이 아닙니다. 이 자산을 나중에 팔 때의 원가가 됩니다(손익 이연).</p>
             </div>
           </div>
         </section>
@@ -240,7 +240,7 @@ export function EventDetails({
             모르는 주소는 지어내지 않고 축약만 보인다. */}
         <div>
           <dt className="text-zinc-500">상대</dt>
-          <dd className="mt-1 font-medium text-zinc-900">
+          <dd className="mt-1 wrap-anywhere font-medium text-zinc-900">
             {counterpartyLabel(event.counterparty, event.counterparty_label ?? null)}
             {knownContractName(event.counterparty, event.counterparty_label ?? null)
               ? <span className="ml-1 font-mono text-xs font-normal text-zinc-400">({shortHash(event.counterparty)})</span>
@@ -255,7 +255,7 @@ export function EventDetails({
         {/* 심볼은 사칭할 수 있다. 대조 결과를 자산 정보 옆에 붙여 이름만 믿지 않게 한다. */}
         <div>
           <dt className="text-zinc-500">자산 타입</dt>
-          <dd className="mt-1 font-medium text-zinc-900">
+          <dd className="mt-1 wrap-anywhere font-medium text-zinc-900">
             {event.asset_type} · {event.asset_verified ? "검증됨" : "미검증 토큰"}
           </dd>
         </div>
@@ -301,19 +301,19 @@ export function EventDetails({
                   <div>
                     <dt className="text-zinc-500">보유일</dt>
                     {/* 여러 취득분을 소비하면 보유기간이 하나로 정해지지 않는다.
-                        "—"만 두면 기록이 없는 것과 구분되지 않는다. */}
-                    <dd className="mt-1 font-medium text-zinc-900">
+                        "-"만 두면 기록이 없는 것과 구분되지 않는다. */}
+                    <dd className="mt-1 wrap-anywhere font-medium text-zinc-900">
                       {row.holdingDays !== null
                         ? `${row.holdingDays}일`
                         : row.lots > 1
                           ? "취득분마다 다름"
-                          : "—"}
+                          : "-"}
                     </dd>
                   </div>
                   <div>
                     <dt className="text-zinc-500">취득일</dt>
-                    <dd className="mt-1 font-medium text-zinc-900">
-                      {row.acquiredAt ? formatDate(row.acquiredAt) : row.lots > 1 ? "취득분마다 다름" : "—"}
+                    <dd className="mt-1 wrap-anywhere font-medium text-zinc-900">
+                      {row.acquiredAt ? formatDate(row.acquiredAt) : row.lots > 1 ? "취득분마다 다름" : "-"}
                     </dd>
                   </div>
                   <div><dt className="text-zinc-500">소비한 취득분</dt><dd className="mt-1 font-medium text-zinc-900">{row.lots}개</dd></div>
@@ -354,7 +354,7 @@ export function EventDetails({
                     {row.inPeriod ? "" : " · 기간 밖(원가 추적용)"}
                   </p>
                 ) : null}
-                <p className="mt-1 text-zinc-500">{row.basis}</p>
+                <p className="mt-1 wrap-anywhere text-zinc-500">{row.basis}</p>
               </div>
             ))}
           </div>
@@ -377,9 +377,9 @@ export function EventDetails({
           <summary className="cursor-pointer text-sm font-semibold text-zinc-700 marker:text-zinc-400">이 거래가 없었다면</summary>
           <p className="mt-2 text-sm text-zinc-700">
             {isZero(marginalContribution)
-              ? "총액이 그대로입니다 — 부담에 영향 없음"
+              ? "총액이 그대로입니다. 부담에 영향 없음"
               : isNegative(marginalContribution)
-                ? <>이 거래를 지우면 부담이 늘어납니다 — 취득원가가 사라지기 때문입니다 · {formatFiat(marginalContribution, currency)}</>
+                ? <>이 거래를 지우면 부담이 늘어납니다. 취득원가가 사라지기 때문입니다 · {formatFiat(marginalContribution, currency)}</>
                 : formatFiat(marginalContribution, currency)}
           </p>
           <p className="mt-1 text-sm text-zinc-500">부담을 건별로 나눠 넣을 수 없어, 이 거래를 뺀 경우의 차이를 보입니다.</p>
@@ -392,7 +392,7 @@ export function EventDetails({
       {history.length > 0 ? (
         <details className="mt-4 rounded-lg bg-zinc-50 p-3">
           <summary className="cursor-pointer text-sm font-semibold text-zinc-700 marker:text-zinc-400">재분류 이력</summary>
-          <ul className="mt-2 space-y-1 text-sm text-zinc-600">
+          <ul className="mt-2 space-y-1 text-sm wrap-anywhere text-zinc-600">
             {history.map((entry, index) => (
               <li key={`${entry.overridden_at}-${index}`}>
                 {formatDate(entry.overridden_at)} · {entry.from} → {entry.to}

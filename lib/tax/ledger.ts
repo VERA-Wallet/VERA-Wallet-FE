@@ -183,7 +183,7 @@ export function runLedger(events: TaxEvent[], policy: LedgerPolicy, lookahead: T
     if (isPositive(consumption.shortfall)) {
       // 사용자가 처분 원가(취득가액 직접 입력·50% 의제)를 정했으면 "취득가 0원"이 아니다 — 경고를 달지 않는다.
       if (event.cost === undefined) {
-        const message = `${event.id}: 원장에 없는 수량 ${consumption.shortfall} ${event.symbol} —${ZERO_BASIS_SUFFIX}`;
+        const message = `${event.id}: 원장에 없는 수량 ${consumption.shortfall} ${event.symbol}:${ZERO_BASIS_SUFFIX}`;
         warnings.push(message);
         warned.push({ message, eventId: event.id });
       }

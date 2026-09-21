@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { BottomSheet } from "@/components/ui/bottom-sheet";
 import { Card } from "@/components/ui/card";
 import { ExchangeMark } from "@/components/ui/exchange-mark";
-import { MockProvenanceChip } from "@/components/ui/mock-provenance-chip";
+import { MockProvenanceChip } from "@/components/ui/provenance-chip";
 import { formatDate } from "@/lib/format";
 import {
   EXCHANGES,
@@ -97,7 +97,7 @@ export function ExchangeConnectPanel({
       setPending(false);
       setOpenId(null);
       setForm(EMPTY_FORM);
-      setNotice(`${exchange.name} 연동됨 — 조회 전용 권한입니다.`);
+      setNotice(`${exchange.name} 연동됨. 조회 전용 권한입니다.`);
     }, linkDelayMs);
   }
 

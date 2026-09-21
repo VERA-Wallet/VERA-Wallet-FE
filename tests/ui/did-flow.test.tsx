@@ -138,7 +138,8 @@ describe("DID login flow", () => {
       // BE는 실제 인증 토큰이 있어도 요청의 country를 그대로 세션 거주국으로 쓴다. 실제 인증에서 이 줄을 감추면
       // 모든 사용자가 KR로 굳고 해외 거주자는 바꿀 길이 없다(2026-09-18 독립 검증에서 잡힌 회귀).
       vi.stubEnv("NEXT_PUBLIC_OMNIONE_CX_AUTH_URL", "https://cx.example.test:17543/ent/esign");
-      render(<DidLoginFlow authClient={stubAuthClient()} />);
+      // 출처는 서버 페이지가 계산해 내려준다(`identityProvenance`): FE 스위치와 BE 신원 공급자가 모두 실모드일 때만 live다.
+      render(<DidLoginFlow authClient={stubAuthClient()} provenance="live" />);
       expect(document.querySelector("details")).not.toBeNull();
       expect(screen.getByRole("group", { name: "거주국 선택" })).toBeInTheDocument();
       // 실제 인증에는 mock 출처 칩을 달지 않는다.

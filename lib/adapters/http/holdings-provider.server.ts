@@ -4,24 +4,24 @@ import { beFetch } from "@/lib/adapters/session/request-cookie.server";
 import { decodeResponse } from "@/lib/http/error-codec";
 import type { PortfolioHoldingsDTO } from "@/lib/http/dto";
 import type { Provenance } from "@/lib/http/envelope";
-import { FxRateUnavailableError, type FxRateProvider, type FxRateTable } from "@/lib/ports/fx-rate";
+import { FxRateUnavailableError, type FxRateProvider } from "@/lib/ports/fx-rate";
 import { HoldingsReadError, type HoldingsProvider } from "@/lib/ports/holdings-provider";
 import { SessionInfrastructureError } from "@/lib/ports/session-reader";
 import { beHoldingsSchema, parseBeHoldingRows, type BeHoldingsDTO } from "@/lib/schema/be-portfolio-transport";
+import type { Decimal } from "@/lib/tax/decimal";
 import { utcDay } from "@/lib/tax/fx-convert";
-import { costCurrenciesNeedingFx, toPortfolioHoldings } from "@/lib/wallet/holdings-cost";
+import { DISPLAY_CURRENCY, costCurrenciesNeedingFx, toPortfolioHoldings, type HoldingsFx } from "@/lib/wallet/holdings-cost";
 
 /**
- * BE 잔액 API를 서버에서 읽고 취득원가를 USD로 맞추는 어댑터.
+ * BE 잔액 API를 서버에서 읽고 시세를 원화로 맞추는 어댑터.
  *
  * `/api/portfolio/holdings`를 프록시로 BE에 바로 넘기지 않고 FE Route Handler가 소유하는 이유가 이것이다:
- * BE는 환율을 갖지 않아 원가를 원장 통화(KRW)로만 주는데, 화면은 시세와 같은 USD로 손익을 보여야 한다.
+ * BE는 환율을 갖지 않아 시세·평가액을 DexScreener의 USD로만 주는데, 이 앱은 원화만 말한다. 취득원가는 원장 통화(KRW)라 그대로다.
  * 세금 화면이 쓰는 환율 소스(`FxRateProvider`)를 여기서도 쓴다. 단 **날짜 기준은 다르다**: 세금은 이벤트마다 거래일 환율,
- * 여기는 원가 합계를 오늘 환율로 한 번에 환산한다(BE가 취득일별 lot을 주지 않는다). 그래서 두 화면의 원가는 환율 변동만큼
- * 어긋날 수 있고, 화면은 "오늘 환율로 환산"이라고 말한다.
+ * 여기는 현재 평가액을 오늘 환율로 옮긴다. 화면은 어떤 환율을 썼는지(`fx`) 함께 말한다.
  *
- * 환율 소스 장애는 조회 전체를 실패시키지 않는다 — 잔액·시세는 이미 손에 있으므로 원가만 `fx_unavailable`로
- * 비우고 나머지를 돌려준다. 반대로 BE 조회 실패는 그대로 전한다(빈 목록으로 뭉개면 "자산 없음"이라는 거짓말).
+ * 환율 소스 장애는 조회를 실패시킨다(`fx_unavailable`, 502). 원화 숫자가 없으면 답이 없는 것이지, 달러나 0으로 대신하지 않는다.
+ * BE 조회 실패도 그대로 전한다(빈 목록으로 뭉개면 "자산 없음"이라는 거짓말).
  */
 const NEST_ROUTE_MISSING = /^Cannot (GET|POST|PUT|PATCH|DELETE) /;
 
@@ -57,21 +57,36 @@ export class BeHttpHoldingsProvider implements HoldingsProvider {
     // 행은 개별 검증한다 — 초소액 토큰 한 줄의 형식 오류가 지갑 전체를 502로 만들면 안 된다. 버린 수는 응답에 실린다.
     const { holdings, dropped } = parseBeHoldingRows(decoded.data.holdings);
     const be: BeHoldingsDTO = { ...decoded.data, holdings };
-    const rates = await this.ratesFor(be);
-    return { data: toPortfolioHoldings(be, rates, dropped), provenance: decoded.meta.provenance };
+    const fx = await this.fxFor(be);
+    return { data: toPortfolioHoldings(be, fx, dropped), provenance: decoded.meta.provenance };
   }
 
-  /** 원가 통화 → USD 환율(조회 시점의 날). 소스가 응답하지 않으면 null — 호출자가 fx_unavailable로 표시한다. */
-  private async ratesFor(be: BeHoldingsDTO): Promise<{ table: FxRateTable; day: string } | null> {
-    const currencies = costCurrenciesNeedingFx(be);
-    if (currencies.length === 0) return null;
-    // 원장 통화는 하나(KRW)다. 둘 이상이면 계약이 바뀐 것이고, 첫 통화만 환산하면 나머지가 조용히 틀리므로 거부한다.
-    if (currencies.length > 1) throw new SessionInfrastructureError("invalid_contract", `BE 원가 통화가 둘 이상이다: ${currencies.join(", ")}`);
+  /**
+   * 오늘 환율. USD→KRW는 필수다: 시세가 USD로만 오는데 화면은 원화만 말하므로 이 환율이 없으면 답이 없다.
+   * 원가 통화(원장 통화)가 KRW가 아니면 그 환율도 받되, 못 받으면 원가만 `fx_unavailable`로 둔다. 잔액·시세는 이미 손에 있다.
+   */
+  private async fxFor(be: BeHoldingsDTO): Promise<HoldingsFx> {
     const day = utcDay(this.today());
+    const costCurrencies = costCurrenciesNeedingFx(be);
+    // 원장 통화는 하나(KRW)다. 둘 이상이면 계약이 바뀐 것이고, 첫 통화만 환산하면 나머지가 조용히 틀리므로 거부한다.
+    if (costCurrencies.length > 1) throw new SessionInfrastructureError("invalid_contract", `BE 원가 통화가 둘 이상이다: ${costCurrencies.join(", ")}`);
+    const usdKrw = await this.rateToKrw("USD", day);
+    if (usdKrw === undefined) throw new HoldingsReadError(502, "fx_unavailable", "환율 서버에서 응답을 받지 못해 원화 평가액을 계산하지 못했다.");
+    const costKrwPer = new Map<string, Decimal>([["USD", usdKrw]]);
+    const [costCurrency] = costCurrencies;
+    if (costCurrency !== undefined && !costKrwPer.has(costCurrency)) {
+      const rate = await this.rateToKrw(costCurrency, day);
+      if (rate !== undefined) costKrwPer.set(costCurrency, rate);
+    }
+    return { day, usdKrw, costKrwPer };
+  }
+
+  /** `from` 1단위당 KRW(그날). 소스가 응답하지 않거나 그날 값이 없으면 undefined. */
+  private async rateToKrw(from: string, day: string): Promise<Decimal | undefined> {
     try {
-      return { table: await this.fx.ratesFor({ from: currencies[0], to: "USD", dates: [day] }), day };
+      return (await this.fx.ratesFor({ from, to: DISPLAY_CURRENCY, dates: [day] })).get(day);
     } catch (error) {
-      if (error instanceof FxRateUnavailableError) return null;
+      if (error instanceof FxRateUnavailableError) return undefined;
       throw error;
     }
   }

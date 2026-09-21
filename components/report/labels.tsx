@@ -26,10 +26,11 @@ export const TOPIC_LABEL: Record<RuleTopic, string> = {
   LOSS_OFFSET: "손실 상계",
 };
 
+// 배지는 "계산이 무엇을 했는지"만 말한다. 섹션 제목(흔들리는 지점)과 같은 말을 배지에 또 쓰면 줄마다 반복된다.
 export const LIMITATION_LABEL: Record<LimitationKind, string> = {
-  excluded: "답에서 빠짐",
-  zero_basis: "취득가액 0으로 계산",
-  approximation: "근사",
+  excluded: "계산에서 뺌",
+  zero_basis: "취득가액 0원으로 계산",
+  approximation: "근사 계산",
   not_reflected: "반영 안 함",
   other: "그 밖의 한계",
 };

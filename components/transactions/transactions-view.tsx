@@ -234,9 +234,9 @@ export function TransactionsView({
         <details className="mt-3">
           <summary className="cursor-pointer text-xs font-medium text-zinc-400">배지 뜻</summary>
           <div className="mt-2 space-y-1 text-sm text-zinc-600">
-            <p>분류 — 온체인에서 일어난 일(수신·송금·교환·내부 이동·미분류). 상세에서 직접 바꿀 수 있습니다.</p>
-            <p>판정 — 이 거래가 세금 계산에서 어떻게 쓰였는지(과세·취득·비과세·이연 등). 거주국 룰셋이 정하며 나라마다 다릅니다.</p>
-            <p>앰버 배지 — 확인이 필요한 문제. 정상 상태는 배지를 달지 않습니다.</p>
+            <p>분류: 온체인에서 일어난 일(수신·송금·교환·내부 이동·미분류). 상세에서 직접 바꿀 수 있습니다.</p>
+            <p>판정: 이 거래가 세금 계산에서 어떻게 쓰였는지(과세·취득·비과세·이연 등). 거주국 룰셋이 정하며 나라마다 다릅니다.</p>
+            <p>앰버 배지: 확인이 필요한 문제. 정상 상태는 배지를 달지 않습니다.</p>
           </div>
         </details>
         {/* 원장에서 빠진 것들을 반드시 말한다. 조용히 빼면 목록이 완전한 것처럼 보이면서 거래가 사라진다.
@@ -270,8 +270,8 @@ export function TransactionsView({
           <p role="status" className="mt-3 border-l-2 border-zinc-200 pl-2 text-xs text-zinc-400">
             {eventsStale && events.data
               ? (eventsFresh.state === "error"
-                  ? "갱신하지 못했습니다 — 마지막으로 받은 상태 표시"
-                  : "갱신 중 — 마지막으로 받은 상태 표시")
+                  ? "갱신하지 못했습니다. 마지막으로 받은 상태 표시"
+                  : "갱신 중. 마지막으로 받은 상태 표시")
               : null}
             {eventsStale && events.data && events.data?.truncated ? " · " : null}
             {events.data?.truncated ? (

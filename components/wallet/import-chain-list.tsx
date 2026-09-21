@@ -1,6 +1,7 @@
 import { ChainIcon } from "@/components/ui/chain-icon";
 import {
-  chainScanState,
+  chainScanDetail,
+  chainScanStateOf,
   importProgressPercent,
   type ChainScanState,
   type ImportProgress,
@@ -28,7 +29,10 @@ export function ImportChainList({ progress = null, chains }: { progress?: Import
   return (
     <ul className="space-y-2 rounded-xl bg-zinc-50 px-3 py-2.5" aria-label="조회할 체인">
       {chains.map((chain, index) => {
-        const state = progress === null ? "scanning" : chainScanState(progress, index);
+        const state = progress === null ? "scanning" : chainScanStateOf(progress, chain.chainId, index);
+        const txCount = chain.txCount ?? progress?.chains?.[chain.chainId]?.txCount;
+        // BE가 이 체인이 지금 무엇을 하는지 말해 줬으면(받는 중 n건, 내부 이동 확인 n/m) 그 한 줄을 붙인다.
+        const detail = progress === null ? null : chainScanDetail(progress, chain.chainId);
         return (
           <li key={chain.chainId} className="flex items-center gap-2">
             <ChainIcon chainId={chain.chainId} size={18} />
@@ -36,7 +40,11 @@ export function ImportChainList({ progress = null, chains }: { progress?: Import
               {chain.chainName}
             </span>
             {/* 수집 건수는 응답이 온 뒤에만 안다. 모르는 동안 0을 그리면 "이 체인엔 아무것도 없다"로 읽힌다. */}
-            {chain.txCount !== undefined ? <span className="text-xs text-zinc-400">거래 {chain.txCount}건</span> : null}
+            {txCount !== undefined ? (
+              <span className="text-xs text-zinc-400">거래 {txCount}건</span>
+            ) : detail !== null ? (
+              <span className="min-w-0 truncate text-xs text-zinc-500">{detail}</span>
+            ) : null}
             <span className="ml-auto">
               <ChainScanMark state={state} />
             </span>

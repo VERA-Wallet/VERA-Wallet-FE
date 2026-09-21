@@ -86,4 +86,17 @@ describe("P2-D 예외·판단보류 목록", () => {
   it("estimate가 없으면 예외 목록도 없다", () => {
     expect(buildExceptions(events, null)).toEqual([]);
   });
+
+  it("문구 앞에 붙은 이벤트 id는 떼고 관련이벤트 열에만 남긴다", () => {
+    // 원장(ledger.ts)이 내는 모양 그대로 — 70자 id가 문장 앞에 붙는다.
+    const id = "42161:0x3a7799c5939202136b9159a7b7e3286e33ed392aaf0d9bfc2dc66cadc42f6584:balance:0";
+    const message = `${id}: 원장에 없는 수량 0.08078441928337632 ETH: 취득가액 0으로 계산했습니다.`;
+    const [row] = buildExceptions(
+      [event(id, "259189.25")],
+      estimateWith([{ kind: "zero_basis", message, eventIds: [id] }], [], []),
+    );
+    expect(row.내용).toBe("원장에 없는 수량 0.08078441928337632 ETH: 취득가액 0으로 계산했습니다.");
+    expect(row.관련이벤트).toBe(id);
+    expect(row.금액영향_원).toBe(259189.25);
+  });
 });

@@ -30,11 +30,36 @@ const syncResultSchema = z.object({
 
 export type ImportSyncResult = z.infer<typeof syncResultSchema>;
 
+/**
+ * 진행 중 작업이 스스로 밝히는 체인별 사실. BE는 체인 하나를 다 훑을 때마다 그 체인을 저장하고 여기 적는다 —
+ * 그래서 큰 지갑도 끝날 때까지 빈 화면이 아니라 끝난 체인부터 원장에 나타난다.
+ * 없으면(구 BE) 화면은 모른다고 말한다. 타이머로 지어내지 않는다.
+ */
+const syncProgressChainSchema = z.object({
+  chainId: z.number().int(),
+  phase: z.enum(["pending", "fetching", "tracing", "pricing", "saving", "done", "failed"]),
+  /** 지금까지 받은 이전(transfer) 수. 끝나면 정규화된 행 수가 된다. */
+  fetched: z.number().int(),
+  /** 내부 이동 추적 진척. 추적하는 체인에서만 온다. */
+  traced: z.object({ done: z.number().int(), total: z.number().int() }).optional(),
+  /** 저장을 마친 행 수. */
+  saved: z.number().int(),
+  message: z.string().optional(),
+});
+const syncProgressSchema = z.object({
+  bindings: z.array(z.object({ bindingId: z.string(), walletAddress: z.string(), chains: z.array(syncProgressChainSchema) })),
+  updatedAt: z.string(),
+});
+
+export type ImportSyncProgressChain = z.infer<typeof syncProgressChainSchema>;
+export type ImportSyncProgress = z.infer<typeof syncProgressSchema>;
+
 const syncJobSchema = z.object({
   jobId: z.string().min(1),
   status: z.enum(["queued", "running", "done", "failed"]),
   result: syncResultSchema.optional(),
   error: z.object({ code: z.string(), message: z.string() }).optional(),
+  progress: syncProgressSchema.optional(),
 });
 
 export type ImportSyncJob = z.infer<typeof syncJobSchema>;

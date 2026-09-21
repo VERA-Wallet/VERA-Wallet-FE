@@ -4,9 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CircleCheck } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import { MockProvenanceChip } from "@/components/ui/mock-provenance-chip";
+import { ProvenanceChip } from "@/components/ui/provenance-chip";
 import { authClient as compositionAuthClient } from "@/lib/composition-root.client";
-import { closeCxLogin, cxLoginEnabled, openCxLogin, realCxAuthEnabled } from "@/lib/omnione/oacx";
+import { closeCxLogin, cxLoginEnabled, openCxLogin } from "@/lib/omnione/oacx";
+import type { Provenance } from "@/lib/http/envelope";
 import type { AuthClient, DidPresentation } from "@/lib/ports/auth-client";
 
 type Country = "KR" | "US" | "UK" | "DE";
@@ -21,7 +22,11 @@ const CLAIMED_AUTO_ADVANCE_MS = 1000;
 // 지갑 유무 조회를 기다리는 상한(claimed 진입 기준). 넘기면 조회 실패와 같게 /dashboard로 보낸다.
 const SESSION_WAIT_CAP_MS = 3000;
 
-export function DidLoginFlow({ authClient = compositionAuthClient }: { authClient?: AuthClient }) {
+/**
+ * `provenance`는 서버 페이지가 계산해 준다(`identityProvenance`): FE API 모드·FE 인증창 스위치·BE 신원 공급자가
+ * 모두 실모드여야 live다. 하나라도 mock이면 인증창이 떠도 토큰이 검증되지 않는 반쪽 실모드라 배지는 mock이어야 한다.
+ */
+export function DidLoginFlow({ authClient = compositionAuthClient, provenance = "mock" }: { authClient?: AuthClient; provenance?: Provenance }) {
   const router = useRouter();
   const [country, setCountry] = useState<Country>("KR");
   const [state, setState] = useState<FlowState>("idle");
@@ -35,7 +40,6 @@ export function DidLoginFlow({ authClient = compositionAuthClient }: { authClien
   // 요청의 `country`를 그대로 세션 거주국으로 쓴다(VERA-Wallet-BE `frontend-auth.controller.ts`).
   // 그래서 이 선택은 어떤 인증 모드에서도 남아 있어야 한다. 실제 인증에서 감추면 모든 사용자가 KR로 굳고
   // 해외 거주자는 바꿀 길이 없다(2026-09-18 독립 검증에서 잡힌 회귀). mock 여부는 출처 칩을 달지만 가른다.
-  const mockAuth = !realCxAuthEnabled();
 
   useEffect(() => {
     // mock 전용 대기 전이. CX 모드에서는 openCxLogin → presentDid가 직접 상태를 밀고 간다.
@@ -182,7 +186,7 @@ export function DidLoginFlow({ authClient = compositionAuthClient }: { authClien
         {state === "done" && <p aria-live="polite" className="text-sm text-zinc-500">이동하고 있어요...</p>}
 
         {error && (
-          <div role="alert" className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">
+          <div role="alert" className="rounded-xl bg-red-50 px-3 py-2 text-sm wrap-anywhere text-red-700">
             {error}
             <button className="ml-2 font-semibold underline" onClick={startPresentation} type="button">다시 시도</button>
           </div>
@@ -196,7 +200,7 @@ export function DidLoginFlow({ authClient = compositionAuthClient }: { authClien
               <span>
                 거주 국가: <span className="font-semibold text-zinc-700">{COUNTRY_LABEL[country]}</span> · 바꾸기
               </span>
-              {mockAuth ? <MockProvenanceChip /> : null}
+              {provenance === "mock" ? <ProvenanceChip provenance="mock" /> : null}
             </summary>
             <div className="mt-2 space-y-2">
               <div className="flex gap-2" role="group" aria-label="거주국 선택">
