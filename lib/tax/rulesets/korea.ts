@@ -104,7 +104,7 @@ export const korea: RuleSetDefinition = {
   },
   topics: [
     { topic: "CAPITAL_GAINS", status: "SCHEDULED", basis: BASIS_TRANSFER, note: "2027.1.1 이후 양도·대여분부터 기타소득 분리과세 20%" },
-    { topic: "CRYPTO_TO_CRYPTO", status: "SCHEDULED", basis: BASIS_SWAP, note: "교환도 양도 — 기축가상자산 가액에 교환비율 적용" },
+    { topic: "CRYPTO_TO_CRYPTO", status: "SCHEDULED", basis: BASIS_SWAP, note: "교환도 양도. 기축가상자산 가액에 교환비율 적용" },
     { topic: "LOSS_OFFSET", status: "PARTIAL", basis: BASIS_TRANSFER, note: "연간 손익 통산은 확정, 이월공제 규정은 부재" },
     { topic: "STAKING", status: "UNDETERMINED", basis: BASIS_RECEIPT },
     { topic: "AIRDROP", status: "UNDETERMINED", basis: BASIS_RECEIPT },
@@ -224,14 +224,14 @@ export const korea: RuleSetDefinition = {
       ...ledger.limitations,
       // 없는 대상에 대해 "반영하지 못했다"고 말하면, 흔들리지 않는 답을 흔들린다고 하는 것이다.
       ...(deemedRows.length > 0
-        ? [limitationOf(`시행일 전 취득분을 소비한 처분 ${deemedRows.length}건 —${DEEMED_COST_SUFFIX}`, [])]
+        ? [limitationOf(`시행일 전 취득분을 소비한 처분 ${deemedRows.length}건.${DEEMED_COST_SUFFIX}`, [])]
         : []),
       ...(pendingRows.length > 0
-        ? [limitationOf(`판정 보류 수령분 ${pendingRows.length}건 —${RECEIPT_COST_SUFFIX}`, [])]
+        ? [limitationOf(`판정 보류 수령분 ${pendingRows.length}건.${RECEIPT_COST_SUFFIX}`, [])]
         : []),
       // 구현 E: 다중 출처 통산 전이라 총평균 분모가 상시 부분집계다. 예상 부담을 0으로 억제하지 않고
       // (억제하면 marginalContributions가 0으로 붕괴되고 화면이 부담 자체를 감춘다) 잠정치로 표기한다.
-      limitationOf(`취득가액 통산 —${COST_METHOD_SUFFIX}`, []),
+      limitationOf(`취득가액 통산.${COST_METHOD_SUFFIX}`, []),
     ];
 
     return finalizeEstimate({
@@ -284,7 +284,7 @@ export const korea: RuleSetDefinition = {
         // MUST FIX 4: 시행 첫해(2027)만 정확하다. 이후 연도는 누적 평균을 매년 재산정해 의제 opening이 재희석됨을 명시한다.
         ...(multiYearRepool
           ? [
-              `${taxYear}년은 시행 첫 과세연도(${EFFECTIVE_TAX_YEAR}) 이후입니다. 현재 계산은 조회 연도 기간말까지 누적 취득을 매년 다시 평균내며, 의제취득가액 opening이 다년에 걸쳐 재희석됩니다 — 연도별 종료 풀을 다음 해로 잇는 재풀링은 후속 과제입니다.`,
+              `${taxYear}년은 시행 첫 과세연도(${EFFECTIVE_TAX_YEAR}) 이후입니다. 현재 계산은 조회 연도 기간말까지 누적 취득을 매년 다시 평균내며, 의제취득가액 opening이 다년에 걸쳐 재희석됩니다. 연도별 종료 풀을 다음 해로 잇는 재풀링은 후속 과제입니다.`,
             ]
           : []),
         ...ledger.warnings,
@@ -297,7 +297,7 @@ export const korea: RuleSetDefinition = {
               {
                 topic: "CAPITAL_GAINS" as const,
                 status: "PARTIAL" as const,
-                reason: `${BASIS_DEEMED} — 기준이 되는 2026-12-31 시가(시가고시가상자산사업자 공시가 평균)를 지갑 데이터만으로는 알 수 없습니다.`,
+                reason: `${BASIS_DEEMED}. 기준이 되는 2026-12-31 시가(시가고시가상자산사업자 공시가 평균)를 지갑 데이터만으로는 알 수 없습니다.`,
                 affectedEventIds: deemedRows.map((row) => row.eventId),
                 benchmark: "시가가 입력되면 취득가액을 Max(시가, 실제 취득가액)로 올려 손익이 줄어듭니다.",
               },

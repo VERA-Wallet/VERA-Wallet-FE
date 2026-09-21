@@ -43,7 +43,7 @@ export function estimateHeadline(estimate: TaxEstimate): EstimateHeadline {
 /**
  * 이 답이 얼마나 흔들리는지의 요약 — 대시보드 신뢰도 칩(P1-9)이 읽는다.
  *
- * 세금 화면은 "흔들리는 지점" 패널로 한계를 낱낱이 보이지만, 대시보드는 헤드라인 옆에
+ * 세금 화면은 "확인이 필요한 거래" 패널로 한계를 낱낱이 보이지만, 대시보드는 헤드라인 옆에
  * 건수만 압축해 보인다. 문구를 지어내지 않고 estimate의 구조(limitations·excludedEventIds·status)에서만 파생한다.
  */
 export type EstimateConfidence = {

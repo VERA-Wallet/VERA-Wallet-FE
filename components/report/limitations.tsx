@@ -4,55 +4,73 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { LIMITATION_LABEL, LIMITATION_STYLE } from "@/components/report/labels";
-import { summarizeEventIds } from "@/lib/tax/limitations";
+import { plainLimitations, type LimitationRow } from "@/lib/tax/limitations";
 import type { LimitationKind, TaxEstimate } from "@/lib/tax/types";
 
-/** 한 종류에서 먼저 보이는 건수. 나머지는 접어 두고 버튼으로 편다. */
+/** 한 종류에서 먼저 보이는 줄 수. 나머지는 접어 두고 버튼으로 편다. */
 const VISIBLE_PER_GROUP = 5;
 
-/** 이 답이 흔들리는 지점 — 영향이 큰 순서. 얼마나 달라지는지는 계산하지 않았으므로 금액으로 말하지 않는다. */
+function eventCountOf(rows: readonly LimitationRow[]): number {
+  return new Set(rows.flatMap((row) => row.eventIds)).size;
+}
+
+/**
+ * 이 답이 흔들리는 지점. 영향이 큰 순서. 얼마나 달라지는지는 계산하지 않았으므로 금액으로 말하지 않는다.
+ *
+ * 엔진은 제외 이벤트마다 한 줄씩(id 포함) 보낸다. 그대로 그리면 같은 문장이 수십 장 쌓이고 카드마다
+ * 72자 id가 두 번 찍힌다(실지갑 50장 관측, 이 화면 하나가 8,716px). `plainLimitations`가 종류·문구로 묶어
+ * 건수를 앞세우고, id는 떼고, 상태값(UNKNOWN, ESTIMATED) 대신 사람 말로 바꾸고, "그래서 무엇을 하면 되는지"를
+ * 한 줄 더한다. 매핑이 없는 문구는 지어내지 않고 그대로 보인다.
+ */
 export function Limitations({ limitations }: { limitations: TaxEstimate["limitations"] }) {
   const [expanded, setExpanded] = useState<Partial<Record<LimitationKind, boolean>>>({});
 
-  // 수십 건을 한 줄씩 세우면 이 화면만으로 8,700px이 된다. 종류로 묶어 건수를 먼저 말한다.
-  // 묶음의 순서도, 묶음 안의 순서도 원래 배열 순서(=영향이 큰 순서)를 그대로 보존한다 —
+  const rows = plainLimitations(limitations);
+  // 묶음의 순서도, 묶음 안의 순서도 원래 배열 순서(=영향이 큰 순서)를 그대로 보존한다.
   // 종류 이름으로 다시 정렬하면 엔진이 매긴 우선순위가 지워진다.
-  const groups: { kind: LimitationKind; rows: TaxEstimate["limitations"] }[] = [];
-  for (const limitation of limitations) {
-    const group = groups.find((candidate) => candidate.kind === limitation.kind);
-    if (group) group.rows.push(limitation);
-    else groups.push({ kind: limitation.kind, rows: [limitation] });
+  const groups: { kind: LimitationKind; rows: LimitationRow[] }[] = [];
+  for (const row of rows) {
+    const group = groups.find((candidate) => candidate.kind === row.kind);
+    if (group) group.rows.push(row);
+    else groups.push({ kind: row.kind, rows: [row] });
   }
+  const eventCount = eventCountOf(rows);
 
   return (
     <section className="mt-6" aria-label="흔들리는 것">
-      <h3 className="font-bold text-zinc-900">이 답이 흔들리는 지점</h3>
+      <div className="flex items-baseline justify-between gap-3">
+        <h3 className="font-bold text-zinc-900">이 답이 흔들리는 지점</h3>
+        {eventCount > 0 ? <span className="shrink-0 text-sm font-semibold text-zinc-700 tabular-nums">{eventCount}건</span> : null}
+      </div>
       <p className="mt-1 text-sm text-zinc-500">
-        답에 영향이 큰 순서입니다. 얼마나 달라지는지는 계산하지 않았으므로 금액으로 말하지 않습니다.
+        정리하면 계산이 더 정확해집니다. 영향이 큰 것부터 보였고, 얼마나 달라지는지는 계산하지 않아 금액으로 말하지 않습니다.
       </p>
       {groups.map((group) => {
         const open = expanded[group.kind] ?? false;
         const shown = open ? group.rows : group.rows.slice(0, VISIBLE_PER_GROUP);
         const hidden = group.rows.length - shown.length;
+        const groupEvents = eventCountOf(group.rows);
         return (
           <section key={group.kind} data-limitation-group={group.kind} className="mt-4">
             <h4 className="flex items-center gap-2">
               <span className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${LIMITATION_STYLE[group.kind]}`}>
                 {LIMITATION_LABEL[group.kind]}
               </span>
-              <span className="text-sm font-semibold text-zinc-700">{group.rows.length}건</span>
+              {/* 거래에 닿는 한계는 거래 건수로 말한다. 거래 없이 계산 전체에 걸리는 한계(가스비 등)는 건수를 달지 않는다. */}
+              {groupEvents > 0 ? <span className="text-sm font-semibold text-zinc-700 tabular-nums">{groupEvents}건</span> : null}
             </h4>
             <ul className="mt-2 grid grid-cols-1 gap-2">
-              {shown.map((limitation, index) => (
-                <li
-                  key={`${limitation.kind}-${index}`}
-                  className="rounded-card border border-zinc-200 bg-white p-3 shadow-card"
-                >
-                  {limitation.eventIds.length > 0 ? (
-                    <p className="min-w-0 break-all text-xs text-zinc-400">{summarizeEventIds(limitation.eventIds)}</p>
-                  ) : null}
-                  {/* 메시지에 이벤트 id(66자, 공백 없음)가 섞여 온다. 끊을 곳이 없으면 카드가 껍데기 밖으로 나간다(실측 663px). */}
-                  <p className="mt-1 text-sm leading-6 text-zinc-700 [overflow-wrap:anywhere]">{limitation.message}</p>
+              {shown.map((row, index) => (
+                // 그리드 아이템은 min-width:auto라 띄어쓰기 없는 긴 토큰이 있으면 카드가 껍데기 밖으로 나간다. min-w-0로 바닥을 없앤다.
+                <li key={`${row.kind}-${index}`} className="min-w-0 rounded-card border border-zinc-200 bg-white p-3 shadow-card">
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="min-w-0 text-sm leading-6 wrap-anywhere text-zinc-700">{row.title}</p>
+                    {group.rows.length > 1 && row.eventIds.length > 0 ? (
+                      <span className="shrink-0 text-sm font-semibold text-zinc-900 tabular-nums">{row.eventIds.length}건</span>
+                    ) : null}
+                  </div>
+                  {row.detail ? <p className="text-sm leading-6 wrap-anywhere text-zinc-900">{row.detail}</p> : null}
+                  {row.action ? <p className="mt-1 text-xs leading-5 wrap-anywhere text-zinc-500">{row.action}</p> : null}
                 </li>
               ))}
             </ul>

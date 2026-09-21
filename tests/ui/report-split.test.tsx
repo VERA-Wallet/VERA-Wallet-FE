@@ -28,14 +28,15 @@ vi.mock("@/lib/plan/use-plan", async (importOriginal) => {
 import { renderReportPages } from "@/tests/ui/helpers/report-pages";
 
 /** 옮겨간 섹션들이 "있었다면" 전부 그려질 만한 입력. 메인이 비어 있는 이유가 데이터 부족이면 안 된다. */
+// 엔진(estimate.ts)이 내는 모양 그대로: "<id>: 확인이 필요해 계산에서 제외했습니다." 건마다 한 줄이다.
 const excluded = Array.from({ length: 7 }, (_, index) => ({
   kind: "excluded" as const,
-  message: `가격을 확인하지 못해 계산에서 제외했습니다 (0x${String(index).repeat(4)})`,
+  message: `0x${String(index).repeat(4)}: 확인이 필요해 계산에서 제외했습니다.`,
   eventIds: [`0x${String(index).repeat(4)}`],
 }));
 const approximation = Array.from({ length: 2 }, (_, index) => ({
   kind: "approximation" as const,
-  message: `추정가(ESTIMATED)로 계산했습니다 (0xb${index})`,
+  message: "추정가(ESTIMATED)로 계산했습니다.",
   eventIds: [`0xb${index}`],
 }));
 
@@ -189,15 +190,36 @@ describe("리포트 메인은 세금 보고서와 내보내기만 말한다", ()
 });
 
 describe("확인할 것 — 종류별 묶음과 접기", () => {
-  it("종류로 묶어 건수를 달고, 처음 5건만 보이고 나머지는 버튼으로 편다", async () => {
+  it("종류로 묶어 거래 건수를 달고, 같은 문구는 한 줄로 합치며 id는 떼고 사람 말로 바꾼다", async () => {
     renderReportPages({ pages: ["issues"], countryCode: "KR", currentYear: 2027, latestActivityYear: 2027 });
 
     const section = await screen.findByLabelText("흔들리는 것");
     const group = section.querySelector('[data-limitation-group="excluded"]')! as HTMLElement;
-    // 묶음 제목이 기존 kind 라벨과 건수를 함께 말한다.
-    expect(group.textContent).toContain("답에서 빠짐");
+    // 묶음 제목이 kind 라벨과 거래 건수를 함께 말한다.
+    expect(group.textContent).toContain("계산에서 뺌");
     expect(within(group).getByText("7건")).toBeInTheDocument();
-    // 7건 중 5건만 서 있다 — 나머지가 펼쳐져 있으면 페이지를 나눠도 길이가 그대로다.
+    // 같은 문장 7장이 아니라 한 줄이다. 건마다 한 줄이면 페이지를 나눠도 길이가 그대로다.
+    expect(group.querySelectorAll("li")).toHaveLength(1);
+    // 엔진 원문("<id>: 확인이 필요해 계산에서 제외했습니다.")이 아니라 사람 말 + 그래서 무엇을 하면 되는지.
+    expect(group.textContent).toContain("확인이 필요해 계산에서 뺐습니다.");
+    expect(group.textContent).toContain("확인 필요 탭에서 정리하면 계산에 들어갑니다.");
+    expect(group.textContent).not.toContain("0x0000");
+    // 한 줄뿐이면 접을 것도 없다.
+    expect(within(group).queryByRole("button")).toBeNull();
+
+    const small = section.querySelector('[data-limitation-group="approximation"]')! as HTMLElement;
+    expect(small.querySelectorAll("li")).toHaveLength(1);
+    expect(within(small).getByText("2건")).toBeInTheDocument();
+  });
+
+  it("문구가 다른 줄이 5개를 넘으면 처음 5줄만 보이고 나머지는 버튼으로 편다", async () => {
+    const other = Array.from({ length: 7 }, (_, index) => ({ kind: "other" as const, message: `그 밖의 한계 ${index}`, eventIds: [] }));
+    ports.estimate.mockResolvedValue({ ...estimate, limitations: other });
+    renderReportPages({ pages: ["issues"], countryCode: "KR", currentYear: 2027, latestActivityYear: 2027 });
+
+    const section = await screen.findByLabelText("흔들리는 것");
+    const group = section.querySelector('[data-limitation-group="other"]')! as HTMLElement;
+    // 7줄 중 5줄만 서 있다. 나머지가 펼쳐져 있으면 페이지를 나눠도 길이가 그대로다.
     expect(group.querySelectorAll("li")).toHaveLength(5);
 
     const more = within(group).getByRole("button", { name: "나머지 2건 더 보기" });
@@ -206,10 +228,6 @@ describe("확인할 것 — 종류별 묶음과 접기", () => {
 
     expect(group.querySelectorAll("li")).toHaveLength(7);
     expect(within(group).getByRole("button", { name: "접기" })).toHaveAttribute("aria-expanded", "true");
-    // 5건 이하인 묶음에는 버튼 자체가 없다.
-    const small = section.querySelector('[data-limitation-group="approximation"]')! as HTMLElement;
-    expect(small.querySelectorAll("li")).toHaveLength(2);
-    expect(within(small).queryByRole("button")).toBeNull();
   });
 });
 

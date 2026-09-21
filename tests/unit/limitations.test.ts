@@ -10,10 +10,17 @@ import {
   COST_METHOD_SUFFIX,
   DEEMED_COST_SUFFIX,
   EXCLUDED_ID_SUFFIX,
+  EXCLUSION_SUFFIX,
   LIMITATION_MESSAGE,
   LIMITATION_ORDER,
   RECEIPT_COST_SUFFIX,
+  ZERO_BASIS_SUFFIX,
   classifyLimitation,
+  groupLimitations,
+  limitationOf,
+  plainLimitations,
+  ruleNotesOf,
+  stripEventIds,
 } from "@/lib/tax/limitations";
 import { TaxEngineService } from "@/lib/tax/tax-engine-service.server";
 import { RULE_SET_ORDER } from "@/lib/tax/rulesets";
@@ -36,11 +43,11 @@ describe("계산의 한계 분류", () => {
     expect(classifyLimitation(LIMITATION_MESSAGE.ESTIMATED_PRICE)).toBe("approximation");
     expect(classifyLimitation(LIMITATION_MESSAGE.EXCHANGE_APPROXIMATION)).toBe("approximation");
     expect(classifyLimitation("가격 확인 필요 상태인 이벤트는 계산에서 제외했습니다.")).toBe("excluded");
-    expect(classifyLimitation("dsp-btc-04: 원장에 없는 수량 1 BTC — 취득가액 0으로 계산했습니다.")).toBe("zero_basis");
+    expect(classifyLimitation("dsp-btc-04: 원장에 없는 수량 1 BTC: 취득가액 0으로 계산했습니다.")).toBe("zero_basis");
     // 법정 취득가액·원가법 대신 대체값으로 계산한 줄은 "근사"다. other로 새면 화면이 한계를 숨긴다.
-    expect(classifyLimitation(`시행일 전 취득분을 소비한 처분 3건 —${DEEMED_COST_SUFFIX}`)).toBe("approximation");
-    expect(classifyLimitation(`판정 보류 수령분 2건 —${RECEIPT_COST_SUFFIX}`)).toBe("approximation");
-    expect(classifyLimitation(`취득가액 산정 —${COST_METHOD_SUFFIX}`)).toBe("approximation");
+    expect(classifyLimitation(`시행일 전 취득분을 소비한 처분 3건.${DEEMED_COST_SUFFIX}`)).toBe("approximation");
+    expect(classifyLimitation(`판정 보류 수령분 2건.${RECEIPT_COST_SUFFIX}`)).toBe("approximation");
+    expect(classifyLimitation(`취득가액 산정.${COST_METHOD_SUFFIX}`)).toBe("approximation");
   });
 
   it("모르는 문구는 숨기지 않고 other로 내보인다", () => {
@@ -140,3 +147,79 @@ describe("이벤트 id를 문장에서 되뜯지 않는다", () => {
     }
   });
 })
+
+describe("확인이 필요한 거래 — 사람이 읽는 묶음", () => {
+  const id = (n: number) => `42161:0xfb49579b936386eaf15615b308e3bb20e66a43dd292fc11570280d61bff44f3a:log:${n}`;
+
+  it("문구 앞의 이벤트 id를 떼고 같은 문구를 한 줄로 묶어 건수를 센다", () => {
+    // 엔진(estimate.ts)이 내는 모양 그대로 — "<id>: 확인이 필요해…".
+    const rows = [1, 2, 3].map((n) => limitationOf(`${id(n)}:${EXCLUDED_ID_SUFFIX}`, [id(n)]));
+    const groups = groupLimitations(rows);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toEqual({ kind: "excluded", message: "확인이 필요해 계산에서 제외했습니다.", eventIds: [id(1), id(2), id(3)] });
+  });
+
+  it("종류나 문구가 다르면 따로 두고, 첫 등장 순서를 지킨다", () => {
+    const groups = groupLimitations([
+      limitationOf(`${id(1)}:${EXCLUDED_ID_SUFFIX}`, [id(1)]),
+      limitationOf(LIMITATION_MESSAGE.GAS_FEE, []),
+      limitationOf(`${id(2)}:${EXCLUDED_ID_SUFFIX}`, [id(2)]),
+    ]);
+    expect(groups.map((group) => [group.kind, group.eventIds.length])).toEqual([
+      ["excluded", 2],
+      ["not_reflected", 0],
+    ]);
+  });
+
+  it("id가 없는 문구는 그대로 둔다", () => {
+    expect(stripEventIds(LIMITATION_MESSAGE.GAS_FEE, [])).toBe(LIMITATION_MESSAGE.GAS_FEE);
+  });
+});
+
+describe("확인이 필요한 거래 — 사람 말로", () => {
+  const id = (n: number) => `1:0xdbed1d2c1e573500980ba2396457abffde73cc28790077113d8abb18f8be7a25:log:${n}`;
+
+  it("제외 사유를 상태값 대신 문장으로, 그래서 무엇을 하면 되는지와 함께 말한다", () => {
+    const rows = plainLimitations([limitationOf(`가격 확인 필요${EXCLUSION_SUFFIX}`, [id(1), id(2)])]);
+    expect(rows).toEqual([
+      {
+        kind: "excluded",
+        title: "거래 당시 가격을 확인하지 못했습니다.",
+        action: "확인 필요 탭에서 가격을 넣으면 계산에 들어갑니다.",
+        eventIds: [id(1), id(2)],
+      },
+    ]);
+  });
+
+  it("취득가액 0원 건은 심볼별 수량 합계 한 줄로 합치고 긴 소수를 줄인다", () => {
+    // 원장(ledger.ts)이 내는 모양 그대로.
+    const ledgerRow = (n: number, quantity: string, symbol: string) =>
+      limitationOf(`${id(n)}: 원장에 없는 수량 ${quantity} ${symbol}:${ZERO_BASIS_SUFFIX}`, [id(n)]);
+    const rows = plainLimitations([
+      ledgerRow(1, "0.08078395195187632", "ETH"),
+      limitationOf(LIMITATION_MESSAGE.GAS_FEE, []),
+      ledgerRow(2, "0.00867199", "ETH"),
+      ledgerRow(3, "270.83062", "USDC"),
+    ]);
+    expect(rows.map((row) => row.kind)).toEqual(["zero_basis", "not_reflected"]);
+    expect(rows[0].eventIds).toEqual([id(1), id(2), id(3)]);
+    expect(rows[0].detail).toBe("ETH 0.089456 (2건) · USDC 270.83");
+    expect(rows[0].title).not.toContain("원장");
+  });
+
+  it("매핑이 없는 문구는 지어내지 않고 그대로 보인다", () => {
+    const message = `취득가액 통산 —${COST_METHOD_SUFFIX}`;
+    expect(plainLimitations([limitationOf(message, [])])).toEqual([{ kind: "approximation", title: message, eventIds: [] }]);
+  });
+});
+
+describe("ruleNotesOf", () => {
+  it("한계 목록에 같은 문구로 들어 있는 원장 경고는 규칙 메모에서 뺀다", () => {
+    const id = "42161:0x3a7799c5939202136b9159a7b7e3286e33ed392aaf0d9bfc2dc66cadc42f6584:balance:0";
+    const warning = `${id}: 원장에 없는 수량 0.5 ETH: 취득가액 0으로 계산했습니다.`;
+    const notes = ["1년 초과 보유는 전액 비과세", warning];
+    expect(ruleNotesOf(notes, [{ kind: "zero_basis" as const, message: warning, eventIds: [id] }])).toEqual(["1년 초과 보유는 전액 비과세"]);
+    // 한계 목록에 없는 문구는 숨기지 않는다.
+    expect(ruleNotesOf(notes, [])).toEqual(notes);
+  });
+});
