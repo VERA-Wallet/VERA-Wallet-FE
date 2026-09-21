@@ -2,6 +2,7 @@ import { ShieldCheck, Wallet } from "lucide-react";
 import { redirect } from "next/navigation";
 import { requireDidSession } from "@/lib/dal";
 import { DidLoginFlow } from "@/components/did/did-login-flow";
+import { identityProvenance } from "@/lib/api-mode";
 
 export default async function LoginPage() {
   // 이미 인증된 세션이면 로그인 단계를 건너뛴다 — 새로고침·재방문마다 다시 로그인하지 않도록.
@@ -44,7 +45,7 @@ export default async function LoginPage() {
       {/* 시작 카드는 화면 **아래**에 붙는다(`mt-auto`). 한 손으로 쥔 폰에서 엄지가 닿는 자리이고, 위에 두면
           긴 화면에서 버튼 아래가 통째로 빈다. 내용이 화면보다 길어지면 auto 여백은 0이 되어 자연히 이어진다. */}
       <div className="mt-auto pt-10">
-        <DidLoginFlow />
+        <DidLoginFlow provenance={await identityProvenance()} />
       </div>
     </main>
   );

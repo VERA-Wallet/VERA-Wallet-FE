@@ -13,7 +13,8 @@ import { DEFAULT_PERIOD, periodWindowLabel } from "@/lib/portfolio/period-select
 import type { PeriodSelection } from "@/lib/portfolio/period-selection";
 import { periodLabel } from "@/lib/period";
 import { freshNotice } from "@/lib/queries/fresh";
-import { MockProvenanceChip } from "@/components/ui/mock-provenance-chip";
+import { ProvenanceChip } from "@/components/ui/provenance-chip";
+import type { Provenance } from "@/lib/http/envelope";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SummaryCard } from "@/components/ui/summary-card";
 import { useHideBalances } from "@/lib/privacy/use-hide-balances";
@@ -30,7 +31,8 @@ const RECENT_COUNT = 3;
  * 지갑이 어떻게 움직였나(그래프), 이번 과세연도는 얼마인가(카드), 방금 무슨 일이 있었나(최근 거래).
  * 목록까지 여기 있던 때에는 첫 거래 행이 1,200px 아래에서 시작했고, 그 위의 요약은 아무도 읽지 않았다.
  */
-export function DashboardView({ countryCode }: { countryCode?: string }) {
+/** `provenance`는 서버 페이지가 BE 모드를 물어 계산해 준다. 이 화면의 요약·목록 응답에는 출처가 실려 오지 않는다. */
+export function DashboardView({ countryCode, provenance = "mock" }: { countryCode?: string; provenance?: Provenance }) {
   // 잔액 가리기. 서버는 저장소를 모르므로 첫 렌더는 항상 꺼짐이고, 마운트 후 저장값으로 복원한다.
   const [hideBalances, setHideBalances] = useHideBalances();
   // 이 화면이 보고 있는 기간. 헤더 문구와 그래프 창이 **이 하나**에서 나온다 —
@@ -80,7 +82,7 @@ export function DashboardView({ countryCode }: { countryCode?: string }) {
         </div>
         <div className="flex shrink-0 flex-col items-end gap-2">
           <div className="flex h-9 items-center gap-2">
-            <MockProvenanceChip />
+            <ProvenanceChip provenance={provenance} />
             {/* 설정은 탭 자리를 차지할 만큼 자주 가는 곳이 아니지만, 들어갈 문이 없으면 없는 화면이 된다. */}
             <Link href="/settings" aria-label="설정" className="rounded-lg p-1 text-zinc-400">
               <Settings aria-hidden="true" className="size-5" />

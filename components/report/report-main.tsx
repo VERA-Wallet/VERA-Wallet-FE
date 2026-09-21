@@ -11,7 +11,7 @@ import { ReportCard } from "@/components/report/report-card";
 import { ReportSummary } from "@/components/report/report-summary";
 import { BottomSheet } from "@/components/ui/bottom-sheet";
 import { Card } from "@/components/ui/card";
-import { MockProvenanceChip } from "@/components/ui/mock-provenance-chip";
+import { MockProvenanceChip } from "@/components/ui/provenance-chip";
 import { taxYearWindow } from "@/lib/tax/year-window";
 
 /**

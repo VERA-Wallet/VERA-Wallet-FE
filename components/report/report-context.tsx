@@ -6,6 +6,7 @@ import { groupJudgments, type GroupRow } from "@/components/report/why-this-amou
 import { anchorProofProvider, eventRepository, summaryProvider } from "@/lib/composition-root.client";
 import { collectAllEvents } from "@/lib/export/collect";
 import type { SummaryDTO } from "@/lib/http/dto";
+import type { Provenance } from "@/lib/http/envelope";
 import { exportEventAllowance, planDefinition, usePlan } from "@/lib/plan/use-plan";
 import type { NormalizedEvent } from "@/lib/schema/normalized-event";
 import { omitsCharge } from "@/lib/tax/status";
@@ -32,6 +33,8 @@ export type ReportContextValue = ReportInputs & {
   events: NormalizedEvent[];
   summary: SummaryDTO | null;
   proof: Awaited<ReturnType<typeof anchorProofProvider.getProof>>;
+  /** 응답에 출처가 실려 오지 않는 표면(앵커 증명 등)용. 서버 layout이 BE 모드를 물어 계산해 준다. */
+  provenance: Provenance;
   /** 원장·요약·증명 읽기가 실패했을 때의 메시지. 계산(estimate) 실패와는 다른 사실이다. */
   ledgerError: string | null;
   ready: boolean;
@@ -60,7 +63,8 @@ export function ReportInputsProvider({
   currentYear = new Date().getFullYear(),
   latestActivityYear,
   walletConnected = true,
-}: ReportInputsOptions & { children: React.ReactNode }) {
+  provenance = "mock",
+}: ReportInputsOptions & { children: React.ReactNode; provenance?: Provenance }) {
   const inputs = useReportInputs({ countryCode, currentYear, latestActivityYear, walletConnected });
   const { result, hasNothingToCompute, country, homeCountry, isHomeCountry, selected, setCountry, source } = inputs;
 
@@ -140,6 +144,7 @@ export function ReportInputsProvider({
     events,
     summary,
     proof,
+    provenance,
     ledgerError,
     ready,
     activePeriod,

@@ -1,7 +1,7 @@
 "use client";
 
 import { ExchangeMark } from "@/components/ui/exchange-mark";
-import { MockProvenanceChip } from "@/components/ui/mock-provenance-chip";
+import { MockProvenanceChip } from "@/components/ui/provenance-chip";
 import { exchangeById } from "@/lib/exchange/mock-links";
 import { useExchangeLinks } from "@/lib/exchange/use-exchange-links";
 

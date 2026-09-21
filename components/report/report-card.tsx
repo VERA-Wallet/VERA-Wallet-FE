@@ -1,5 +1,5 @@
 import { Card } from "@/components/ui/card";
-import { MockProvenanceChip } from "@/components/ui/mock-provenance-chip";
+import { ProvenanceChip } from "@/components/ui/provenance-chip";
 import { buildFilingSummary } from "@/lib/export/report";
 import { formatFiat } from "@/lib/format";
 import { estimateConfidence } from "@/lib/tax/estimate-summary";
@@ -51,7 +51,7 @@ export function ReportCard({ estimate }: { estimate: TaxEstimate }) {
             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">잠정</span>
           )}
         </div>
-        <MockProvenanceChip />
+        <ProvenanceChip provenance={estimate.provenance} />
       </div>
       <dl className="mt-4">
         {REPORT_LINES.map((line) => {

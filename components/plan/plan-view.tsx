@@ -1,7 +1,7 @@
 "use client";
 
 import { Card } from "@/components/ui/card";
-import { MockProvenanceChip } from "@/components/ui/mock-provenance-chip";
+import { MockProvenanceChip } from "@/components/ui/provenance-chip";
 import { formatDate } from "@/lib/format";
 import { PLANS, planDefinition, usePlan } from "@/lib/plan/use-plan";
 import { useTaxYear } from "@/lib/tax/tax-year-context";

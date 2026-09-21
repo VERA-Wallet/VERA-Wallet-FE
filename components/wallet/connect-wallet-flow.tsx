@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import { SiweMessage } from "siwe";
 import { AlertCircle, Building2, Check, ChevronLeft, ChevronRight, ClipboardPaste, Info, KeyRound, ShieldCheck, X } from "lucide-react";
 import { BottomSheet } from "@/components/ui/bottom-sheet";
-import { MockProvenanceChip } from "@/components/ui/mock-provenance-chip";
+import { ProvenanceChip } from "@/components/ui/provenance-chip";
+import type { Provenance } from "@/lib/http/envelope";
 import { ChainIcon } from "@/components/ui/chain-icon";
 import { chainLabel } from "@/lib/format";
 import { EXCHANGES } from "@/lib/exchange/mock-links";
@@ -71,6 +72,7 @@ export function ConnectWalletFlow({
   exitTo = "/dashboard",
   countryCode = null,
   initialStep = "method",
+  provenance = "mock",
 }: {
   walletPort?: WalletPort;
   authClient?: AuthClient;
@@ -83,6 +85,8 @@ export function ConnectWalletFlow({
   countryCode?: string | null;
   /** 진입 단계. 지갑 탭의 시트가 방법을 미리 골랐으면 그 단계로 바로 연다. */
   initialStep?: Step;
+  /** 서버 페이지가 BE 모드를 물어 계산한 데이터 출처. 이 화면의 응답에는 출처가 실려 오지 않는다. */
+  provenance?: Provenance;
 }) {
   const router = useRouter();
   const [step, setStep] = useState<Step>(initialStep);
@@ -224,6 +228,7 @@ export function ConnectWalletFlow({
           flowLabel={flowLabel}
           countryCode={countryCode}
           error={error}
+          provenance={provenance}
           onAddress={() => go("address")}
           onSiwe={() => go("siwe")}
         />
@@ -345,6 +350,7 @@ function MethodStep({
   flowLabel,
   countryCode,
   error,
+  provenance,
   onAddress,
   onSiwe,
 }: {
@@ -352,6 +358,7 @@ function MethodStep({
   flowLabel: string;
   countryCode: string | null;
   error: string | null;
+  provenance: Provenance;
   onAddress: () => void;
   onSiwe: () => void;
 }) {
@@ -365,7 +372,7 @@ function MethodStep({
           "어느 쪽이든 거래 내역은 똑같이 불러와요. 차이는 소유 증명 여부만이에요." +
           (countryCode ? ` 거주국 ${countryCode} 클레임이 확인된 상태예요.` : "")
         }
-        trailing={<MockProvenanceChip />}
+        trailing={<ProvenanceChip provenance={provenance} />}
       />
 
       <div className="mt-7 flex flex-col gap-3 px-5">

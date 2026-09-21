@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
 import type { Provenance } from "@/lib/http/envelope";
-import { MockProvenanceChip } from "@/components/ui/mock-provenance-chip";
+import { MockProvenanceChip } from "@/components/ui/provenance-chip";
 import { AssetLogo } from "@/components/ui/asset-logo";
 import { ChainIcon } from "@/components/ui/chain-icon";
 import Link from "next/link";

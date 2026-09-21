@@ -38,6 +38,8 @@ vi.mock("@/lib/composition-root.client", () => ({
   eventRepository: { list: ports.list },
   summaryProvider: { getSummary: ports.getSummary },
   anchorProofProvider: { getProof: ports.getProof },
+  // 계산 근거 기록은 체인 왕복이라 여기서는 "기록 없음"(null)으로 고정한다. 그 카드는 export-evidence 테스트가 덮는다.
+  taxEvidenceProvider: { latest: async () => null, record: async () => { throw new Error("not used"); }, checkChain: async () => { throw new Error("not used"); } },
 }));
 
 // 어댑터 대신 실제 엔진을 통과시켜 DTO 계약까지 함께 검증한다.
@@ -226,9 +228,10 @@ describe("리포트 계산 표면", () => {
     await screen.findByText("독일 · 2025");
     expect(ports.estimate.mock.calls.at(-1)?.[0].source).toBe("wallet");
 
-    // 지갑 경로만 만들 수 있는 파생 한계가 실제로 도달한다.
+    // 지갑 경로만 만들 수 있는 파생 한계가 실제로 도달한다. 화면은 엔진 원문이 아니라 사람 말로 옮겨 보인다.
     const shaky = await screen.findByLabelText("흔들리는 것");
-    expect(shaky.textContent).toContain("계산에서 제외했습니다");
+    expect(shaky.querySelector('[data-limitation-group="excluded"]')).not.toBeNull();
+    expect(shaky.textContent).toContain("계산에서 뺌");
     expect(shaky.textContent).toContain("가스비는");
   });
 
@@ -320,9 +323,13 @@ describe("리포트 제외 배너", () => {
 
     const shakyText = shaky.textContent ?? "";
     const groundsText = grounds?.textContent ?? "";
-    for (const sentence of ["계산에서 제외했습니다", "추정가(ESTIMATED)", "가스비는"]) {
+    // 흔들리는 지점은 엔진 원문(상태값 UNKNOWN·ESTIMATED)이 아니라 사람 말로 보인다.
+    for (const sentence of ["거래 당시 가격을 확인하지 못했습니다", "추정 가격으로 계산했습니다", "가스비는"]) {
       // 문구가 사라져도 통과하던 조건부 검사를 없앤다.
       expect(shakyText, sentence).toContain(sentence);
+    }
+    // 계산 근거(규칙 메모)에는 같은 경고가 원문으로도 다시 서지 않는다.
+    for (const sentence of ["계산에서 제외했습니다", "추정가(ESTIMATED)", "가스비는"]) {
       expect(groundsText, sentence).not.toContain(sentence);
     }
   });
@@ -345,7 +352,7 @@ describe("리포트 제외 배너", () => {
     expect(kinds.indexOf("excluded")).toBeLessThan(kinds.indexOf("approximation"));
     // 묶음 제목이 그 종류의 라벨과 건수를 말한다.
     const excluded = section.querySelector('[data-limitation-group="excluded"]')!;
-    expect(excluded.textContent).toContain("답에서 빠짐");
+    expect(excluded.textContent).toContain("계산에서 뺌");
     expect(excluded.textContent).toMatch(/\d+건/);
     // 얼마나 달라지는지는 계산하지 않았다. 금액을 쓰면 지어낸 추정이 된다.
     expect(section.textContent).not.toMatch(/[€$₩][\d,]/);

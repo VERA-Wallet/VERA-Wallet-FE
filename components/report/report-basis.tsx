@@ -6,7 +6,7 @@ import { useReportContext } from "@/components/report/report-context";
 import { ReportSubPage } from "@/components/report/report-sub-page";
 import { WhyThisAmount } from "@/components/report/why-this-amount";
 import { Card } from "@/components/ui/card";
-import { MockProvenanceChip } from "@/components/ui/mock-provenance-chip";
+import { ProvenanceChip } from "@/components/ui/provenance-chip";
 import { formatDateTime, formatFiat } from "@/lib/format";
 
 function shortHash(value: string): string {
@@ -20,7 +20,7 @@ function shortHash(value: string): string {
  * "계산 근거"를 보려고 들어와서 다시 한 번 펼쳐야 하는 화면은 한 번 더 묻는 화면이다.
  */
 export function ReportBasis() {
-  const { result, selected, ruleNotes, hasNothingToCompute, groups, proof } = useReportContext();
+  const { result, selected, ruleNotes, hasNothingToCompute, groups, proof, provenance } = useReportContext();
 
   return (
     <ReportSubPage surface="report-basis" title="계산 근거">
@@ -83,7 +83,7 @@ export function ReportBasis() {
       <EvidenceAnchor />
 
       {proof && <Card className="mt-5">
-        <div data-surface="anchor-proof" className="flex items-center justify-between gap-3"><p className="font-semibold text-zinc-900">앵커링 증명</p><MockProvenanceChip /></div>
+        <div data-surface="anchor-proof" className="flex items-center justify-between gap-3"><p className="font-semibold text-zinc-900">앵커링 증명</p><ProvenanceChip provenance={provenance} /></div>
         <dl className="mt-4 space-y-2 text-sm text-zinc-600"><div><dt className="inline font-medium text-zinc-900">거래 </dt><dd className="inline font-mono">{shortHash(proof.tx_hash)}</dd></div><div><dt className="inline font-medium text-zinc-900">Merkle root </dt><dd className="inline font-mono">{shortHash(proof.merkle_root)}</dd></div><div><dt className="inline font-medium text-zinc-900">기록 시각 </dt><dd className="inline">{formatDateTime(proof.anchored_at)}</dd></div></dl>
         {/* 탐색기가 없는 체인에서는 링크를 그리지 않는다. 누르면 401이 뜨는 버튼은 증명이 아니다. */}
         {proof.explorer_url && <a className="mt-4 inline-block text-sm font-semibold text-primary-600 underline" href={proof.explorer_url} rel="noreferrer" target="_blank">탐색기에서 보기</a>}
