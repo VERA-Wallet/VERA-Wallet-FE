@@ -19,6 +19,9 @@ const routes: Array<{ name: string; method: "GET" | "POST" | "PATCH"; path: stri
   { name: "query preservation", method: "GET", path: "/api/events?limit=5&cursor=abc" },
   // Next 기본 trailingSlash:false가 /api/anchor-proof/를 /api/anchor-proof로 308 정규화한 뒤 프록시한다 — recorder는 정규화된 경로를 관측한다.
   { name: "trailing slash", method: "GET", path: "/api/anchor-proof/", expectedPath: "/api/anchor-proof" },
+  // §1-C: matcher에 빠져 있던 tax-evidence 경로. 정확 경로와 하위 경로(:path*) 둘 다 걸린다는 것을 함께 잡는다.
+  { name: "tax evidence", method: "GET", path: "/api/tax-evidence" },
+  { name: "tax evidence merkle root", method: "GET", path: `/api/tax-evidence/0x${"ab".repeat(32)}` },
 ];
 
 type Recorder = Awaited<ReturnType<typeof startRecorder>>;

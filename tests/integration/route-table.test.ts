@@ -80,6 +80,18 @@ describe("hybrid proxy route table", () => {
     expect(summary.headers.get("x-verawallet-fe-rewrite")).toBeTruthy();
   });
 
+  it("routes /api/tax-evidence to BE", async () => {
+    // §1-C: matcher에 tax-evidence가 빠져 있던 결함을 고정한다. F3(계획 §0)이 확인한 대로
+    // 이 케이스는 지금까지 두 레인 어디에도 없었다. BE가 그 사용자의 기록을 갖고 있는지와 무관하게
+    // 상태코드가 아니라 x-verawallet-fe-rewrite 유무로 "BE로 갔는가"를 판별한다(:68의 events 원칙과 같다).
+    const { cookie } = await presentDid(FE);
+    expect(cookie).toBeDefined();
+
+    const taxYear = new Date().getFullYear();
+    const response = await fetch(`${FE}/api/tax-evidence?country=KR&taxYear=${taxYear}`, { headers: { cookie: cookie! } });
+    expect(response.headers.get("x-verawallet-fe-rewrite")).toBeTruthy();
+  });
+
   it("keeps the dev-only test-login route closed while the proxy is on", async () => {
     // 이 라우트는 vw_session만 발급하므로 ON 모드에서 살아 있으면 무의미한 가짜 세션을 만든다.
     const response = await fetch(`${FE}/api/auth/test-login`, { method: "POST" });
