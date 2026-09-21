@@ -1,21 +1,125 @@
-import { Lock } from "lucide-react";
-import Link from "next/link";
+"use client";
 
+import { Link2, Lock, ShieldCheck } from "lucide-react";
+import Link from "next/link";
+import { useEffect, useState, useSyncExternalStore } from "react";
+
+import { useReportContext } from "@/components/report/report-context";
+import { useReportAnchor, type ReportAnchorState } from "@/components/report/use-report-anchor";
 import { Card } from "@/components/ui/card";
-import { createReportLedgerCsv } from "@/lib/export/report";
-import { createReportXlsx } from "@/lib/export/report-workbook";
+import { formatDateTime } from "@/lib/format";
 import type { SummaryDTO } from "@/lib/http/dto";
-import { periodFilePart, periodLabel } from "@/lib/period";
+import { periodLabel } from "@/lib/period";
+import type { ReportAnchorRecord } from "@/lib/ports/report-anchor";
 import type { NormalizedEvent } from "@/lib/schema/normalized-event";
 import type { TaxEstimate } from "@/lib/tax/types";
 
-function download(data: BlobPart, type: string, filename: string) {
-  const url = URL.createObjectURL(new Blob([data], { type }));
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  URL.revokeObjectURL(url);
+/** 등록이 끝나기 전의 단계들. 이 동안 버튼은 눌리지 않는다. */
+function inFlight(phase: ReportAnchorState["phase"]): boolean {
+  return phase === "hashing" || phase === "checking" || phase === "registering" || phase === "waiting";
+}
+
+/** 진행 중에는 버튼이 지금 무엇을 하는지 말한다. 멈춰 보이는 버튼을 남기지 않는다. */
+function buttonLabel(phase: ReportAnchorState["phase"], base: string): string {
+  if (phase === "hashing" || phase === "checking") return "파일을 확인하는 중…";
+  if (phase === "registering" || phase === "waiting") return "체인에 등록하는 중…";
+  return base;
+}
+
+/**
+ * 등록이 확정된 파일 한 줄. 체인에 올라간 사실만 적는다 — 금액도 지갑 주소도 여기 없다.
+ *
+ * 거래 해시는 앞 10자만 보이되 전문을 복사할 수 있게 한다. 이 체인에는 블록 탐색기가 없어
+ * 사용자가 조회에 쓸 수 있는 값이 그 해시뿐이다(`evidence-anchor.tsx:144`와 같은 사실).
+ */
+function AnchorDone({ record }: { record: ReportAnchorRecord }) {
+  const [copied, setCopied] = useState(false);
+  // 클립보드는 브라우저에만 있다. 서버 스냅샷을 false로 두어 서버 HTML과 hydration이 갈리지 않게 하고,
+  // 붙은 뒤에 실제 지원 여부로 한 번 바뀐다. 효과 안에서 setState를 부르면 렌더가 연쇄된다.
+  const canCopy = useSyncExternalStore(
+    () => () => {},
+    () => typeof navigator.clipboard?.writeText === "function",
+    () => false,
+  );
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 2_000);
+    return () => clearTimeout(timer);
+  }, [copied]);
+
+  const txHash = record.txHash;
+  return (
+    <div data-surface="anchor-done" className="mt-3 rounded-card border border-primary-200 bg-primary-50/40 p-3">
+      <p className="text-sm leading-6 text-zinc-700">
+        <ShieldCheck aria-hidden className="mr-1 inline size-4 shrink-0 align-text-bottom text-primary-600" strokeWidth={2.5} />
+        체인에 등록됨 · {formatDateTime(record.anchoredAt ?? record.recordedAt)} · 파일 {record.fileHash.slice(0, 10)}
+        {/* 계약상 anchored에는 txHash가 있다. 없으면 없는 값을 지어내지 않고 그 칸만 뺀다. */}
+        {txHash && ` · tx ${txHash.slice(0, 10)}`}
+      </p>
+      {txHash && (canCopy ? (
+        <button
+          aria-label="거래 해시 복사"
+          className="mt-2 text-sm font-semibold text-primary-600 underline"
+          type="button"
+          onClick={() => { void navigator.clipboard.writeText(txHash).then(() => setCopied(true)); }}
+        >
+          {copied ? "복사됨" : "거래 해시 복사"}
+        </button>
+      ) : (
+        <p className="mt-2 break-all font-mono text-xs text-zinc-800">{txHash}</p>
+      ))}
+      {/* 누르면 401이 뜨는 링크를 증명이라고 내놓지 않는다. 탐색기가 있을 때만 링크가 된다. */}
+      {record.explorerUrl && (
+        <a
+          className="mt-2 inline-flex items-center gap-1.5 text-sm font-semibold text-primary-600 underline"
+          href={record.explorerUrl}
+          rel="noreferrer"
+          target="_blank"
+        >
+          <Link2 aria-hidden className="size-4 shrink-0" strokeWidth={2.5} />
+          체인에서 확인하기
+        </a>
+      )}
+    </div>
+  );
+}
+
+/** 카드 하나의 등록 상태. 아직 아무 일도 없었으면(=idle) 아무것도 그리지 않는다. */
+function AnchorStatus({ anchor }: { anchor: ReportAnchorState }) {
+  const { phase, record, error, rejoined, retry } = anchor;
+
+  if (phase === "registering" || phase === "waiting") {
+    return (
+      <p data-surface="anchor-progress" className="mt-3 rounded-card border border-zinc-200 bg-zinc-50 p-3 text-sm leading-6 text-zinc-600">
+        {rejoined
+          ? "이미 등록을 요청한 파일입니다. 확정될 때까지 기다리는 중입니다."
+          : "체인에 등록하는 중입니다. 등록이 끝나면 파일이 저장됩니다."}
+      </p>
+    );
+  }
+
+  if (phase === "anchored" && record) return <AnchorDone record={record} />;
+
+  if (phase === "failed") {
+    return (
+      <>
+        <p data-surface="anchor-failed" className="mt-3 rounded-card border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-900">
+          {error ?? "파일을 등록하지 못했습니다."}
+          {record !== null && record.attempt > 1 && ` (${record.attempt}번째 시도)`}
+        </p>
+        <button
+          className="mt-2 flex w-full items-center justify-center rounded-xl border border-primary-500 py-2.5 text-sm font-semibold text-primary-600"
+          data-surface="anchor-retry"
+          type="button"
+          onClick={retry}
+        >
+          다시 시도
+        </button>
+      </>
+    );
+  }
+
+  return null;
 }
 
 /**
@@ -24,10 +128,16 @@ function download(data: BlobPart, type: string, filename: string) {
  * 잠금 규칙(`downloadLocked`)은 호출부가 정한 그대로 받는다 — 여기서 다시 판단하지 않는다.
  * `blockedReason`은 잠금과 다른 사실이다: 거주국이 아닌 나라를 비교 중이거나 데모 시나리오로
  * 보는 중이면 그 값으로 신고 근거자료를 만들 수 없다. 플랜과 무관하므로 자물쇠가 아니라 이유를 말한다.
+ *
+ * CSV·XLSX 두 버튼은 등록 게이트를 지난다(`useReportAnchor`): 파일 바이트의 해시를 등록하고
+ * 확정된 뒤에만 저장한다. 게이트에 필요한 값(`gateEnabled`·`events`·`result`·나라·연도)은
+ * prop을 셋 늘리는 대신 context에서 직접 읽는다 — `EvidenceAnchor`(evidence-anchor.tsx:73)와 같은 방식이다.
+ * **잠금·차단 규칙이 게이트보다 앞이다.** 못 만드는 파일은 해시하지도, 등록하지도 않는다.
  */
+// `estimate`는 prop 목록에 남아 있지만 여기서 읽지 않는다 — 파일을 만드는 쪽이 훅으로 옮겨
+// context의 `result`를 직접 읽기 때문이다. 시그니처를 줄이면 이번 범위 밖의 호출부가 따라 바뀐다.
 export function Downloads({
   events,
-  estimate,
   summary,
   activePeriod,
   ready,
@@ -50,9 +160,10 @@ export function Downloads({
   allowance: number;
   billableCount: number;
 }) {
-  // 파일명·기간 라벨은 선택 연도를 따른다 — estimate.period가 선택 연도의 과세기간을 싣는다.
-  // estimate가 아직 없으면(로딩·미연동) 예전처럼 요약 기간으로 물러난다.
-  const filenamePeriod = activePeriod ? periodFilePart(activePeriod) : "기간";
+  // 게이트 표시는 켜졌을 때만 그린다. 꺼져 있으면 예전 화면 그대로다(진행·성공·실패 세 줄 전부 없다).
+  const { gateEnabled } = useReportContext();
+  const csv = useReportAnchor("csv");
+  const xlsx = useReportAnchor("xlsx");
   const disabled = !ready || downloadLocked || blockedReason !== null;
 
   return (
@@ -78,7 +189,15 @@ export function Downloads({
 
       <div className="mt-5 space-y-3">
         {/* 직접 신고용(추천) — 홈택스 본인 신고. PDF 요약서 생성기가 없어 CSV 원장으로 구성한다. */}
-        <div className="rounded-card border border-primary-200 bg-primary-50/40 p-4">
+        {/* 복원 조회는 사용자가 이 카드에 처음 닿을 때 한 번만 일어난다. 마운트마다 XLSX까지 만들면
+            리포트를 여는 모든 사람이 쓰지도 않을 파일 생성 비용을 낸다(계획 §3). */}
+        <div
+          className="rounded-card border border-primary-200 bg-primary-50/40 p-4"
+          data-anchor-kind="csv"
+          onClick={csv.restore}
+          onFocusCapture={csv.restore}
+          onPointerEnter={csv.restore}
+        >
           <div className="flex items-center gap-2">
             <p className="font-semibold text-zinc-900">직접 신고용</p>
             <span className="rounded-full bg-primary-100 px-2 py-0.5 text-xs font-semibold text-primary-700">추천</span>
@@ -87,17 +206,24 @@ export function Downloads({
           <button
             className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl bg-primary-500 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
             data-locked={downloadLocked ? "download" : undefined}
-            disabled={disabled}
+            disabled={disabled || inFlight(csv.phase) || csv.phase === "failed"}
             type="button"
-            onClick={() => download(createReportLedgerCsv(events, estimate), "text/csv;charset=utf-8", `verawallet-신고근거-${filenamePeriod}.csv`)}
+            onClick={csv.start}
           >
             {downloadLocked && <Lock aria-hidden className="size-4 shrink-0" strokeWidth={2.5} />}
-            직접 신고용 내려받기
+            {buttonLabel(csv.phase, "직접 신고용 내려받기")}
           </button>
+          {gateEnabled && <AnchorStatus anchor={csv} />}
         </div>
 
         {/* 세무사 전달용 — XLSX 4시트(요약·자산별·원장·예외). 미리보기 목록을 여기에 흡수한다. */}
-        <div className="rounded-card border border-zinc-200 p-4">
+        <div
+          className="rounded-card border border-zinc-200 p-4"
+          data-anchor-kind="xlsx"
+          onClick={xlsx.restore}
+          onFocusCapture={xlsx.restore}
+          onPointerEnter={xlsx.restore}
+        >
           <p className="font-semibold text-zinc-900">세무사 전달용</p>
           <p className="mt-1 text-sm leading-6 text-zinc-500">
             XLSX 4시트 · 요약(신고 기입란) · 자산별(취득가액 명세) · 원장(거래 부속명세) · 예외(판단보류·미반영)
@@ -105,13 +231,14 @@ export function Downloads({
           <button
             className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl border border-primary-500 py-3 font-semibold text-primary-600 disabled:cursor-not-allowed disabled:opacity-50"
             data-locked={downloadLocked ? "download" : undefined}
-            disabled={disabled || !summary}
+            disabled={disabled || !summary || inFlight(xlsx.phase) || xlsx.phase === "failed"}
             type="button"
-            onClick={() => download(createReportXlsx(events, estimate), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", `verawallet-신고근거-${filenamePeriod}.xlsx`)}
+            onClick={xlsx.start}
           >
             {downloadLocked && <Lock aria-hidden className="size-4 shrink-0" strokeWidth={2.5} />}
-            세무사 전달용 내려받기
+            {buttonLabel(xlsx.phase, "세무사 전달용 내려받기")}
           </button>
+          {gateEnabled && <AnchorStatus anchor={xlsx} />}
         </div>
 
         {/* 보고서: 값만 늘어놓은 격자가 아니라 계산 흐름을 보이는 문서. 앱 화면(/export/report)에서 그대로 읽고,
