@@ -1,5 +1,14 @@
 # 배포 제약 (v1 mock 단계)
 
+## 배포하는 브랜치는 `master` 하나다
+
+공개 주소(https://verawallet.pelicanlab.dev)의 Docker 이미지는 **체크아웃된 소스 그대로** 빌드된다.
+그래서 feature 브랜치를 체크아웃한 채 루트에서 `pnpm docker:up`을 하면 아직 리뷰도 병합도 되지 않은 코드가
+공개 주소에 올라간다. 배포 전에는 FE를 `master`로, BE를 `main`으로 돌려 놓고 `git status`가 비어 있는지 본다.
+내 변경을 배포에 넣는 길은 브랜치를 띄우는 것이 아니라 **PR을 `master`에 병합한 뒤 다시 빌드하는 것**이다.
+
+절차와 포트·환경변수는 배포 스택을 담은 루트 런처 폴더의 README "Docker 배포" 절에 있다(이 저장소 밖이다).
+
 이 저장소의 v1은 **mock 데이터 단계**다. 실제 백엔드·인덱서·OmniOne SDK·온체인 앵커링이 연결되지 않는 제약은 **OFF(mock) 모드에 한정**된다. ON 모드에서는 `proxy.ts`를 통해 BE에 연동한다.
 
 ## in-memory mock 저장소
