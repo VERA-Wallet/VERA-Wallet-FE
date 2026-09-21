@@ -1,8 +1,8 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { EVIDENCE_FIXTURE_ESTIMATE } from "@/tests/fixtures/evidence-estimate";
+import { buildReportBundle } from "@/lib/export/report-bundle";
 import { ruleSetListSchema } from "@/lib/http/tax-dto";
-import { buildEvidenceDocument } from "@/lib/tax/evidence";
 import { listRuleSetSummaries } from "@/lib/tax/rulesets";
 import type { EvidenceRecord } from "@/lib/ports/tax-evidence";
 
@@ -19,7 +19,7 @@ vi.mock("@/lib/composition-root.client", () => ({
   taxEvidenceProvider: { latest: ports.latest, record: ports.record },
 }));
 
-// 기록은 다운로드와 같은 플랜 게이트를 탄다. 활성 플랜을 심어 버튼을 열고 본다.
+// 기록 화면은 다운로드와 같은 플랜 게이트를 탄다. 활성 플랜을 심어 카드를 열고 본다.
 vi.mock("@/lib/plan/use-plan", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/plan/use-plan")>();
   return { ...actual, usePlan: () => ({ plan: { tier: "pro" as const, taxYear: 2027, activatedAt: "2027-01-01T00:00:00.000Z" }, activate: vi.fn(), deactivate: vi.fn() }) };
@@ -28,7 +28,10 @@ vi.mock("@/lib/plan/use-plan", async (importOriginal) => {
 import { renderReportPages } from "@/tests/ui/helpers/report-pages";
 
 const estimate = EVIDENCE_FIXTURE_ESTIMATE;
-const CURRENT_ROOT = buildEvidenceDocument(estimate).merkleRoot;
+// 이 describe의 모든 테스트에서 ports.list는 빈 목록을 준다(beforeEach) — 카드가 읽는 events도 비어 있다.
+// 등록은 이제 계산 근거 + 이번 내려받기 파일 둘을 묶은 루트다(buildReportBundle) — buildEvidenceDocument
+// 루트로 비교하면 등록 직후에도 "달라졌다"고 잘못 말한다(§7).
+const CURRENT_ROOT = buildReportBundle(estimate, []).merkleRoot;
 const OTHER_ROOT = `0x${"cd".repeat(32)}`;
 
 function recordOf(merkleRoot: string, explorerUrl: string | null = null): EvidenceRecord {
@@ -36,7 +39,7 @@ function recordOf(merkleRoot: string, explorerUrl: string | null = null): Eviden
     merkleRoot,
     countryCode: "KR",
     taxYear: 2027,
-    leafCount: 6,
+    leafCount: 7,
     recordedAt: "2027-05-01T00:00:00.000Z",
     anchorStatus: "anchored",
     txHash: `0x${"ab".repeat(32)}`,
@@ -67,35 +70,30 @@ beforeEach(() => {
 });
 
 describe("계산 근거 체인 기록", () => {
-  it("기록이 없으면 무엇이 올라가는지 밝히고 기록을 권한다", async () => {
+  // 이 카드는 더는 등록을 시키지 않는다 — 등록은 내려받기가 한다(§7). 아래 모든 테스트가 그 규칙을 지킨다.
+  it("기록이 없으면 무엇이 올라가는지 밝히고, 내려받을 때 등록된다고 안내한다", async () => {
     renderBasis();
     await screen.findByText("계산 근거 기록");
 
     expect(screen.getByText(/금액·지갑 주소는 올라가지 않고/)).toBeInTheDocument();
-    const button = await screen.findByRole("button", { name: "계산 근거 기록하기" });
-    await waitFor(() => expect(button).toBeEnabled());
-    // 고른 귀속연도의 기록을 그 연도로 물어본다.
+    expect(await screen.findByText(/이 리포트는 내려받을 때 체인에 등록돼요/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /내려받기로 이동/ })).toHaveAttribute("href", "/export");
+    // 고른 귀속연도의 기록을 그 연도로 물어본다. 등록 버튼이 없으므로 record는 절대 부르지 않는다.
     expect(ports.latest).toHaveBeenCalledWith("KR", 2027);
+    expect(ports.record).not.toHaveBeenCalled();
   });
 
-  it("누르면 정본 문서를 올린다. 서버가 대조할 수 있게 루트를 함께 보낸다", async () => {
-    ports.record.mockResolvedValue(recordOf(CURRENT_ROOT));
+  it("이미 기록했고 계산이 그대로면 배지와 지금 계산의 판정 건수를 보인다", async () => {
+    ports.latest.mockResolvedValue(recordOf(CURRENT_ROOT));
     renderBasis();
-    const button = await screen.findByRole("button", { name: "계산 근거 기록하기" });
-    await waitFor(() => expect(button).toBeEnabled());
-
-    fireEvent.click(button);
-
-    await waitFor(() => expect(ports.record).toHaveBeenCalledTimes(1));
-    const document = ports.record.mock.calls[0][0] as ReturnType<typeof buildEvidenceDocument>;
-    expect(document.merkleRoot).toBe(CURRENT_ROOT);
-    // 잎 0번은 헤더, 나머지는 건별 판정. 이 구조가 곧 "건별 증명"의 근거다.
-    expect(document.leaves[0].kind).toBe("header");
-    expect(document.leaves).toHaveLength(estimate.judgments.length + 1);
 
     expect(await screen.findByText("체인에 기록됨")).toBeInTheDocument();
-    // 잎 수가 아니라 판정 건수로 말한다(헤더 잎은 사용자의 거래가 아니다).
+    // 잎 수(헤더+판정+파일 2개)가 아니라 지금 계산의 판정 건수로 말한다.
     expect(screen.getByText("5건")).toBeInTheDocument();
+    expect(screen.queryByText(/이 리포트는 내려받을 때 체인에 등록돼요/)).toBeNull();
+    expect(screen.queryByText(/기록한 뒤로|다음 내려받기 때 새로 등록/)).toBeNull();
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(ports.record).not.toHaveBeenCalled();
   });
 
   it("탐색기가 없는 체인에서는 링크 대신 거래 해시 전문을 보인다", async () => {
@@ -117,34 +115,17 @@ describe("계산 근거 체인 기록", () => {
     expect(screen.getByRole("link", { name: /체인에서 확인하기/ })).toHaveAttribute("href", "https://scan.example.test/tx/0xabc");
   });
 
-  it("이미 기록했고 계산이 그대로면 다시 올리지 않는다", async () => {
-    ports.latest.mockResolvedValue(recordOf(CURRENT_ROOT));
-    renderBasis();
-
-    const button = await screen.findByRole("button", { name: "기록 완료" });
-    expect(button).toBeDisabled();
-    expect(screen.queryByText(/기록한 뒤로 계산이 달라졌습니다/)).toBeNull();
-  });
-
-  it("기록한 뒤 계산이 달라졌으면 그 사실을 말하고 다시 기록하게 한다", async () => {
+  it("기록한 뒤 계산이 달라졌으면 다음 내려받기 때 새로 등록된다고 말하고, 판정 건수는 말하지 않는다", async () => {
     ports.latest.mockResolvedValue(recordOf(OTHER_ROOT));
     renderBasis();
 
-    expect(await screen.findByText(/기록한 뒤로 계산이 달라졌습니다/)).toBeInTheDocument();
-    const button = screen.getByRole("button", { name: "다시 기록하기" });
-    await waitFor(() => expect(button).toBeEnabled());
+    expect(await screen.findByText(/계산이 바뀌어 다음 내려받기 때 새로 등록돼요/)).toBeInTheDocument();
     // 옛 기록을 "현재 근거"로 읽히게 하는 배지는 달지 않는다.
     expect(screen.queryByText("체인에 기록됨")).toBeNull();
-  });
-
-  it("올리지 못하면 조용히 넘어가지 않고 이유를 말한다", async () => {
-    ports.record.mockRejectedValue(new Error("Evidence merkle root mismatch."));
-    renderBasis();
-    const button = await screen.findByRole("button", { name: "계산 근거 기록하기" });
-    await waitFor(() => expect(button).toBeEnabled());
-
-    fireEvent.click(button);
-    expect(await screen.findByText("Evidence merkle root mismatch.")).toBeInTheDocument();
+    // 기록이 덮는 판정 수를 이 카드는 모른다(잎을 안 갖고 있다) — 지어내지 않는다.
+    expect(screen.queryByText(/^\d+건$/)).toBeNull();
+    expect(screen.queryByText(/이 리포트는 내려받을 때 체인에 등록돼요/)).toBeNull();
+    expect(ports.record).not.toHaveBeenCalled();
   });
 
   it("체인 확인은 근거 화면으로 이동한다. 해시 한 줄을 이 자리에서 그리지 않는다", async () => {
@@ -160,7 +141,7 @@ describe("계산 근거 체인 기록", () => {
   it("계산이 달라진 뒤에도 링크는 체인에 실제로 올라간 루트를 가리킨다", async () => {
     ports.latest.mockResolvedValue(recordOf(OTHER_ROOT));
     renderBasis();
-    await screen.findByText(/기록한 뒤로 계산이 달라졌습니다/);
+    await screen.findByText(/계산이 바뀌어 다음 내려받기 때 새로 등록돼요/);
 
     // 지금 화면의 루트가 아니라 기록된 루트다. 화면 값으로 바꾸면 체인에 없는 근거를 열게 된다.
     expect(screen.getByRole("link", { name: /체인에서 직접 확인/ })).toHaveAttribute("href", `/export/evidence/${OTHER_ROOT}`);
@@ -172,11 +153,11 @@ describe("계산 근거 체인 기록", () => {
     expect(screen.queryByRole("link", { name: /체인에서 직접 확인/ })).toBeNull();
   });
 
-  it("지갑 미연결(DID-only)에는 봉인할 내 계산이 없다. 기록을 묻지도, 열지도 않는다", async () => {
+  it("지갑 미연결(DID-only)에는 봉인할 내 계산이 없다. 기록을 묻지 않는다", async () => {
     renderReportPages({ pages: ["basis"], countryCode: "KR", currentYear: 2027, walletConnected: false });
     await screen.findByText("계산 근거 기록");
 
     expect(ports.latest).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "계산 근거 기록하기" })).toBeDisabled();
+    expect(screen.queryByText("체인에 기록됨")).toBeNull();
   });
 });

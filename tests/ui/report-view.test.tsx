@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ruleSetListSchema } from "@/lib/http/tax-dto";
-import { buildEvidenceDocument } from "@/lib/tax/evidence";
+import { buildReportBundle } from "@/lib/export/report-bundle";
 import { listRuleSetSummaries } from "@/lib/tax/rulesets";
 import type { EvidenceRecord } from "@/lib/ports/tax-evidence";
 import type { TaxEstimate } from "@/lib/tax/types";
@@ -165,7 +165,8 @@ describe("보고서 앱 화면", () => {
   });
 
   it("체인 기록이 지금 계산과 같을 때만 머클루트를 싣고 근거 화면으로 잇는다", async () => {
-    const root = buildEvidenceDocument(estimate).merkleRoot;
+    // 이 describe의 모든 테스트에서 ports.list는 빈 목록을 준다(beforeEach) — 리포트가 읽는 events도 비어 있다.
+    const root = buildReportBundle(estimate, []).merkleRoot;
     ports.latest.mockResolvedValue(recordOf(root));
     renderReport();
 

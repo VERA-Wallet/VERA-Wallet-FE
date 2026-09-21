@@ -4,20 +4,15 @@ import { renderReportPages } from "@/tests/ui/helpers/report-pages";
 import { listRuleSetSummaries } from "@/lib/tax/rulesets";
 import { vi } from "vitest";
 
-const ports = vi.hoisted(() => ({ list: vi.fn(), getSummary: vi.fn(), getProof: vi.fn(), latest: vi.fn(), listRuleSets: vi.fn(), estimate: vi.fn(), anchorGet: vi.fn() }));
+const ports = vi.hoisted(() => ({ list: vi.fn(), getSummary: vi.fn(), getProof: vi.fn(), latest: vi.fn(), listRuleSets: vi.fn(), estimate: vi.fn(), document: vi.fn(), record: vi.fn() }));
 vi.mock("@/lib/composition-root.client", () => ({
   eventRepository: { list: ports.list },
   summaryProvider: { getSummary: ports.getSummary },
   anchorProofProvider: { getProof: ports.getProof },
-  taxEvidenceProvider: { latest: ports.latest, record: vi.fn() },
+  // 이 파일은 계산(estimate)이 없는 경로다. 등록할 근거가 없으므로 게이트가 켜져 있어도 걸리지 않고,
+  // 세 포트 중 아무것도 불리지 않는다 — 그 사실은 아래 케이스가 직접 단언한다(계획 §11 확정 결정).
+  taxEvidenceProvider: { document: ports.document, latest: ports.latest, record: ports.record },
   taxEngine: { listRuleSets: ports.listRuleSets, estimate: ports.estimate },
-  // 게이트가 기본 켜짐(ReportInputsProvider)이라 CSV 클릭이 register 대신 이 조회를 먼저 탄다.
-  // 키를 그대로 되돌려 "내가 물은 키와 다른 레코드"를 만들지 않는다(estimate가 null이라 국가·연도가
-  // 파일 바이트에 없는 경우라 여기서 메타를 대충 맞추면 계획 §0-F6이 막으려던 혼선을 재현한다).
-  reportAnchorProvider: {
-    get: ports.anchorGet,
-    register: vi.fn(),
-  },
 }));
 
 // 다운로드는 이제 구독 전제다 — 활성 플랜을 심어야 버튼이 열려 파일명 검증까지 도달한다.
@@ -39,22 +34,6 @@ describe("빈 지갑 리포트", () => {
     ports.listRuleSets.mockImplementation(async () => listRuleSetSummaries());
     // 추정이 실패해도 원장 부속명세는 온체인 값만으로 만들 수 있다 — 그때 기간은 요약 기간으로 물러난다.
     ports.estimate.mockRejectedValue(new Error("engine down"));
-    // countryCode를 안 넘겨 country는 FALLBACK_COUNTRY("DE")로, latestActivityYear가 없어 taxYear는 currentYear(2026)로 잡힌다
-    // (lib/tax/use-report-inputs.ts:62,78,85). 훅이 물은 키를 그대로 돌려주어 "내가 물은 키와 다른 레코드"를 만들지 않는다.
-    ports.anchorGet.mockImplementation(async (key: { fileHash: string; kind: string; countryCode: string; taxYear: number }) => ({
-      ...key,
-      algorithm: "keccak256",
-      byteLength: 0,
-      recordedAt: "2026-01-01T00:00:00.000Z",
-      anchorStatus: "anchored",
-      attempt: 1,
-      txHash: "0xstub",
-      blockNumber: "1",
-      anchoredAt: "2026-01-01T00:00:00.000Z",
-      explorerUrl: null,
-      failureReason: null,
-      lastFailureAt: null,
-    }));
     renderReportPages({ pages: ["main"], currentYear: 2026 });
     expect(await screen.findByText(/기간 미정/)).toBeInTheDocument();
     expect(document.body.textContent ?? "").not.toMatch(/^\s*~\s/m);
@@ -74,6 +53,12 @@ describe("빈 지갑 리포트", () => {
       await waitFor(() => expect(clicked.length).toBeGreaterThan(0));
       expect(clicked[0]).toContain("기간미정");
       expect(clicked[0]).not.toMatch(/-_\./);
+      // 등록할 계산 근거가 없는 기간은 게이트가 걸리지 않는다 — 조회도 등록도 0회이고,
+      // 상단 줄은 그 사실을 그대로 말한다(하드 게이트의 취지는 "등록할 수 있는데 안 하는 것"을 막는 것이다).
+      expect(ports.document).not.toHaveBeenCalled();
+      expect(ports.record).not.toHaveBeenCalled();
+      expect(ports.latest).not.toHaveBeenCalled();
+      expect(screen.getByText("등록할 계산 근거가 없어요")).toBeInTheDocument();
     } finally {
       HTMLAnchorElement.prototype.click = realClick;
     }

@@ -1,6 +1,7 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { EVIDENCE_FIXTURE_ESTIMATE } from "@/tests/fixtures/evidence-estimate";
+import { buildReportBundle } from "@/lib/export/report-bundle";
 import { buildEvidenceDocument, leafHash } from "@/lib/tax/evidence";
 import type { EvidenceChainCheck, EvidenceDetail } from "@/lib/ports/tax-evidence";
 
@@ -16,6 +17,9 @@ const DOCUMENT = buildEvidenceDocument(EVIDENCE_FIXTURE_ESTIMATE);
 const ROOT = DOCUMENT.merkleRoot;
 const OTHER_ROOT = `0x${"cd".repeat(32)}`;
 const TX = `0x${"ab".repeat(32)}`;
+// 묶음 등록(파일 잎 포함)의 문서. events는 이 화면의 테스트 범위 밖이라 비워 둔다 — buildReportBundle은
+// 빈 events에서도 결정적인 CSV·XLSX 바이트를 낸다(report-hash.ts).
+const BUNDLE = buildReportBundle(EVIDENCE_FIXTURE_ESTIMATE, []);
 
 function detailOf(over: Partial<EvidenceDetail> = {}): EvidenceDetail {
   return {
@@ -168,5 +172,45 @@ describe("계산 근거 화면", () => {
     expect(await screen.findByText("기록을 찾지 못했습니다")).toBeInTheDocument();
     expect(screen.queryByText(/봉인한 판정/)).toBeNull();
     expect(screen.getByRole("link", { name: /리포트/ })).toHaveAttribute("href", "/export");
+  });
+
+  it("파일 잎이 없는 옛 문서에는 「파일」 표를 그리지 않는다", async () => {
+    render(<EvidenceView merkleRoot={ROOT} />);
+
+    expect(await screen.findByText("봉인한 판정 5건")).toBeInTheDocument();
+    expect(screen.queryByText(/파일 \d+건/)).toBeNull();
+    expect(screen.queryByText("직접 신고용")).toBeNull();
+    expect(screen.queryByText("세무사 전달용")).toBeNull();
+  });
+
+  it("파일 잎이 있으면 「파일」 표에 CSV·XLSX 두 행을 보이고, 잎 해시와 증명 경로를 펼칠 수 있다", async () => {
+    const fileLeaves = BUNDLE.leaves.filter((leaf) => leaf.kind === "file");
+    ports.document.mockResolvedValue(
+      detailOf({
+        merkleRoot: BUNDLE.merkleRoot,
+        leafCount: BUNDLE.leaves.length,
+        leaves: structuredClone(BUNDLE.leaves),
+      }),
+    );
+    ports.checkChain.mockResolvedValue(checkOf({ merkleRoot: BUNDLE.merkleRoot, anchoredPayloadHash: BUNDLE.merkleRoot }));
+    const { container } = render(<EvidenceView merkleRoot={BUNDLE.merkleRoot} />);
+
+    // 판정 건수 옆에 파일 건수가 붙는다 — 잎에서 헤더·판정과 같이 있어도 판정 수는 흔들리지 않는다.
+    expect(await screen.findByText("봉인한 판정 5건 · 파일 2건")).toBeInTheDocument();
+    expect(screen.getByText("직접 신고용")).toBeInTheDocument();
+    expect(screen.getByText("세무사 전달용")).toBeInTheDocument();
+
+    // 각 행이 사람이 읽는 크기를 보인다 — 정확한 단위(B·KB·MB)는 파일 크기에 달렸으므로 형태만 확인한다.
+    const table = screen.getByRole("table");
+    expect(within(table).getAllByText(/^\d+(\.\d+)?(B|KB|MB|GB)$/)).toHaveLength(fileLeaves.length);
+
+    // 판정 잎도 같은 이름의 버튼을 쓰므로 파일 표 안에서만 찾는다.
+    const [firstToggle] = within(table).getAllByRole("button", { name: "잎 해시와 증명 경로" });
+    expect(screen.queryByText("루트까지의 형제 해시 (아래부터 차례로 붙여 올린다)")).toBeNull();
+    fireEvent.click(firstToggle);
+
+    const proof = container.querySelector('[data-surface="evidence-leaf-proof"]');
+    expect(proof).not.toBeNull();
+    expect(proof!.textContent).toContain(leafHash(fileLeaves[0]));
   });
 });

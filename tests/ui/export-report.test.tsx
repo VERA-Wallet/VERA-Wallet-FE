@@ -7,20 +7,16 @@ import { ruleSetListSchema, taxEstimateSchema } from "@/lib/http/tax-dto";
 import type { TaxEstimateRequest } from "@/lib/ports/tax-engine";
 import type { TaxEstimate } from "@/lib/tax/types";
 
-const ports = vi.hoisted(() => ({ list: vi.fn(), getSummary: vi.fn(), getProof: vi.fn(), latest: vi.fn(), estimate: vi.fn(), listRuleSets: vi.fn(), anchorGet: vi.fn() }));
+const ports = vi.hoisted(() => ({ list: vi.fn(), getSummary: vi.fn(), getProof: vi.fn(), latest: vi.fn(), estimate: vi.fn(), listRuleSets: vi.fn(), document: vi.fn(), record: vi.fn() }));
 
 vi.mock("@/lib/composition-root.client", () => ({
   eventRepository: { list: ports.list },
   summaryProvider: { getSummary: ports.getSummary },
   anchorProofProvider: { getProof: ports.getProof },
-  taxEvidenceProvider: { latest: ports.latest, record: vi.fn() },
+  // 게이트가 기본 켜짐이라 내려받기가 묶음 루트 조회를 먼저 탄다. 이 파일의 관심사는 파일 내용이므로
+  // 조회가 곧바로 `anchored`를 돌려주게 해 시트 없이 저장까지 가게 둔다(등록 흐름 자체는 export-anchor-gate가 덮는다).
+  taxEvidenceProvider: { document: ports.document, latest: ports.latest, record: ports.record },
   taxEngine: { estimate: ports.estimate, listRuleSets: ports.listRuleSets },
-  // 게이트가 기본 켜짐이라 XLSX 클릭이 register 대신 이 조회를 먼저 탄다. 키를 그대로 되돌려
-  // "내가 물은 키와 다른 레코드"를 만들지 않는다 — 이 파일은 estimate가 있어 country="KR"·taxYear=2027이 고정이다.
-  reportAnchorProvider: {
-    get: ports.anchorGet,
-    register: vi.fn(),
-  },
 }));
 
 // 다운로드는 구독 전제다 — 활성 플랜을 심어야 버튼이 열려 파일명 검증까지 도달한다.
@@ -99,27 +95,28 @@ beforeEach(() => {
   ports.getProof.mockReset();
   ports.estimate.mockReset();
   ports.listRuleSets.mockReset();
-  ports.anchorGet.mockReset();
+  ports.document.mockReset();
+  ports.record.mockReset();
   ports.list.mockResolvedValue({ items: [], nextCursor: null });
   ports.getProof.mockResolvedValue(null);
   ports.latest.mockResolvedValue(null);
   ports.getSummary.mockResolvedValue(summary);
   ports.estimate.mockResolvedValue(estimate);
   ports.listRuleSets.mockImplementation(async () => ruleSetListSchema.parse(listRuleSetSummaries()));
-  // 훅이 물은 키(fileHash·kind·countryCode·taxYear)를 그대로 되돌려 "내가 물은 키와 다른 레코드"를 만들지 않는다.
-  ports.anchorGet.mockImplementation(async (key: { fileHash: string; kind: string; countryCode: string; taxYear: number }) => ({
-    ...key,
-    algorithm: "keccak256",
-    byteLength: 0,
+  // 훅이 물은 루트를 그대로 되돌려 "내가 물은 루트와 다른 기록"을 만들지 않는다.
+  ports.document.mockImplementation(async (merkleRoot: string) => ({
+    merkleRoot,
+    countryCode: "KR",
+    taxYear: 2027,
+    leafCount: 0,
+    version: 1,
+    leaves: [],
     recordedAt: "2027-01-01T00:00:00.000Z",
     anchorStatus: "anchored",
-    attempt: 1,
     txHash: "0xstub",
     blockNumber: "1",
     anchoredAt: "2027-01-01T00:00:00.000Z",
     explorerUrl: null,
-    failureReason: null,
-    lastFailureAt: null,
   }));
 });
 
