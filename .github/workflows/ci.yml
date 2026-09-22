@@ -119,4 +119,8 @@ jobs:
         env:
           VERAWALLET_BACKEND_CWD: ${{ github.workspace }}/be
           VERAWALLET_BACKEND_ORIGIN: http://localhost:3200
+          # BE origin/main은 tax-evidence(묶음 등록)를 이미 구현하지만, 이 CI 레인은 아직 ON으로
+          # 검증하지 않았다 — 켜 두면 g002·g003의 다운로드 케이스가 등록 실패·타임아웃으로 깨질 수 있다.
+          # 부채다: ON 레인을 한 번 통과시키면 이 줄과 playwright.config.ts의 짝을 함께 지운다(계획 §11 Follow-up 1).
+          REPORT_ANCHOR_GATE: "off"
         run: pnpm test:e2e

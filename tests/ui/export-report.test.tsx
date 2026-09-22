@@ -7,13 +7,15 @@ import { ruleSetListSchema, taxEstimateSchema } from "@/lib/http/tax-dto";
 import type { TaxEstimateRequest } from "@/lib/ports/tax-engine";
 import type { TaxEstimate } from "@/lib/tax/types";
 
-const ports = vi.hoisted(() => ({ list: vi.fn(), getSummary: vi.fn(), getProof: vi.fn(), latest: vi.fn(), estimate: vi.fn(), listRuleSets: vi.fn() }));
+const ports = vi.hoisted(() => ({ list: vi.fn(), getSummary: vi.fn(), getProof: vi.fn(), latest: vi.fn(), estimate: vi.fn(), listRuleSets: vi.fn(), document: vi.fn(), record: vi.fn() }));
 
 vi.mock("@/lib/composition-root.client", () => ({
   eventRepository: { list: ports.list },
   summaryProvider: { getSummary: ports.getSummary },
   anchorProofProvider: { getProof: ports.getProof },
-  taxEvidenceProvider: { latest: ports.latest, record: vi.fn() },
+  // 게이트가 기본 켜짐이라 내려받기가 묶음 루트 조회를 먼저 탄다. 이 파일의 관심사는 파일 내용이므로
+  // 조회가 곧바로 `anchored`를 돌려주게 해 시트 없이 저장까지 가게 둔다(등록 흐름 자체는 export-anchor-gate가 덮는다).
+  taxEvidenceProvider: { document: ports.document, latest: ports.latest, record: ports.record },
   taxEngine: { estimate: ports.estimate, listRuleSets: ports.listRuleSets },
 }));
 
@@ -93,12 +95,29 @@ beforeEach(() => {
   ports.getProof.mockReset();
   ports.estimate.mockReset();
   ports.listRuleSets.mockReset();
+  ports.document.mockReset();
+  ports.record.mockReset();
   ports.list.mockResolvedValue({ items: [], nextCursor: null });
   ports.getProof.mockResolvedValue(null);
   ports.latest.mockResolvedValue(null);
   ports.getSummary.mockResolvedValue(summary);
   ports.estimate.mockResolvedValue(estimate);
   ports.listRuleSets.mockImplementation(async () => ruleSetListSchema.parse(listRuleSetSummaries()));
+  // 훅이 물은 루트를 그대로 되돌려 "내가 물은 루트와 다른 기록"을 만들지 않는다.
+  ports.document.mockImplementation(async (merkleRoot: string) => ({
+    merkleRoot,
+    countryCode: "KR",
+    taxYear: 2027,
+    leafCount: 0,
+    version: 1,
+    leaves: [],
+    recordedAt: "2027-01-01T00:00:00.000Z",
+    anchorStatus: "anchored",
+    txHash: "0xstub",
+    blockNumber: "1",
+    anchoredAt: "2027-01-01T00:00:00.000Z",
+    explorerUrl: null,
+  }));
 });
 
 describe("리포트 estimate 배선", () => {

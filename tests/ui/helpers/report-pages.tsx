@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render } from "@testing-library/react";
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 
 import { ReportBasis } from "@/components/report/report-basis";
 import { ReportCompare } from "@/components/report/report-compare";
@@ -8,7 +8,6 @@ import { ReportInputsProvider } from "@/components/report/report-context";
 import { ReportIssues } from "@/components/report/report-issues";
 import { ReportMain } from "@/components/report/report-main";
 import { ReportSettings } from "@/components/report/report-settings";
-import type { ReportInputsOptions } from "@/lib/tax/use-report-inputs";
 
 /**
  * 리포트가 다섯 화면(`/export`와 하위 넷)으로 나뉘면서, 한 화면을 렌더하던 테스트는
@@ -28,12 +27,18 @@ export type ReportPageName = keyof typeof PAGES;
 
 const ALL_PAGES = ["main", "basis", "issues", "settings", "compare"] as const;
 
+/**
+ * 프로바이더의 실제 prop 타입. `ReportInputsOptions`(네 필드)로 좁혀 두면 프로바이더가 이미 받는
+ * `provenance`조차 테스트에서 넘길 수 없다 — 프로바이더에 prop이 늘 때마다 여기를 따라 고치지 않아도 되게 한다.
+ */
+export type ReportPagesOptions = Omit<ComponentProps<typeof ReportInputsProvider>, "children">;
+
 /** 프로바이더 + 고른 페이지들. `QueryClientProvider`는 호출부가 감싼다(테스트마다 client를 다루므로). */
 export function ReportPages({
   pages = [...ALL_PAGES],
   children,
   ...options
-}: ReportInputsOptions & { pages?: ReportPageName[]; children?: ReactNode }) {
+}: ReportPagesOptions & { pages?: ReportPageName[]; children?: ReactNode }) {
   return (
     <ReportInputsProvider {...options}>
       {pages.map((name) => {
@@ -51,7 +56,7 @@ export function renderReportPages({
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
   children,
   ...options
-}: ReportInputsOptions & { pages?: ReportPageName[]; client?: QueryClient; children?: ReactNode } = {}) {
+}: ReportPagesOptions & { pages?: ReportPageName[]; client?: QueryClient; children?: ReactNode } = {}) {
   const view = render(
     <QueryClientProvider client={client}>
       <ReportPages pages={pages} {...options}>

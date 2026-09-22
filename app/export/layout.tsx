@@ -4,7 +4,7 @@ import { getSessionCookieHeaderForEventReader, requireCompletedOnboarding, requi
 import { warmUpBeEventSync } from "@/lib/adapters/http/event-repository.server";
 import { isGroundedPeriod } from "@/lib/period";
 import { taxYearFor } from "@/lib/tax/engine";
-import { apiProvenance, isMockApiMode } from "@/lib/api-mode";
+import { apiProvenance, isMockApiMode, reportAnchorGateEnabled } from "@/lib/api-mode";
 import { ReportInputsProvider } from "@/components/report/report-context";
 
 /**
@@ -67,6 +67,7 @@ export default async function ExportLayout({ children }: { children: React.React
         currentYear={new Date().getFullYear()}
         latestActivityYear={await latestActivityTaxYear(completed.countryCode)}
         provenance={await apiProvenance()}
+        gateEnabled={reportAnchorGateEnabled()}
       >
         {children}
       </ReportInputsProvider>
@@ -85,6 +86,7 @@ export default async function ExportLayout({ children }: { children: React.React
         currentYear={new Date().getFullYear()}
         walletConnected={false}
         provenance={await apiProvenance()}
+        gateEnabled={reportAnchorGateEnabled()}
       >
         {children}
       </ReportInputsProvider>

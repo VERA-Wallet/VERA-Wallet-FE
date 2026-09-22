@@ -1,0 +1,12 @@
+{
+  "note": "리포트 파일 바이트의 고정 digest. xlsx/viem 업그레이드나 리포트 열 변경이 파일 바이트를 바꾸면 여기서 먼저 깨진다. 의도한 변경이면 UPDATE_REPORT_FILE_DIGEST=1 pnpm test report-file-hash 로 갱신한다.",
+  "fixture": "EVIDENCE_FIXTURE_ESTIMATE + REPORT_FIXTURE_EVENTS",
+  "csv": {
+    "byteLength": 2472,
+    "hash": "0xd4352287a41b2fd5806740ca7ae4a0244d4158e1c6a4890271bc353640937dac"
+  },
+  "xlsx": {
+    "byteLength": 31627,
+    "hash": "0x4fcc0744b93c84d999828ecd1ffc4eef6b5d7684512ba74a87ab43a3e9f6c104"
+  }
+}

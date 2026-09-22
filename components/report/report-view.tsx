@@ -462,7 +462,7 @@ export function ReportView() {
                   {anchor.anchoredAt && <MetaItem term="기록 시각">{generatedAtText(anchor.anchoredAt)}</MetaItem>}
                 </dl>
                 <p className="mt-3 text-xs leading-5 text-zinc-600">
-                  머클루트는 건별 판정을 잎으로 묶은 해시입니다. 체인에는 이 해시만 올라가며 금액·지갑 주소는 올라가지 않습니다.
+                  머클루트는 계산 판정과 파일 해시를 잎으로 묶은 해시입니다. 체인에는 이 해시만 올라가며 금액·지갑 주소는 올라가지 않습니다.
                 </p>
                 <Link href={`/export/evidence/${anchor.merkleRoot}`} className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-primary-600">
                   체인에서 직접 확인

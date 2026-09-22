@@ -7,11 +7,27 @@ import { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { AMOUNT_KIND_LABEL, GROUP_SHORT_LABEL, JudgmentBadge } from "@/components/ui/judgment-badge";
 import { taxEvidenceProvider } from "@/lib/composition-root.client";
-import { formatDate, formatDateTime, formatFiat } from "@/lib/format";
+import { formatDate, formatDateTime, formatFiat, shortHash } from "@/lib/format";
 import type { EvidenceChainCheck, EvidenceDetail } from "@/lib/ports/tax-evidence";
 import { canonicalJson, leafHash, merkleProof, merkleRoot } from "@/lib/tax/evidence";
-import type { EvidenceHeaderLeaf, EvidenceJudgmentLeaf, EvidenceLeaf } from "@/lib/tax/evidence";
+import type { EvidenceFileLeaf, EvidenceHeaderLeaf, EvidenceJudgmentLeaf, EvidenceLeaf } from "@/lib/tax/evidence";
 import type { JudgmentGroup, JudgmentRow } from "@/lib/tax/types";
+
+/** 화면의 두 행(직접 신고용·세무사 전달용)과 같은 이름으로 파일 잎을 말한다. */
+const FILE_KIND_LABEL: Record<EvidenceFileLeaf["file"], string> = { csv: "직접 신고용", xlsx: "세무사 전달용" };
+
+/** 파일 잎의 `byteLength`(정수 바이트)를 사람이 읽는 단위로. 해시·머클루트처럼 표기 규칙이 갈릴 값이 아니라 화면 전용이다. */
+function formatByteSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`;
+  const units = ["KB", "MB", "GB"] as const;
+  let value = bytes / 1024;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  return `${value.toFixed(value >= 10 ? 0 : 1)}${units[unitIndex]}`;
+}
 
 /** 세금 화면(tax-simulator)이 totals에 붙이는 이름과 같게 둔다 — 같은 값을 두 화면이 다르게 부르지 않는다. */
 const TOTAL_LABELS: readonly { key: string; label: string }[] = [
@@ -107,6 +123,8 @@ export function EvidenceView({ merkleRoot: root }: { merkleRoot: string }) {
 
   const header = detail?.leaves[0]?.kind === "header" ? (detail.leaves[0] as EvidenceHeaderLeaf) : null;
   const judgmentCount = detail ? detail.leaves.filter((leaf) => leaf.kind === "judgment").length : 0;
+  // 파일 잎(csv·xlsx). 묶음 등록 뒤에 생긴 기록에만 있다 — 옛 기록(파일별 등록 이전)에는 없다.
+  const fileLeaves = detail ? (detail.leaves.filter((leaf) => leaf.kind === "file") as EvidenceFileLeaf[]) : [];
   // 통화는 헤더 잎이 말한다. 헤더가 없는 문서라면 금액을 꾸미지 않고 그대로 보인다 — 통화를 지어내지 않는다.
   const money = (value: string) => (header ? formatFiat(value, header.currency) : value);
 
@@ -298,7 +316,10 @@ export function EvidenceView({ merkleRoot: root }: { merkleRoot: string }) {
 
               {/* 5. 판정 잎 — 봉인한 것 전부. 숨기는 행이 없어야 "이 루트가 덮는 내용"이 된다. */}
               <Card className="mt-5">
-                <p className="font-semibold text-zinc-900">봉인한 판정 {judgmentCount}건</p>
+                <p className="font-semibold text-zinc-900">
+                  봉인한 판정 {judgmentCount}건
+                  {fileLeaves.length > 0 && ` · 파일 ${fileLeaves.length}건`}
+                </p>
                 {judgmentCount === 0 ? (
                   <p className="mt-2 text-sm leading-6 text-zinc-500">
                     판정할 거래가 없어 계산 요약(헤더)만 봉인했습니다.
@@ -313,6 +334,28 @@ export function EvidenceView({ merkleRoot: root }: { merkleRoot: string }) {
                   </ul>
                 )}
               </Card>
+
+              {/* 6. 파일 잎 — 이번 등록이 함께 묶은 CSV·XLSX의 지문. 옛 기록(파일별 등록 이전)에는 잎이 없어
+                  표 자체를 그리지 않는다 — 없는 파일을 있다고 말하지 않는다. */}
+              {fileLeaves.length > 0 && (
+                <Card data-surface="evidence-files" className="mt-5">
+                  <p className="font-semibold text-zinc-900">파일 {fileLeaves.length}건</p>
+                  <table className="mt-3 w-full text-left text-sm">
+                    <thead>
+                      <tr className="text-xs text-zinc-500">
+                        <th className="pb-2 pr-2 font-medium">종류</th>
+                        <th className="pb-2 pr-2 font-medium">해시</th>
+                        <th className="pb-2 font-medium">크기</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-100">
+                      {fileLeaves.map((leaf) => (
+                        <FileLeafRow key={leaf.file} leaf={leaf} index={detail.leaves.indexOf(leaf)} leaves={detail.leaves} />
+                      ))}
+                    </tbody>
+                  </table>
+                </Card>
+              )}
             </>
           )}
         </>
@@ -402,6 +445,65 @@ function JudgmentLeafRow({
         </div>
       )}
     </li>
+  );
+}
+
+/**
+ * 파일 잎 한 행 — 종류·해시·크기, 펼치면 잎 해시와 루트까지의 증명 경로.
+ * 판정 행(`JudgmentLeafRow`)과 같은 방식이다 — 파일 해시가 루트 안에 **어떻게** 들어갔는지가 이 표의 존재 이유다.
+ */
+function FileLeafRow({ leaf, index, leaves }: { leaf: EvidenceFileLeaf; index: number; leaves: EvidenceLeaf[] }) {
+  const [open, setOpen] = useState(false);
+  // 경로는 펼칠 때만 센다 — 잎마다 O(n) keccak이라 목록 전체를 미리 계산하면 잎 수의 제곱으로 는다.
+  const proof = useMemo(() => (open ? { hash: leafHash(leaf), steps: merkleProof(leaves, index) } : null), [open, leaf, leaves, index]);
+
+  return (
+    <>
+      <tr>
+        <td className="py-2 pr-2 align-top text-zinc-700">{FILE_KIND_LABEL[leaf.file]}</td>
+        <td className="py-2 pr-2 align-top">
+          <p className="break-all font-mono text-xs text-zinc-800">{shortHash(leaf.hash)}</p>
+          <button
+            type="button"
+            aria-expanded={open}
+            onClick={() => setOpen((value) => !value)}
+            className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-zinc-500"
+          >
+            <ChevronDown aria-hidden className={`size-3 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} strokeWidth={2.5} />
+            잎 해시와 증명 경로
+          </button>
+        </td>
+        <td className="py-2 align-top text-zinc-700">{formatByteSize(leaf.byteLength)}</td>
+      </tr>
+      {proof && (
+        <tr>
+          <td colSpan={3} className="pb-3">
+            <div data-surface="evidence-leaf-proof" className="rounded-card border border-zinc-200 bg-zinc-50 p-3">
+              <p className="text-xs text-zinc-500">전체 해시</p>
+              <p className="mt-0.5 break-all font-mono text-[11px] text-zinc-800">{leaf.hash}</p>
+              <p className="mt-2 text-xs text-zinc-500">잎 해시</p>
+              <p className="mt-0.5 break-all font-mono text-[11px] text-zinc-800">{proof.hash}</p>
+              {proof.steps.length > 0 && (
+                <>
+                  <p className="mt-2 text-xs text-zinc-500">루트까지의 형제 해시 (아래부터 차례로 붙여 올린다)</p>
+                  <ol className="mt-0.5 space-y-1">
+                    {proof.steps.map((step, position) => (
+                      <li key={position} className="break-all font-mono text-[11px] text-zinc-800">
+                        <span className="text-zinc-400">{step.side === "left" ? "왼쪽" : "오른쪽"} </span>
+                        {step.hash}
+                      </li>
+                    ))}
+                  </ol>
+                </>
+              )}
+              <p className="mt-2 text-xs leading-5 text-zinc-500">
+                이 잎과 형제 해시만으로 루트가 나옵니다. 나머지 잎을 보이지 않고도 이 파일 하나가 봉인됐음을 증명할 수 있습니다.
+              </p>
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
 

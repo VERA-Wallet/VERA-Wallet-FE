@@ -35,6 +35,8 @@ export type ReportContextValue = ReportInputs & {
   proof: Awaited<ReturnType<typeof anchorProofProvider.getProof>>;
   /** 응답에 출처가 실려 오지 않는 표면(앵커 증명 등)용. 서버 layout이 BE 모드를 물어 계산해 준다. */
   provenance: Provenance;
+  /** 내보내기 = 파일 해시 온체인 등록 게이트. 서버 layout이 `reportAnchorGateEnabled()`로 계산해 내려준다. */
+  gateEnabled: boolean;
   /** 원장·요약·증명 읽기가 실패했을 때의 메시지. 계산(estimate) 실패와는 다른 사실이다. */
   ledgerError: string | null;
   ready: boolean;
@@ -64,7 +66,8 @@ export function ReportInputsProvider({
   latestActivityYear,
   walletConnected = true,
   provenance = "mock",
-}: ReportInputsOptions & { children: React.ReactNode; provenance?: Provenance }) {
+  gateEnabled = true,
+}: ReportInputsOptions & { children: React.ReactNode; provenance?: Provenance; gateEnabled?: boolean }) {
   const inputs = useReportInputs({ countryCode, currentYear, latestActivityYear, walletConnected });
   const { result, hasNothingToCompute, country, homeCountry, isHomeCountry, selected, setCountry, source } = inputs;
 
@@ -145,6 +148,7 @@ export function ReportInputsProvider({
     summary,
     proof,
     provenance,
+    gateEnabled,
     ledgerError,
     ready,
     activePeriod,
