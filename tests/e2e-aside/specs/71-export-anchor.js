@@ -18,8 +18,12 @@ const CONFIRM = '[data-surface=anchor-sheet-confirm]';
 // 「다시 시도」는 둘이다 — 카드 상단 실패 줄 안과 시트 안. 어느 것을 누르는지 스펙이 밝힌다.
 const CARD_RETRY = '[data-surface=anchor-failed] [data-surface=anchor-retry]';
 const SHEET_RETRY = SHEET + ' [data-surface=anchor-retry]';
-// 상태 줄은 카드에 **하나**다. 시트(anchor-sheet)·재시도 버튼은 이 넷에 들어가지 않는다.
-const LINES = '[data-surface=anchor-idle],[data-surface=anchor-progress],[data-surface=anchor-done],[data-surface=anchor-failed]';
+// 상태 줄은 카드에 **하나**다. 시트(anchor-sheet)·재시도 버튼은 이 목록에 들어가지 않는다.
+// 뒤의 넷은 복원 경로(돌아온 카드)의 줄이다 — 확인 중·등록됨·계산 바뀜·확인 실패.
+const LINES = [
+  'anchor-idle', 'anchor-progress', 'anchor-done', 'anchor-failed',
+  'anchor-checking', 'anchor-restored', 'anchor-stale', 'anchor-unknown',
+].map((name) => `[data-surface=${name}]`).join(',');
 // 40이 쓰는 것과 같은 체크섬 유효 주소. 지갑이 없으면 내려받기가 차단돼 게이트를 볼 수 없다.
 const WATCH = '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045';
 
@@ -136,7 +140,7 @@ async function main() {
     ok('두 가지 내려받기 버튼', (await count(p, 'button:has-text("직접 신고용 내려받기")')) === 1 && (await count(p, 'button:has-text("세무사 전달용 내려받기")')) === 1);
     const idle = await surface('[data-surface=anchor-idle]');
     ok('상태 줄은 카드에 하나(anchor-idle)', (await lineCount()) === 1 && idle !== null, idle);
-    ok('"이 리포트는 아직 체인에 등록되지 않았어요"', !!idle && /이 리포트는 아직 체인에 등록되지 않았어요/.test(idle), idle);
+    ok('"아직 체인에 등록되지 않았어요"', !!idle && /아직 체인에 등록되지 않았어요/.test(idle), idle);
     if (MUTATE) {
       ok('저장소를 비웠으므로 보조 줄은 "처음 내려받을 때 계산 근거와 파일을 한 번에 등록해요."',
         !!idle && /처음 내려받을 때 계산 근거와 파일을 한 번에 등록해요/.test(idle), idle);

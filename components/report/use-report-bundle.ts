@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useReportContext } from "@/components/report/report-context";
 import { taxEvidenceProvider } from "@/lib/composition-root.client";
@@ -9,7 +9,7 @@ import { buildReportFile, type ReportFile, type ReportFileKind } from "@/lib/exp
 import { periodFilePart } from "@/lib/period";
 import type { EvidenceRecord } from "@/lib/ports/tax-evidence";
 import type { NormalizedEvent } from "@/lib/schema/normalized-event";
-import type { EvidenceDocument } from "@/lib/tax/evidence";
+import { buildEvidenceDocument, leafHash, rootOfHashes, type EvidenceDocument, type EvidenceLeaf } from "@/lib/tax/evidence";
 import type { TaxEstimate } from "@/lib/tax/types";
 
 /** 등록이 확정될 때까지 화면이 지나는 단계. `anchored`와 `failed`만 멈춘 상태다. */
@@ -70,8 +70,15 @@ type BundleSnapshot = {
   record: EvidenceRecord | null;
   error: string | null;
   rejoined: boolean;
-  /** `latest()`가 말한 이 해의 최근 등록. 루트를 맞춰 본 적은 없다 — 「이 리포트가 등록됐다」가 아니다. */
+  /** 이 해의 최근 등록(`latest()` 또는 이 화면의 확정). 이것만으로는 「이 리포트가 등록됐다」가 아니다 — `latestMatch`가 답한다. */
   latest: EvidenceRecord | null;
+  /**
+   * `latest`의 잎. 지금 계산의 근거 잎과 맞춰 보는 재료다 — 파일 없이도 "이 계산이 등록된 것인가"를
+   * 답할 수 있게 한다. null이면 아직 못 받았거나 조회가 실패한 것이다.
+   */
+  latestLeaves: EvidenceLeaf[] | null;
+  /** 복원 조회가 도는 중. 이 동안은 "등록됐다"도 "안 됐다"도 말하지 않는다. */
+  restoring: boolean;
   /** 시트가 열려 있는가. 복원 경로에서는 절대 열리지 않는다(자동 포커스가 사용자를 끌고 간다). */
   sheet: boolean;
   /** 조회는 끝났고 등록은 아직. 시트의 「내려받기」를 기다리는 자리다. */
@@ -79,8 +86,24 @@ type BundleSnapshot = {
 };
 
 const IDLE: BundleSnapshot = {
-  phase: "idle", record: null, error: null, rejoined: false, latest: null, sheet: false, awaitingConfirm: false,
+  phase: "idle", record: null, error: null, rejoined: false, latest: null, latestLeaves: null, restoring: false,
+  sheet: false, awaitingConfirm: false,
 };
+
+/**
+ * 최근 등록이 **지금 계산**의 등록인가.
+ *
+ * - `same`: 등록된 근거 잎(헤더·판정)의 루트가 지금 계산의 근거 루트와 같다. 파일 잎은 계산과 원장의
+ *   결정적 함수이므로 사용자에게는 "이 리포트가 등록됐다"로 말해도 된다. 탭하면 루트 전체를 한 번 더 대조한다.
+ * - `different`: 등록한 뒤 계산이 바뀌었다. 다시 등록해야 한다.
+ * - `unknown`: 최근 등록은 있는데 잎을 못 받았다. 단정하지 않는다.
+ * - `none`: 최근 등록이 없다.
+ */
+export type LatestMatch = "same" | "different" | "unknown" | "none";
+
+function evidenceRootOf(leaves: readonly EvidenceLeaf[]): string {
+  return rootOfHashes(leaves.filter((leaf) => leaf.kind !== "file").map(leafHash));
+}
 
 /** 사용자가 누른 흐름이 아직 돌고 있는 단계. 이 동안 두 행이 함께 잠긴다 — 등록이 하나이므로. */
 export function bundleInFlight(phase: BundlePhase): boolean {
@@ -95,6 +118,10 @@ export type ReportBundleState = {
   rejoined: boolean;
   /** 마지막으로 확인된 이 해·나라의 기록. 복원이 `latest()`로 채운다(파일을 만들지 않는다). */
   latestRecord: EvidenceRecord | null;
+  /** `latestRecord`가 지금 계산의 등록인가. 복원 경로가 카드 한 줄을 고르는 근거다. */
+  latestMatch: LatestMatch;
+  /** 복원 조회 중. 카드는 「확인하고 있어요」를 보이고 행은 잠그지 않는다. */
+  restoring: boolean;
   sheetOpen: boolean;
   awaitingConfirm: boolean;
   /** 행을 탭했다. 등록이 끝나면 이 종류가 함께 저장된다. */
@@ -148,11 +175,12 @@ export function useReportBundle(): ReportBundleState {
    * - 같은 리포트인데 계산만 갱신됐다면 사용자가 시킨 일이 아니다. 돌고 있던 등록은 루트가
    *   갈려 끊기므로, 말없이 idle로 돌아가지 않고 끊긴 사실과 사유를 남긴다.
    * - 이미 멈춘 실패는 그대로 둔다 — 루트가 바뀌었다고 "마지막으로 일어난 일"이 바뀌지는 않는다.
-   * - `latest()`가 말한 최근 등록은 나라·연도의 사실이라 계산이 갱신돼도 여전히 참이다.
+   * - `latest()`가 말한 최근 등록은 나라·연도의 사실이라 계산이 갱신돼도 여전히 참이다. 그 잎도
+   *   함께 남긴다 — 새 계산과 다시 맞춰 보면 「계산이 바뀌어 다시 등록이 필요해요」가 저절로 나온다.
    */
   const carryOver = (previous: { owner: BundleOwner; state: BundleSnapshot }): BundleSnapshot => {
     if (!sameReport(previous.owner)) return IDLE;
-    const kept: BundleSnapshot = { ...IDLE, latest: previous.state.latest };
+    const kept: BundleSnapshot = { ...IDLE, latest: previous.state.latest, latestLeaves: previous.state.latestLeaves };
     if (bundleInFlight(previous.state.phase)) return { ...kept, phase: "failed", error: INTERRUPTED_REASON };
     return previous.state.phase === "failed" ? previous.state : kept;
   };
@@ -164,7 +192,19 @@ export function useReportBundle(): ReportBundleState {
     // React가 권하는 "입력이 바뀔 때 상태 조정"이고, `owns()` 비교가 가드라 다음 렌더에서 멈춘다.
     setWritten({ owner: ownerNow, state: base });
   }
-  const { phase, record, error, rejoined, latest, sheet, awaitingConfirm } = base;
+  const { phase, record, error, rejoined, latest, latestLeaves, restoring, sheet, awaitingConfirm } = base;
+
+  // 대조는 잎이 오거나 계산이 바뀔 때만 다시 한다. 판정 수백 건의 해시라 렌더마다 돌릴 일은 아니다.
+  const latestMatch = useMemo<LatestMatch>(() => {
+    if (latest === null) return "none";
+    if (latestLeaves === null || estimate === null) return "unknown";
+    try {
+      return evidenceRootOf(latestLeaves) === buildEvidenceDocument(estimate).merkleRoot ? "same" : "different";
+    } catch {
+      // 호버가 렌더를 터뜨리면 안 된다. 해시를 못 내면 모르는 것이고, 탭하면 `start()`가 우리말로 사유를 말한다.
+      return "unknown";
+    }
+  }, [latest, latestLeaves, estimate]);
 
   /**
    * 이 렌더의 입력에 묶어 상태를 쓴다. 비동기가 늦게 돌아와도 그때의 입력이 찍히므로,
@@ -270,8 +310,12 @@ export function useReportBundle(): ReportBundleState {
     for (const kind of kinds) save(fileFor(kind));
   };
 
-  const settle = (next: EvidenceRecord) => {
-    write({ record: next, error: null, phase: "anchored", awaitingConfirm: false });
+  /**
+   * 확정. 이 등록은 곧 이 해의 최근 등록이기도 하므로 `latest`와 잎을 함께 적는다 — 나중에 계산만
+   * 갱신돼 `anchored`가 버려져도 카드는 "등록한 뒤 계산이 바뀌었다"를 말할 수 있다.
+   */
+  const settle = (next: EvidenceRecord, leaves: EvidenceLeaf[]) => {
+    write({ record: next, error: null, phase: "anchored", awaitingConfirm: false, latest: next, latestLeaves: leaves });
     flushSaves();
   };
 
@@ -290,7 +334,8 @@ export function useReportBundle(): ReportBundleState {
    * `postedAt`이 null이면 이 흐름에서 POST를 내지 않았다는 뜻이다(진행 중인 시도에 재합류).
    * 그때는 유예 창이 없다 — 우리가 큐에 다시 넣은 것이 아니므로 `failed`는 그대로 실패다.
    */
-  const poll = async (token: { active: boolean }, root: string, postedAt: number | null) => {
+  const poll = async (token: { active: boolean }, bundle: ReportBundle, postedAt: number | null) => {
+    const root = bundle.merkleRoot;
     const startedAt = postedAt ?? Date.now();
     let step = 0;
     while (token.active) {
@@ -300,7 +345,7 @@ export function useReportBundle(): ReportBundleState {
       const next = await taxEvidenceProvider.document(root);
       if (!token.active) return;
       if (next) write({ record: next });
-      if (next?.anchorStatus === "anchored") { settle(next); return; }
+      if (next?.anchorStatus === "anchored") { settle(next, bundle.leaves); return; }
       if (next?.anchorStatus === "failed" && (postedAt === null || Date.now() - postedAt >= FAILED_GRACE_MS)) {
         fail(BUNDLE_FAILED_REASON, next);
         return;
@@ -318,10 +363,10 @@ export function useReportBundle(): ReportBundleState {
       if (!token.active) return;
       const postedAt = Date.now();
       write({ record: next });
-      if (next.anchorStatus === "anchored") { settle(next); return; }
+      if (next.anchorStatus === "anchored") { settle(next, bundle.leaves); return; }
       // `failed`가 돌아와도 곧바로 실패로 보지 않는다 — 재POST는 큐에 다시 넣을 뿐 라벨을 되돌리지 않는다.
       write({ phase: "waiting" });
-      await poll(token, bundle.merkleRoot, postedAt);
+      await poll(token, bundle, postedAt);
     } catch (cause: unknown) {
       if (!token.active) return;
       fail(cause instanceof Error ? cause.message : BUNDLE_FAILED_REASON, null);
@@ -362,7 +407,8 @@ export function useReportBundle(): ReportBundleState {
     if ((awaitingConfirm && paused.current !== null) || phase === "failed") { write({ sheet: true }); return; }
 
     const token = openToken();
-    write({ error: null, rejoined: false, phase: "hashing", awaitingConfirm: false, sheet: false });
+    // `openToken()`이 세대를 올려 돌고 있던 복원은 결과를 버린다. 그 플래그도 여기서 내린다.
+    write({ error: null, rejoined: false, phase: "hashing", awaitingConfirm: false, sheet: false, restoring: false });
     void (async () => {
       try {
         let bundle: ReportBundle;
@@ -378,11 +424,11 @@ export function useReportBundle(): ReportBundleState {
         write({ phase: "checking" });
         const existing = await taxEvidenceProvider.document(bundle.merkleRoot);
         if (!token.active) return;
-        if (existing?.anchorStatus === "anchored") { settle(existing); return; }
+        if (existing?.anchorStatus === "anchored") { settle(existing, bundle.leaves); return; }
         if (existing?.anchorStatus === "pending") {
           // 진행 중인 시도에 올라탄다. 여기서 POST를 내면 트랜잭션이 둘이 된다.
           write({ record: existing, rejoined: true, phase: "waiting", sheet: true });
-          await poll(token, bundle.merkleRoot, null);
+          await poll(token, bundle, null);
           return;
         }
         // 기록이 없거나(`null`) 지난 시도가 소진됐으면(`failed`) 새 등록이다. 둘 다 사용자가
@@ -409,7 +455,7 @@ export function useReportBundle(): ReportBundleState {
     paused.current = null;
     restored.current = true;
     const token = openToken();
-    write({ error: null, rejoined: false, phase: "registering", awaitingConfirm: false });
+    write({ error: null, rejoined: false, phase: "registering", awaitingConfirm: false, restoring: false });
     void (async () => {
       // 조회를 건너뛴다. 지난 시도가 `failed`로 남아 있는 것을 이미 알고 있고, 재POST가 새 시도를 연다(T6).
       const bundle = bundleFor(estimate);
@@ -430,15 +476,23 @@ export function useReportBundle(): ReportBundleState {
     // 조회가 도는 동안 사용자가 행을 눌러 흐름이 끝났을 수 있다. 느린 복원이 뒤늦게 돌아와
     // 그 결론을 덮지 않도록 시작 시점의 세대를 들고 간다.
     const mySeq = seq.current;
+    const stale = () => !mounted.current || seq.current !== mySeq;
+    write({ restoring: true });
     void (async () => {
       try {
         const existing = await taxEvidenceProvider.latest(country, taxYear);
-        if (!mounted.current || seq.current !== mySeq) return;
-        // 확정된 기록만 한 줄로 말한다. 그리고 그 줄은 「최근 등록」이지 「이 리포트가 등록됨」이 아니다 —
-        // 루트를 대조하지 않았으므로 그것은 아직 모르는 사실이다.
-        if (existing?.anchorStatus === "anchored") write({ latest: existing });
+        if (stale()) return;
+        // 확정된 기록만 본다. 이 한 줄은 아직 「최근 등록」이다 — 「이 리포트가 등록됨」은 잎을 맞춰 본 뒤에야 말한다.
+        if (existing?.anchorStatus !== "anchored") { write({ restoring: false }); return; }
+        write({ latest: existing });
+        // 잎을 받아 지금 계산의 근거 잎과 맞춘다(`latestMatch`). 파일은 여전히 만들지 않는다 —
+        // 헤더·판정 잎만으로 "이 계산이 등록된 것인가"는 답할 수 있고, 파일 잎은 탭할 때 루트로 확인한다.
+        const detail = await taxEvidenceProvider.document(existing.merkleRoot);
+        if (stale()) return;
+        write({ latestLeaves: detail?.leaves ?? null, restoring: false });
       } catch {
         // 복원 실패는 행을 막지 않는다. 누르면 루트로 다시 묻는다.
+        if (!stale()) write({ restoring: false });
       }
     })();
   };
@@ -449,6 +503,8 @@ export function useReportBundle(): ReportBundleState {
     error,
     rejoined,
     latestRecord: latest,
+    latestMatch,
+    restoring,
     sheetOpen: sheet,
     awaitingConfirm,
     start,

@@ -5,7 +5,7 @@ import { createReportLedgerCsv } from "@/lib/export/report";
 import { ruleSetListSchema } from "@/lib/http/tax-dto";
 import type { EvidenceDetail } from "@/lib/ports/tax-evidence";
 import { listRuleSetSummaries } from "@/lib/tax/rulesets";
-import type { EvidenceDocument, EvidenceFileLeaf } from "@/lib/tax/evidence";
+import { buildEvidenceDocument, type EvidenceDocument, type EvidenceFileLeaf } from "@/lib/tax/evidence";
 import { EVIDENCE_FIXTURE_ESTIMATE } from "@/tests/fixtures/evidence-estimate";
 
 const ports = vi.hoisted(() => ({
@@ -348,33 +348,98 @@ describe("내보내기 묶음 등록 게이트", () => {
     expect(saved).toHaveLength(0);
   });
 
-  it("카드에 처음 닿으면 최근 등록만 읽는다 — 파일도 루트도 만들지 않는다", async () => {
-    ports.latest.mockResolvedValue(detail(OTHER_ROOT, "anchored"));
-    await renderMain();
+  describe("돌아온 카드는 아는 만큼만 말한다", () => {
+    /** 등록된 리포트의 기록. 잎은 **지금 계산의 근거 잎**이다 — 복원이 맞춰 볼 대상. */
+    const registered = (leaves: EvidenceDetail["leaves"]) => ({ ...detail(OTHER_ROOT, "anchored"), leaves });
+    const evidenceLeaves = () => buildEvidenceDocument(estimate).leaves;
 
-    // 마운트만으로는 아무것도 하지 않는다.
-    expect(ports.latest).not.toHaveBeenCalled();
+    it("방금 등록한 리포트로 돌아오면 「등록됐어요」 — 파일은 만들지 않는다", async () => {
+      ports.latest.mockResolvedValue(detail(OTHER_ROOT, "anchored"));
+      ports.document.mockResolvedValue(registered(evidenceLeaves()));
+      await renderMain();
 
-    fireEvent.pointerOver(card());
-    await waitFor(() => expect(ports.latest).toHaveBeenCalledTimes(1));
+      // 마운트만으로는 아무것도 하지 않는다.
+      expect(ports.latest).not.toHaveBeenCalled();
 
-    expect(ports.latest.mock.calls[0]).toEqual(["KR", 2027]);
-    expect(ports.document).not.toHaveBeenCalled();
-    expect(ports.record).not.toHaveBeenCalled();
-    // 복원은 파일을 아예 만들지 않는다. 호버만 한 사람이 XLSX 생성 비용을 내지 않는다.
-    expect(spies.buildBundle).not.toHaveBeenCalled();
-    expect(saved).toHaveLength(0);
-    // 루트를 맞춰 보지 않았으므로 「체인에 등록됐어요」라고 단정하지 않는다.
-    expect(surface("anchor-done")).toBeNull();
-    expect(surface("anchor-idle")?.textContent).toContain("최근 등록");
-    // 시트는 탭했을 때만 열린다 — 복원 경로가 대화상자로 포커스를 끌고 가면 안 된다.
-    expect(screen.queryByRole("dialog")).toBeNull();
+      fireEvent.pointerOver(card());
+      await waitFor(() => expect(surface("anchor-restored")).not.toBeNull());
 
-    // 호버·포커스를 반복해도 조회는 늘지 않는다.
-    fireEvent.pointerOver(card());
-    fireEvent.focusIn(card());
-    await act(async () => {});
-    expect(ports.latest).toHaveBeenCalledTimes(1);
+      expect(ports.latest.mock.calls[0]).toEqual(["KR", 2027]);
+      // 잎은 최근 등록의 루트로 받는다. 지금 계산의 루트는 파일 없이는 만들 수 없고, 만들지도 않는다.
+      expect(ports.document.mock.calls).toEqual([[OTHER_ROOT]]);
+      expect(ports.record).not.toHaveBeenCalled();
+      expect(spies.buildBundle).not.toHaveBeenCalled();
+      expect(saved).toHaveLength(0);
+      expect(surface("anchor-restored")?.textContent).toContain("이 리포트는 체인에 등록됐어요");
+      expect(surface("anchor-idle")).toBeNull();
+      // 시트는 탭했을 때만 열린다 — 복원 경로가 대화상자로 포커스를 끌고 가면 안 된다.
+      expect(screen.queryByRole("dialog")).toBeNull();
+
+      // 호버·포커스를 반복해도 조회는 늘지 않는다.
+      fireEvent.pointerOver(card());
+      fireEvent.focusIn(card());
+      await act(async () => {});
+      expect(ports.latest).toHaveBeenCalledTimes(1);
+      expect(ports.document).toHaveBeenCalledTimes(1);
+    });
+
+    it("등록한 뒤 계산이 바뀌었으면 「다시 등록이 필요해요」 — 「안 됐다」가 아니다", async () => {
+      ports.latest.mockResolvedValue(detail(OTHER_ROOT, "anchored"));
+      // 다른 계산의 근거 잎. 헤더 한 칸이 달라지면 근거 루트가 갈린다.
+      ports.document.mockResolvedValue(registered(buildEvidenceDocument({ ...estimate, lossCarryforward: "1" }).leaves));
+      await renderMain();
+
+      fireEvent.pointerOver(card());
+      await waitFor(() => expect(surface("anchor-stale")).not.toBeNull());
+
+      expect(surface("anchor-stale")?.textContent).toContain("계산이 바뀌어 다시 등록이 필요해요");
+      expect(surface("anchor-stale")?.textContent).toContain("이전 등록");
+      expect(surface("anchor-idle")).toBeNull();
+      expect(surface("anchor-restored")).toBeNull();
+      expect(spies.buildBundle).not.toHaveBeenCalled();
+    });
+
+    it("등록한 적이 없을 때만 「등록되지 않았어요」", async () => {
+      ports.latest.mockResolvedValue(null);
+      await renderMain();
+
+      fireEvent.pointerOver(card());
+      await waitFor(() => expect(ports.latest).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(surface("anchor-checking")).toBeNull());
+
+      expect(ports.document).not.toHaveBeenCalled();
+      expect(surface("anchor-idle")?.textContent).toContain("아직 체인에 등록되지 않았어요");
+    });
+
+    it("잎을 못 받으면 단정하지 않는다", async () => {
+      ports.latest.mockResolvedValue(detail(OTHER_ROOT, "anchored"));
+      ports.document.mockRejectedValue(new Error("network"));
+      await renderMain();
+
+      fireEvent.pointerOver(card());
+      await waitFor(() => expect(surface("anchor-unknown")).not.toBeNull());
+
+      expect(surface("anchor-unknown")?.textContent).toContain("등록 여부를 확인하지 못했어요");
+      expect(surface("anchor-idle")).toBeNull();
+      // 행은 잠기지 않는다. 누르면 루트로 다시 묻는다.
+      expect(screen.getByRole("button", { name: "직접 신고용 내려받기" })).toBeEnabled();
+    });
+
+    it("이 화면에서 등록한 뒤 계산이 갱신되면 「다시 등록이 필요해요」로 바뀐다", async () => {
+      ports.document.mockImplementation(answers("anchored"));
+      const { csv, client } = await renderMain();
+
+      fireEvent.click(csv);
+      await waitFor(() => expect(surface("anchor-done")).not.toBeNull());
+
+      ports.estimate.mockResolvedValue({ ...estimate, lossCarryforward: "1" });
+      await act(async () => { await client.invalidateQueries({ queryKey: ["tax"] }); });
+
+      // 확정된 등록은 이 해의 최근 등록이다. 계산이 갈렸으니 "등록한 뒤 바뀌었다"가 정확한 말이다.
+      await waitFor(() => expect(surface("anchor-stale")).not.toBeNull());
+      expect(surface("anchor-done")).toBeNull();
+      expect(ports.latest).not.toHaveBeenCalled();
+    });
   });
 
   it("연도를 바꾸면 앞 루트의 등록 상태를 버린다", async () => {
