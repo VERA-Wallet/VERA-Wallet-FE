@@ -75,7 +75,7 @@ function CopyRow({ label, value }: { label: string; value: string }) {
  * 영역은 상태와 무관하게 항상 있어야 한다 — 나중에 생기는 live 영역은 읽히지 않는다.
  */
 function BundleStatus({ bundle, hasEstimate }: { bundle: ReportBundleState; hasEstimate: boolean }) {
-  const { phase, record, error, rejoined, latestRecord, retry } = bundle;
+  const { phase, record, error, rejoined, latestRecord, latestMatch, restoring, retry } = bundle;
 
   const body = (() => {
     if (!hasEstimate) {
@@ -116,13 +116,46 @@ function BundleStatus({ bundle, hasEstimate }: { bundle: ReportBundleState; hasE
         </Line>
       );
     }
+    // 여기부터는 복원 경로다 — 화면이 **아는 만큼만** 말한다. "등록되지 않았어요"는 기록이 없을 때만 쓴다.
+    // 모르는 것(조회 중·조회 실패)을 "안 했다"로 말하면, 방금 등록하고 돌아온 사용자가 모순 앞에 선다.
+    const when = (entry: NonNullable<typeof latestRecord>) =>
+      `${formatDateTime(entry.anchoredAt ?? entry.recordedAt)}${entry.txHash !== null ? ` · tx ${short(entry.txHash)}` : ""}`;
+    if (latestRecord !== null && latestMatch === "same") {
+      // 근거 잎이 지금 계산과 같다. 사용자에게 이것은 「등록됨」이다 — 파일 잎까지는 탭할 때 루트로 확인한다.
+      return (
+        <Line surface="anchor-restored" tone="done" title="이 리포트는 체인에 등록됐어요">
+          <span className="block">{when(latestRecord)}</span>
+          <span className="block text-zinc-600">내려받으면 다시 등록하지 않고 바로 저장돼요.</span>
+        </Line>
+      );
+    }
+    if (latestRecord !== null && latestMatch === "different") {
+      return (
+        <Line surface="anchor-stale" tone="warn" title="계산이 바뀌어 다시 등록이 필요해요">
+          <span className="block">이전 등록 · {when(latestRecord)}</span>
+          <span className="block text-zinc-600">내려받을 때 지금 계산으로 새로 등록해요.</span>
+        </Line>
+      );
+    }
+    if (restoring) {
+      return (
+        <Line surface="anchor-checking" tone="progress" title="등록 여부를 확인하고 있어요">
+          {latestRecord !== null ? `최근 등록 · ${when(latestRecord)}` : "이 연도의 등록 기록을 찾고 있어요."}
+        </Line>
+      );
+    }
+    if (latestRecord !== null) {
+      // 기록은 있는데 잎을 못 받았다(`unknown`). 단정하지 않고, 탭하면 루트로 다시 묻는다.
+      return (
+        <Line surface="anchor-unknown" tone="idle" title="등록 여부를 확인하지 못했어요">
+          <span className="block">최근 등록 · {when(latestRecord)}</span>
+          <span className="block text-zinc-600">내려받을 때 이 리포트와 맞춰 봐요.</span>
+        </Line>
+      );
+    }
     return (
-      <Line surface="anchor-idle" tone="idle" title="이 리포트는 아직 체인에 등록되지 않았어요">
-        {latestRecord !== null
-          // `latest()`가 말한 것은 "이 해에 무언가 등록된 적이 있다"뿐이다. 루트를 맞춰 보지 않았으므로
-          // 「이 리포트가 등록됐다」고 단정하지 않는다 — 그 말은 클릭 흐름이 루트를 확인한 뒤에만 쓴다.
-          ? `최근 등록 · ${formatDateTime(latestRecord.anchoredAt ?? latestRecord.recordedAt)}${latestRecord.txHash !== null ? ` · tx ${short(latestRecord.txHash)}` : ""}`
-          : "처음 내려받을 때 계산 근거와 파일을 한 번에 등록해요."}
+      <Line surface="anchor-idle" tone="idle" title="아직 체인에 등록되지 않았어요">
+        처음 내려받을 때 계산 근거와 파일을 한 번에 등록해요.
       </Line>
     );
   })();
@@ -134,6 +167,8 @@ const DOT = {
   idle: "bg-zinc-300",
   progress: "bg-primary-500 motion-safe:animate-pulse",
   done: "bg-emerald-500",
+  /** 할 일이 남았다(계산이 바뀌어 재등록). 실패의 빨강과 갈라 둔다 — 잘못된 것은 없다. */
+  warn: "bg-amber-500",
   failed: "bg-red-500",
 } as const;
 
