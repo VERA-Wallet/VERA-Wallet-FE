@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, ChevronDown, Search } from "lucide-react";
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { EventDetails } from "@/components/transactions/event-details";
 import { EventRow } from "@/components/transactions/event-row";
 import { BottomSheet } from "@/components/ui/bottom-sheet";
@@ -23,6 +23,17 @@ const FILTER_LABEL: Record<FilterKey, string> = {
   chain: "체인",
   group: "판정",
 };
+
+/**
+ * 한 번에 그려 두는 행 수, 그리고 바닥에 닿을 때마다 더 그리는 보폭.
+ *
+ * 실지갑은 1,300건이 넘는다. 전부 그리면 행 하나가 여러 노드라 DOM이 만 개 단위로 불고,
+ * 검색어 한 글자·필터 한 번마다 그 전부를 다시 조정하느라 화면이 멎는다.
+ * 목록은 **받아 둔 것을 다 세되**(건수·필터는 전량 기준) 그리는 것만 창으로 자른다.
+ */
+const WINDOW_PAGE = 50;
+/** 목록이 서버 쪽에서 잘렸을 때 한 번에 더 이어 받을 페이지 수 — "더 불러오기" 버튼과 같은 보폭이다. */
+const MORE_PAGES = 50;
 
 /**
  * 거래 목록 화면.
@@ -80,6 +91,7 @@ export function TransactionsView({
     activeChain,
     chainFilters,
     chainTotal,
+    wallet,
     setWallet,
     activeWallet,
     walletFilters,
@@ -150,6 +162,48 @@ export function TransactionsView({
   const showSpam = spamRequested && spamCount > 0;
   // 스팸 보기로 들어가면 목록 자체가 바뀐다. 필터·탭은 원장에만 걸리므로 여기서는 쓰지 않는다.
   const rows = showSpam ? spamItems : displayedItems;
+
+  // 창의 정체는 **무엇으로 좁혀 놓았는가**가 정한다. `rows` 참조로 걸면 안 된다 —
+  // 폴링·판정 재조회는 같은 목록을 새 배열로 돌려주므로, 사용자가 300줄까지 펼쳐 둔 창이
+  // 배경 갱신 한 번에 50줄로 접힌다. 검색·탭·필터·스팸 보기가 바뀔 때만 다른 목록이다.
+  const windowKey = [tab, search, group, chain, wallet, year, showSpam].join("\u0000");
+  const [shown, setShown] = useState(WINDOW_PAGE);
+  const [shownKey, setShownKey] = useState(windowKey);
+  if (windowKey !== shownKey) {
+    // effect가 아니라 렌더 중에 되돌린다. effect로 미루면 필터를 바꾼 첫 프레임에 옛 창 크기로
+    // 수백 줄을 한 번 그리고 나서 줄어든다(그 한 프레임이 바로 이 창이 없애려던 멈춤이다).
+    setShownKey(windowKey);
+    setShown(WINDOW_PAGE);
+  }
+  // 재조회로 목록이 줄어들 수 있으므로 창은 늘 실제 행 수 안에 가둔다 — 안 그러면 "100/60건"처럼
+  // 말이 안 되는 건수를 적게 된다.
+  const visibleCount = Math.min(shown, rows.length);
+  const visibleRows = rows.slice(0, visibleCount);
+  const hasMoreRows = visibleCount < rows.length;
+  // 창이 목록 끝까지 덮었는데 서버 쪽이 아직 남아 있으면 페이지를 더 이어 받는다.
+  // 스팸 보기는 이미 받아 둔 배열이라 이어 받을 것이 없다.
+  const canLoadMore = !showSpam && (events.data?.truncated ?? false) && !events.isFetching;
+
+  // 바닥 감시 대상은 조건부로 렌더되므로 ref가 아니라 상태로 들고 있는다 —
+  // ref는 값이 바뀌어도 effect를 깨우지 않아, 목록이 비었다 다시 차는 사이에 관찰이 끊긴다.
+  const [sentinel, setSentinel] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    // jsdom·구형 브라우저에는 관찰자가 없다. 그 환경에서는 아래 「더 보기」가 같은 일을 한다.
+    if (sentinel === null || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        // 창을 먼저 늘리고, 창이 목록 끝까지 덮은 뒤에야 서버에 더 달라고 한다 —
+        // 순서가 뒤집히면 이미 받아 둔 행을 못 본 채로 다음 페이지를 조른다.
+        if (hasMoreRows) setShown((count) => count + WINDOW_PAGE);
+        else if (canLoadMore) setMaxPages((pages) => pages + MORE_PAGES);
+      },
+      // 바닥에 닿기 **전에** 늘린다. 닿고 나서 늘리면 사용자가 빈 바닥을 한 번 보게 된다.
+      { rootMargin: "600px" },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [sentinel, hasMoreRows, canLoadMore, setMaxPages]);
 
   return (
     <main className="min-h-dvh pb-8">
@@ -315,12 +369,13 @@ export function TransactionsView({
                   : "표시할 거래가 없습니다."}
             </p>
           ) : null}
-          {rows.map((item, index) => {
+          {/* 창 안의 행만 그린다. 앞에서부터 자르므로 바로 위 행과 날짜를 비교하는 규칙은 그대로 성립한다. */}
+          {visibleRows.map((item, index) => {
             const { record, occurrence, isDuplicate } = item;
             // 날짜는 UTC 하루 단위로 한 번만 찍는다. 모든 줄에 같은 날짜를 반복하면
             // 정작 읽어야 할 "그날 무슨 일이 있었나"가 안 보인다.
             const day = isoDay(record.event.block_timestamp);
-            const previousDay = index > 0 ? isoDay(rows[index - 1].record.event.block_timestamp) : null;
+            const previousDay = index > 0 ? isoDay(visibleRows[index - 1].record.event.block_timestamp) : null;
             return (
               <Fragment key={`${record.event.id}#${occurrence}`}>
                 {day === previousDay ? null : (
@@ -351,6 +406,26 @@ export function TransactionsView({
             );
           })}
         </div>
+        {/* 지금 몇 줄을 보고 있는지 **반드시** 말한다. 창을 말없이 자르면 목록이 50건짜리인 척하고,
+            그 위의 "1,300건"과 갈려 화면이 두 이야기를 한다. 「더 보기」는 관찰자가 없는 환경(jsdom·구형
+            브라우저)과 키보드 사용자의 문이다 — 스크롤에만 맡기면 그쪽에서는 창이 영영 50줄에 멈춘다. */}
+        {rows.length > 0 ? (
+          <div data-surface="list-window" className="mt-3 flex items-center justify-between gap-3">
+            <span className="text-xs tabular-nums text-zinc-400">{`${visibleCount}/${rows.length}건`}</span>
+            {hasMoreRows ? (
+              <button
+                type="button"
+                className="rounded-full border border-zinc-200 px-3 py-1.5 text-sm font-semibold text-zinc-600 active:bg-zinc-50"
+                onClick={() => setShown((count) => count + WINDOW_PAGE)}
+              >
+                더 보기
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+        {/* 할 일이 남았을 때만 감시 대상을 둔다 — 끝까지 다 그렸고 더 받을 것도 없는 목록을
+            계속 관찰하면 관찰자만 살아 있고 하는 일은 없다. */}
+        {hasMoreRows || canLoadMore ? <div ref={setSentinel} data-surface="list-sentinel" aria-hidden="true" className="h-px" /> : null}
         {/* 시간대는 화면 전체가 한 번만 약속한다. 줄마다 "UTC"를 붙이면 읽히지 않고,
             아예 안 밝히면 사용자가 자기 시간대로 읽어 과세연도 경계에서 다른 날로 이해한다. */}
         <p className="mt-3 text-xs text-zinc-400">{UTC_NOTICE}</p>
