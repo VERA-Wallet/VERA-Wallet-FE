@@ -365,7 +365,15 @@ export function useReportBundle(): ReportBundleState {
     write({ error: null, rejoined: false, phase: "hashing", awaitingConfirm: false, sheet: false });
     void (async () => {
       try {
-        const bundle = bundleFor(estimate);
+        let bundle: ReportBundle;
+        try {
+          bundle = bundleFor(estimate);
+        } catch (cause: unknown) {
+          // 파일을 만들다 던진 것은 등록 실패가 아니라 파일 문제다(예: 셀 한도 초과). 라이브러리의 영문
+          // 메시지를 그대로 내보내지 않고, 무슨 단계에서 막혔는지 우리말로 말한다.
+          const detail = cause instanceof Error ? cause.message : String(cause);
+          throw new Error(`파일을 만들지 못했어요. 잠시 뒤 다시 시도해 주세요. (${detail})`);
+        }
         if (!token.active) return;
         write({ phase: "checking" });
         const existing = await taxEvidenceProvider.document(bundle.merkleRoot);

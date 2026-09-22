@@ -20,8 +20,23 @@ import {
 const DISCLAIMER =
   "이 리포트는 계산 보조용이며 확정 판단이 아닙니다. 거주국 룰셋·의제취득가액 등에 따라 실제 신고 값은 달라질 수 있습니다.";
 
+/** Excel 셀 하나의 문자열 한도. 넘기면 `XLSX.write`가 "Text length must not exceed 32767 characters"를 던진다. */
+export const XLSX_CELL_TEXT_LIMIT = 32_767;
+const CLIP_SUFFIX = " …(잘림)";
+
+/**
+ * 어떤 셀도 한도를 넘지 않게 자른다 — 파일이 안 만들어지는 것보다 셀 하나가 잘리는 쪽이 낫다.
+ * 자르는 규칙이 결정적이라 같은 입력이면 같은 바이트, 같은 해시다. 원천(`report.ts`)이 긴 값을
+ * 애초에 만들지 않는 것이 1차 방어이고, 여기는 안전망이다.
+ */
+function clipCell(value: string | number): string | number {
+  if (typeof value !== "string" || value.length <= XLSX_CELL_TEXT_LIMIT) return value;
+  return `${value.slice(0, XLSX_CELL_TEXT_LIMIT - CLIP_SUFFIX.length)}${CLIP_SUFFIX}`;
+}
+
 function sheet(columns: readonly string[], rows: ReportRow[]): XLSX.WorkSheet {
-  return XLSX.utils.json_to_sheet(rows, { header: [...columns] });
+  const clipped = rows.map((row) => Object.fromEntries(Object.entries(row).map(([key, value]) => [key, clipCell(value)])));
+  return XLSX.utils.json_to_sheet(clipped, { header: [...columns] });
 }
 
 /**
