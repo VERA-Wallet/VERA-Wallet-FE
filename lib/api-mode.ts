@@ -56,9 +56,18 @@ export async function apiProvenance(): Promise<"mock" | "live"> {
  * 하나라도 mock이면 라온 인증창이 떠도 토큰이 검증되지 않는 반쪽 실모드라, 배지는 mock이어야 한다.
  */
 export async function identityProvenance(): Promise<"mock" | "live"> {
-  if (isMockApiMode() || process.env.NEXT_PUBLIC_OMNIONE_CX_MOCK === "true") return "mock";
+  const mode = await identityMode();
+  return mode.provenance;
+}
+
+export async function identityMode(): Promise<{ provider: "mock" | "omnione_cx" | "opendid" | "unavailable"; provenance: "mock" | "live" }> {
+  if (isMockApiMode()) return { provider: "mock", provenance: "mock" };
   const health = await backendHealth();
-  return health !== null && health.mockMode === false && health.identityProvider === "omnione_cx" ? "live" : "mock";
+  if (!health) return { provider: "unavailable", provenance: "mock" };
+  // Open DID identity is live independently of mock market/indexing data or the CX switch.
+  if (health.identityProvider === "opendid") return { provider: "opendid", provenance: "live" };
+  if (health.identityProvider === "omnione_cx") return { provider: "omnione_cx", provenance: !health.mockMode && process.env.NEXT_PUBLIC_OMNIONE_CX_MOCK !== "true" ? "live" : "mock" };
+  return { provider: "mock", provenance: "mock" };
 }
 
 /**

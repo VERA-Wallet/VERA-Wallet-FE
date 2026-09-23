@@ -38,10 +38,22 @@ describe("wallet connection SIWE flow", () => {
     expect(message).toContain("URI: https://wallet.example/login");
     expect(message).toContain("Nonce: noncefromserver123");
     expect(message).toContain("Issued At: 2026-07-30T00:00:00.000Z");
+    expect(port.signMessage).toHaveBeenCalledWith(message, port.getAccount());
     expect(auth.verify).toHaveBeenCalledWith({ message, signature: "0xsigned" });
     // 서명 성공은 대시보드 진입이 아니라 **불러오기 진입**이다. 쿼리가 빠지면 모달이 뜨지 않고
     // 사용자는 동기화가 끝나기 전 대시보드를 빈 화면으로 본다.
     expect(push).toHaveBeenCalledWith("/dashboard?importing=1");
+  });
+
+  it("does not sign a stale address after the extension changes account", async () => {
+    const port = walletPort();
+    const auth = authClient();
+    render(<ConnectWalletFlow walletPort={port} authClient={auth} initialStep="siwe" />);
+    port.getAccount = () => ({ address: "0x0000000000000000000000000000000000000001", chainId: 8453 });
+    fireEvent.click(screen.getByRole("button", { name: "서명하고 추가" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("계정 또는 네트워크가 변경");
+    expect(auth.requestNonce).not.toHaveBeenCalled();
+    expect(port.signMessage).not.toHaveBeenCalled();
   });
 
   // 주소 입력은 서명 없이 등록하는 기본 경로다. 체크섬을 흘려보내면 존재하지 않는 주소가 등록되고

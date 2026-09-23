@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { OpenDidPresentation } from "@/components/did/opendid-presentation";
+import { openDidClient, type DidOffer } from "@/lib/opendid/client";
 import { useRouter } from "next/navigation";
 import { CircleCheck } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -26,7 +28,7 @@ const SESSION_WAIT_CAP_MS = 3000;
  * `provenance`는 서버 페이지가 계산해 준다(`identityProvenance`): FE API 모드·FE 인증창 스위치·BE 신원 공급자가
  * 모두 실모드여야 live다. 하나라도 mock이면 인증창이 떠도 토큰이 검증되지 않는 반쪽 실모드라 배지는 mock이어야 한다.
  */
-export function DidLoginFlow({ authClient = compositionAuthClient, provenance = "mock" }: { authClient?: AuthClient; provenance?: Provenance }) {
+export function DidLoginFlow({ authClient = compositionAuthClient, provenance = "mock", provider }: { authClient?: AuthClient; provenance?: Provenance; provider?: "mock" | "omnione_cx" | "opendid" | "unavailable" }) {
   const router = useRouter();
   const [country, setCountry] = useState<Country>("KR");
   const [state, setState] = useState<FlowState>("idle");
@@ -34,8 +36,15 @@ export function DidLoginFlow({ authClient = compositionAuthClient, provenance = 
   const [error, setError] = useState<string | null>(null);
   // 취소 뒤 뒤늦게 도착한 표준인증창 콜백이 상태를 되살리지 못하게 시도 세대를 센다.
   const attemptRef = useRef(0);
+  const issuingRef = useRef(false);
+  const [issuing, setIssuing] = useState(false);
+  const [offer, setOffer] = useState<DidOffer | null>(null);
+  const openDidEnabled = provider === "opendid";
   // OmniOne CX 표준인증창(가이드북 p.19-25): 설정 시 mock QR 대신 CX 로그인 모달을 연다.
-  const cxEnabled = cxLoginEnabled();
+  const cxEnabled = !openDidEnabled && provider !== "unavailable" && cxLoginEnabled();
+  const verified = useCallback((value: DidPresentation) => { setClaim(value); setState("claimed"); }, []);
+  const failed = useCallback((message: string) => { setError(message); setOffer(null); setState("idle"); }, []);
+  useEffect(() => () => { attemptRef.current += 1; }, []);
   // 거주 국가는 **사용자가 신고하는 값**이다. 신분증은 본인 확인만 한다 — BE는 실제 인증 토큰이 있어도
   // 요청의 `country`를 그대로 세션 거주국으로 쓴다(VERA-Wallet-BE `frontend-auth.controller.ts`).
   // 그래서 이 선택은 어떤 인증 모드에서도 남아 있어야 한다. 실제 인증에서 감추면 모든 사용자가 KR로 굳고
@@ -43,7 +52,7 @@ export function DidLoginFlow({ authClient = compositionAuthClient, provenance = 
 
   useEffect(() => {
     // mock 전용 대기 전이. CX 모드에서는 openCxLogin → presentDid가 직접 상태를 밀고 간다.
-    if (state !== "awaiting" || cxEnabled) return;
+    if (state !== "awaiting" || cxEnabled || openDidEnabled || provider === "unavailable") return;
     const timer = window.setTimeout(async () => {
       try {
         const claim = await authClient.presentDid({ country });
@@ -55,7 +64,7 @@ export function DidLoginFlow({ authClient = compositionAuthClient, provenance = 
       }
     }, PRESENTATION_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [authClient, country, cxEnabled, state]);
+  }, [authClient, country, cxEnabled, openDidEnabled, provider, state]);
 
   useEffect(() => {
     // CX 모달은 presenting 진입 후 마운트 지점(#oacxDiv)이 DOM에 생긴 다음 열어야 한다.
@@ -112,15 +121,29 @@ export function DidLoginFlow({ authClient = compositionAuthClient, provenance = 
     };
   }, [authClient, claim, router, state]);
 
-  function startPresentation() {
+  async function startPresentation() {
+    if (issuingRef.current || provider === "unavailable") return;
     setError(null);
     setClaim(null);
     setState("presenting");
+    if (openDidEnabled) {
+      const attempt = ++attemptRef.current;
+      issuingRef.current = true;
+      setIssuing(true);
+      setOffer(null);
+      try {
+        const next = await openDidClient.offer(country);
+        if (attemptRef.current === attempt) setOffer(next);
+      } catch {
+        if (attemptRef.current === attempt) failed("인증 QR을 발급하지 못했습니다. 잠시 후 다시 시도하세요.");
+      } finally { issuingRef.current = false; setIssuing(false); }
+    }
   }
 
   function cancelPresentation() {
     attemptRef.current += 1;
     closeCxLogin();
+    setOffer(null);
     setState("idle");
   }
 
@@ -128,10 +151,14 @@ export function DidLoginFlow({ authClient = compositionAuthClient, provenance = 
     <Card className="space-y-4">
       <div data-surface="did-login" className="space-y-4">
         {state === "idle" && (
-          <button className="w-full rounded-xl bg-primary-500 py-3.5 font-semibold text-white" onClick={startPresentation} type="button">
-            {cxEnabled ? "모바일신분증으로 시작하기" : "QR/딥링크 제시"}
+          <button disabled={issuing || provider === "unavailable"} className="w-full rounded-xl bg-primary-500 py-3.5 font-semibold text-white disabled:opacity-50" onClick={startPresentation} type="button">
+            {provider === "unavailable" ? "인증 서비스에 연결할 수 없습니다" : openDidEnabled ? "Open DID 지갑으로 시작하기" : cxEnabled ? "모바일신분증으로 시작하기" : "QR/딥링크 제시"}
           </button>
         )}
+
+        {state === "presenting" && openDidEnabled && (offer
+          ? <OpenDidPresentation offer={offer} country={country} onVerified={verified} onError={failed} onCancel={cancelPresentation} />
+          : <p role="status">인증 QR을 준비하고 있습니다...</p>)}
 
         {state === "presenting" && cxEnabled && (
           <div className="space-y-3">
@@ -145,7 +172,7 @@ export function DidLoginFlow({ authClient = compositionAuthClient, provenance = 
           </div>
         )}
 
-        {state === "presenting" && !cxEnabled && (
+        {state === "presenting" && !cxEnabled && !openDidEnabled && (
           <div className="space-y-3">
             <div aria-label="본인 확인 QR 코드" className="mx-auto grid h-36 w-36 grid-cols-6 gap-1 rounded-xl bg-white p-2 ring-1 ring-zinc-200">
               {Array.from({ length: 36 }, (_, index) => (

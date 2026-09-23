@@ -8,7 +8,7 @@ export type RecordedRequest = {
   headers: Record<string, string | undefined>;
 };
 
-const RECORDED_HEADER_NAMES = ["content-type", "accept", "cookie", "user-agent", "content-length"] as const;
+const RECORDED_HEADER_NAMES = ["content-type", "accept", "cookie", "origin", "authorization", "user-agent", "content-length"] as const;
 
 export async function startRecorder(port = 3500): Promise<{
   recorded: RecordedRequest[];
@@ -34,6 +34,10 @@ export async function startRecorder(port = 3500): Promise<{
     const body = request.method === "GET" && requestUrl.pathname === "/__recorded" ? recorded : { sentinel: true };
     response.statusCode = 200;
     response.setHeader("content-type", "application/json");
+    if (requestUrl.pathname === "/api/auth/did/offer") {
+      response.setHeader("set-cookie", `vw_did_attempt=${"b".repeat(64)}; HttpOnly; SameSite=Lax; Path=/api/auth/did`);
+      response.setHeader("cache-control", "no-store");
+    }
     response.end(JSON.stringify(body));
   });
 

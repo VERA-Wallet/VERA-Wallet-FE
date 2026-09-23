@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { apiProvenance, identityProvenance } from "@/lib/api-mode";
+import { apiProvenance, identityProvenance, identityMode } from "@/lib/api-mode";
 
 const ENV = ["VERAWALLET_BACKEND_ORIGIN", "VERAWALLET_MOCK_MODE", "NEXT_PUBLIC_OMNIONE_CX_MOCK"] as const;
 const saved: Record<string, string | undefined> = {};
@@ -35,6 +35,17 @@ describe("출처 판정 — BE가 말하는 모드를 따른다", () => {
 });
 
 describe("신원인증 출처 — 세 스위치가 모두 실모드여야 live", () => {
+  it("Open DID stays live independently of mocked market data and CX switches", async () => {
+    process.env.VERAWALLET_BACKEND_ORIGIN = "http://be.test";
+    process.env.NEXT_PUBLIC_OMNIONE_CX_MOCK = "true";
+    vi.stubGlobal("fetch", health({ mockMode: true, identityProvider: "opendid" }));
+    expect(await identityMode()).toEqual({ provider: "opendid", provenance: "live" });
+  });
+  it("does not fall back to mock login when backend health is unavailable", async () => {
+    process.env.VERAWALLET_BACKEND_ORIGIN = "http://be.test";
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
+    expect((await identityMode()).provider).toBe("unavailable");
+  });
   it("FE 인증창이 '했다 치고'면 BE가 실모드여도 mock이다", async () => {
     process.env.VERAWALLET_BACKEND_ORIGIN = "http://be.test"; process.env.NEXT_PUBLIC_OMNIONE_CX_MOCK = "true";
     vi.stubGlobal("fetch", health({ mockMode: false, identityProvider: "omnione_cx" }));
