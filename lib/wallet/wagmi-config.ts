@@ -6,7 +6,7 @@ import { arbitrum, base, mainnet, optimism, polygon } from "wagmi/chains";
 
 export const wagmiConfig = createConfig({
   chains: [mainnet, base, arbitrum, optimism, polygon],
-  connectors: [injected(), metaMask({ dapp: { name: "VeraWallet" }, mobile: { useDeeplink: true }, analytics: { enabled: false }, debug: false })],
+  connectors: [injected(), metaMask({ dapp: { name: "VeraWallet" }, mobile: { useDeeplink: true }, debug: false })],
   ssr: true,
   transports: {
     [mainnet.id]: http(),
