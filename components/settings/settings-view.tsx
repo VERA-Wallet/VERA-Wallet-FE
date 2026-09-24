@@ -4,8 +4,10 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { WalletLinkCard } from "@/components/report-vc/wallet-link-card";
 import { authClient as compositionAuthClient } from "@/lib/composition-root.client";
 import type { AuthClient } from "@/lib/ports/auth-client";
+import type { ReportVcClient } from "@/lib/report-vc/client";
 import { PLANS, usePlan } from "@/lib/plan/use-plan";
 import { useHideBalances } from "@/lib/privacy/use-hide-balances";
 
@@ -16,7 +18,7 @@ import { useHideBalances } from "@/lib/privacy/use-hide-balances";
  * 원가계산법은 한국 룰셋 교체(P0)와 얽혀 있어 계약 없이 먼저 손대면 세금 화면과
  * 서로 다른 값을 말하게 된다(계획 `summary-transactions-tab-split.md` 결정 3).
  */
-export function SettingsView({ authClient = compositionAuthClient }: { authClient?: AuthClient }) {
+export function SettingsView({ authClient = compositionAuthClient, reportVcClient }: { authClient?: AuthClient; reportVcClient?: ReportVcClient }) {
   const router = useRouter();
   const { plan } = usePlan();
   const [hideBalances, setHideBalances] = useHideBalances();
@@ -86,6 +88,12 @@ export function SettingsView({ authClient = compositionAuthClient }: { authClien
             <ChevronRight aria-hidden="true" className="h-4 w-4 text-zinc-400" />
           </Link>
         </div>
+      </section>
+
+      {/* 증명서 지갑은 로그인 공급자 설정과 별개다. CX 로그인이든 Open DID 로그인이든 이 섹션은 같은 모습이다. */}
+      <section aria-label="증명서 지갑" className="mt-6">
+        <p className="mb-2 text-sm font-semibold text-zinc-500">증명서 지갑</p>
+        <WalletLinkCard client={reportVcClient} />
       </section>
 
       <section aria-label="계정" className="mt-6">

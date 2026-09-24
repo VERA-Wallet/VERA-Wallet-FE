@@ -24,7 +24,15 @@ const BACKEND_OWNED_PATHS = new Set([
   "/api/auth/logout",
   "/api/anchor-proof",
   "/api/tax-evidence",
+  "/api/report-vc/capabilities",
+  "/api/report-vc/wallet",
+  "/api/report-vc/wallet/link-attempts",
+  "/api/report-vc/issuances",
+  "/api/report-vc/verifications",
 ]);
+
+/** 리포트 VC 시도별 브라우저 바인딩 쿠키. `/api/report-vc/` 아래로만 전달한다(`docs/opendid-report-vc-api-contract.md` §1.3). */
+const REPORT_VC_ATTEMPT_COOKIES = ["vw_vc_link_attempt", "vw_vc_issue_attempt", "vw_vc_verify_attempt"] as const;
 
 /**
  * BE로 전달할 요청 헤더 allowlist.
@@ -38,7 +46,8 @@ const FORWARDED_HEADERS = ["accept", "accept-language", "content-type", "content
 function isBackendOwned(pathname: string): boolean {
   // 계산 근거는 BE가 루트를 다시 계산해 체인에 올린다. 하위 경로(정본 문서 조회·체인 대조)까지 BE 소유다.
   // 지갑 등록 해제(`DELETE /api/auth/wallets/:address`)는 바인딩과 그 거래·커서를 BE가 함께 지운다. 하위 경로도 BE 소유다.
-  return BACKEND_OWNED_PATHS.has(pathname) || pathname === "/api/events" || pathname.startsWith("/api/events/") || pathname.startsWith("/api/tax-evidence/") || pathname.startsWith("/api/auth/wallets/");
+  // 리포트 VC(지갑 연결·발급·공개 검증)는 시도 ID가 경로에 들어가므로 접두 전체가 BE 소유다.
+  return BACKEND_OWNED_PATHS.has(pathname) || pathname === "/api/events" || pathname.startsWith("/api/events/") || pathname.startsWith("/api/tax-evidence/") || pathname.startsWith("/api/auth/wallets/") || pathname.startsWith("/api/report-vc/");
 }
 
 /**
@@ -72,6 +81,15 @@ export function proxy(request: NextRequest) {
     const attempt = request.cookies.get("vw_did_attempt")?.value;
     if (attempt && /^[a-f0-9]{64}$/.test(attempt)) cookies.push(`vw_did_attempt=${attempt}`);
   }
+  if (request.nextUrl.pathname.startsWith("/api/report-vc/")) {
+    // 시도별 바인딩 쿠키는 이 접두에서만 나간다. Origin은 BE의 상태 변경 요청 검사를 위해 브라우저 값 그대로 전달한다.
+    const browserOrigin = request.headers.get("origin");
+    if (browserOrigin) headers.set("origin", browserOrigin);
+    for (const name of REPORT_VC_ATTEMPT_COOKIES) {
+      const value = request.cookies.get(name)?.value;
+      if (value && /^[a-f0-9]{64}$/.test(value)) cookies.push(`${name}=${value}`);
+    }
+  }
   if (cookies.length) headers.set("cookie", cookies.join("; "));
 
   const destination = new URL(`${request.nextUrl.pathname}${request.nextUrl.search}`, origin);
@@ -97,5 +115,11 @@ export const config = {
     "/api/anchor-proof",
     "/api/tax-evidence",
     "/api/tax-evidence/:path*",
+    "/api/report-vc/capabilities",
+    "/api/report-vc/wallet",
+    "/api/report-vc/wallet/link-attempts",
+    "/api/report-vc/issuances",
+    "/api/report-vc/verifications",
+    "/api/report-vc/:path*",
   ],
 };

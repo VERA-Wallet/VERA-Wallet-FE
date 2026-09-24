@@ -33,9 +33,9 @@ describe("proxy allowlist/matcher wiring", () => {
 
   it("has a matcher entry for every startsWith prefix isBackendOwned checks (incl. :path*/:address forms)", () => {
     const prefixes = extractStartsWithPrefixes();
-    // 이 세 개는 이번 회차 기준 알려진 접두다(`/api/events/`·`/api/tax-evidence/`·`/api/auth/wallets/`).
+    // 알려진 접두 목록(`/api/events/`·`/api/tax-evidence/`·`/api/auth/wallets/`·`/api/report-vc/`).
     // 목록이 소스에서 바뀌면 이 단언이 먼저 깨져, 새 접두를 놓치지 않았는지 검토를 강제한다.
-    expect(prefixes.sort()).toEqual(["/api/auth/wallets/", "/api/events/", "/api/tax-evidence/"].sort());
+    expect(prefixes.sort()).toEqual(["/api/auth/wallets/", "/api/events/", "/api/tax-evidence/", "/api/report-vc/"].sort());
 
     for (const prefix of prefixes) {
       // 접두는 정확 일치 목록에 없어 첫 검사만으로는 안 잡힌다 — matcher에 그 접두를 여는 `:path*` 또는 `:address` 패턴이 있어야 한다.

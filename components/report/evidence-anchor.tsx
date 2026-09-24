@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import { useReportContext } from "@/components/report/report-context";
+import { ReportVcIssueCard } from "@/components/report-vc/issue-card";
 import { Card } from "@/components/ui/card";
 import { taxEvidenceProvider } from "@/lib/composition-root.client";
 import { buildReportBundle } from "@/lib/export/report-bundle";
@@ -165,6 +166,10 @@ export function EvidenceAnchor() {
           <ArrowRight aria-hidden className="size-4 shrink-0" strokeWidth={2.5} />
         </Link>
       )}
+
+      {/* 기록된 근거를 추정 세금 리포트 증명서(VC)로 받는다. 식별자는 기록의 머클루트이고, 발급 가능 여부·내용은
+          서버가 저장된 기록으로 판정한다. 기록이 없으면 받을 것도 없으므로 카드를 그리지 않는다. */}
+      {evidence && <ReportVcIssueCard evidenceId={evidence.merkleRoot} stale={stale} />}
     </Card>
   );
 }
