@@ -1,0 +1,6 @@
+{
+  "note": "buildReportBundle(EVIDENCE_FIXTURE_ESTIMATE, REPORT_FIXTURE_EVENTS)의 고정 루트. 파일 잎 둘을 포함한 묶음 루트다 — evidence-vector.json(계산 근거만)과는 다른 값이다.",
+  "fixture": "EVIDENCE_FIXTURE_ESTIMATE + REPORT_FIXTURE_EVENTS",
+  "merkleRoot": "0x0675a05a3f7d7447cf7ee3a9cf7e12a3f61ca2c21dc8fdcc368574d5a8019552",
+  "leafCount": 8
+}

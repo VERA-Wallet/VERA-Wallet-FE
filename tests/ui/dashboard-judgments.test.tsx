@@ -746,6 +746,11 @@ describe("필터 시트의 건수가 실제 카드 수와 같은가", () => {
           const expected = Number(label.match(/(\d+)건\s*$/)?.[1]);
           expect(Number.isFinite(expected), `필터 줄에 건수가 없다: ${label}`).toBe(true);
           fireEvent.click(options[index]);
+          // 목록은 50행씩 창을 열어 그린다(무한스크롤). 건수와 견주려면 창을 끝까지 열어야 한다 —
+          // jsdom에는 관찰자가 없으므로 폴백 버튼 「더 보기」를 사라질 때까지 누른다.
+          for (let more = screen.queryByRole("button", { name: "더 보기" }); more; more = screen.queryByRole("button", { name: "더 보기" })) {
+            fireEvent.click(more);
+          }
           const cards = container.querySelectorAll("section .mt-3.grid.gap-3 > button").length;
           expect(cards, `${tabName} 탭 ${FILTER_PANEL_LABEL[key]} "${label}"의 건수와 카드 수가 다르다`).toBe(expected);
         }

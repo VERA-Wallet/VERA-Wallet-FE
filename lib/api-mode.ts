@@ -70,6 +70,11 @@ export async function identityMode(): Promise<{ provider: "mock" | "omnione_cx" 
   return { provider: "mock", provenance: "mock" };
 }
 
+/** 내보내기 등록 게이트. 기본은 켜짐 — 끄는 것은 명시적 opt-out이어야 한다(env 오타로 게이트가 풀리면 안 된다). */
+export function reportAnchorGateEnabled(): boolean {
+  return process.env.REPORT_ANCHOR_GATE !== "off";
+}
+
 /**
  * BACKEND_ORIGIN 검증/정규화의 순수 함수. Slice 5에서 `backendOrigin()`과 instrumentation의
  * fail-closed 판정에 배선된다. 지금(Slice 0)은 순수 함수로만 추가하며 어떤 런타임 경로에도 배선하지 않는다

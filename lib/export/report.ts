@@ -414,6 +414,19 @@ function amountImpact(eventIds: string[], fiatByEvent: Map<string, Decimal | nul
   return num(total);
 }
 
+/** 관련이벤트 열에 나열하는 id의 상한. 그 뒤는 건수로만 말한다. */
+const EVENT_ID_LIST_LIMIT = 50;
+
+/**
+ * 한계 하나가 원장 대부분을 덮으면 id가 수천 개다. 전부 이어 붙이면 Excel 셀 한도(32,767자)를 넘어
+ * XLSX 생성이 던지고(2026-09-22 ON 모드 2026년에서 관측), CSV도 셀 하나가 수백 KB가 되어 읽을 수 없다.
+ * 앞 50개만 적고 나머지는 건수로 남긴다 — 어느 이벤트인지는 거래 탭의 「확인이 필요한 거래」가 보여 준다.
+ */
+function joinEventIds(ids: readonly string[]): string {
+  if (ids.length <= EVENT_ID_LIST_LIMIT) return ids.join(", ");
+  return `${ids.slice(0, EVENT_ID_LIST_LIMIT).join(", ")} 외 ${(ids.length - EVENT_ID_LIST_LIMIT).toLocaleString("ko-KR")}건`;
+}
+
 /**
  * 미분류·가격 미확인·취득가 0원·방향분류 모순·NFT/에어드랍/스테이킹을 금액 영향과 함께 모은다.
  * estimate.limitations(근사·제외·미반영) + openQuestions(판단 보류) + 어디에도 안 잡힌 excludedEventIds.
@@ -436,7 +449,7 @@ export function buildExceptions(
       // 엔진은 "<id>: 원장에 없는 수량…"처럼 id를 문장 앞에 붙인다. id는 관련이벤트 열이 이미 들고 있고,
       // 화면에서는 70자 토큰이 카드 밖으로 밀려 나간다(2026-09-20 관측). 세금 화면과 같은 규칙으로 뗀다.
       내용: stripEventIds(limitation.message, limitation.eventIds),
-      관련이벤트: limitation.eventIds.join(", "),
+      관련이벤트: joinEventIds(limitation.eventIds),
       금액영향_원: amountImpact(limitation.eventIds, fiatByEvent),
     });
   }
@@ -447,7 +460,7 @@ export function buildExceptions(
     rows.push({
       구분: `판단보류 · ${topic}`,
       내용: question.reason,
-      관련이벤트: question.affectedEventIds.join(", "),
+      관련이벤트: joinEventIds(question.affectedEventIds),
       금액영향_원: amountImpact(question.affectedEventIds, fiatByEvent),
     });
   }

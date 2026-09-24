@@ -99,4 +99,19 @@ describe("P2-D 예외·판단보류 목록", () => {
     expect(row.관련이벤트).toBe(id);
     expect(row.금액영향_원).toBe(259189.25);
   });
+
+  it("한계가 덮는 이벤트가 많으면 앞 50개만 적고 나머지는 건수로 남긴다 — Excel 셀 한도(32,767자)를 넘지 않게", () => {
+    // 2026년 ON 모드에서 관측: 한계 하나가 원장 수천 건을 덮어 join한 셀이 한도를 넘자 XLSX 생성이 던졌다.
+    const ids = Array.from({ length: 1_200 }, (_, index) => `0xevent-${String(index).padStart(64, "0")}`);
+    const wide = estimateWith([{ kind: "zero_basis", message: "원장에 없는 수량", eventIds: ids }], [], []);
+    const [row] = buildExceptions(ids.map((id) => event(id, "1000")), wide);
+    const cell = String(row.관련이벤트);
+    expect(cell.length).toBeLessThanOrEqual(32_767);
+    expect(cell.startsWith(ids[0])).toBe(true);
+    expect(cell).toContain(ids[49]);
+    expect(cell).not.toContain(ids[50]);
+    expect(cell.endsWith(" 외 1,150건")).toBe(true);
+    // 금액 영향은 여전히 전체 이벤트 합이다 — 목록만 줄였고 셈은 줄이지 않았다.
+    expect(row.금액영향_원).toBe(1_200_000);
+  });
 });

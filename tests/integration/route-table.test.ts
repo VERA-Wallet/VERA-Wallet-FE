@@ -80,6 +80,27 @@ describe("hybrid proxy route table", () => {
     expect(summary.headers.get("x-verawallet-fe-rewrite")).toBeTruthy();
   });
 
+  it("routes /api/tax-evidence to BE", async () => {
+    // §1-C: matcher에 tax-evidence가 빠져 있던 결함을 고정한다. F3(계획 §0)이 확인한 대로
+    // 이 케이스는 지금까지 두 레인 어디에도 없었다. BE가 그 사용자의 기록을 갖고 있는지와 무관하게
+    // 상태코드가 아니라 x-verawallet-fe-rewrite 유무로 "BE로 갔는가"를 판별한다(:68의 events 원칙과 같다).
+    const { cookie } = await presentDid(FE);
+    expect(cookie).toBeDefined();
+
+    const taxYear = new Date().getFullYear();
+    const response = await fetch(`${FE}/api/tax-evidence?country=KR&taxYear=${taxYear}`, { headers: { cookie: cookie! } });
+    expect(response.headers.get("x-verawallet-fe-rewrite")).toBeTruthy();
+  });
+
+  it("keeps the tax-evidence mock control route closed while the proxy is on", async () => {
+    // /api/mock/tax-evidence-failure는 proxy.ts의 allowlist·matcher 어디에도 없다(§2).
+    // ON 모드에서 이 라우트는 isMockApiMode()가 false라 자체적으로 404를 내고, 그 요청은
+    // 애초에 프록시를 타지 않으므로 rewrite 헤더도 없다 — test-login(:139) 케이스와 같은 모양이다.
+    const response = await fetch(`${FE}/api/mock/tax-evidence-failure`, { method: "POST" });
+    expect(response.status).toBe(404);
+    expect(response.headers.get("x-verawallet-fe-rewrite")).toBeNull();
+  });
+
   it("keeps the dev-only test-login route closed while the proxy is on", async () => {
     // 이 라우트는 vw_session만 발급하므로 ON 모드에서 살아 있으면 무의미한 가짜 세션을 만든다.
     const response = await fetch(`${FE}/api/auth/test-login`, { method: "POST" });

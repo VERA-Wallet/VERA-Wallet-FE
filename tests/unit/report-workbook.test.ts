@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx";
 import { describe, expect, it } from "vitest";
-import { createReportWorkbook } from "@/lib/export/report-workbook";
+import { XLSX_CELL_TEXT_LIMIT, createReportWorkbook, createReportXlsx } from "@/lib/export/report-workbook";
 import type { NormalizedEvent } from "@/lib/schema/normalized-event";
 import type { TaxEstimate } from "@/lib/tax/types";
 
@@ -101,5 +101,19 @@ describe("P2-E 신고 근거자료 워크북", () => {
     const ledger = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets.원장);
     expect(ledger).toHaveLength(1);
     expect(ledger[0].계산엔진여부).toBe("제외");
+  });
+
+  it("어떤 셀이 Excel 한도(32,767자)를 넘어도 파일은 만들어지고, 그 셀만 결정적으로 잘린다", () => {
+    // 원천(report.ts)이 긴 값을 만들지 않는 것이 1차 방어다. 여기는 그 방어가 뚫렸을 때의 안전망을 본다.
+    const huge = "x".repeat(XLSX_CELL_TEXT_LIMIT + 5_000);
+    const wide: TaxEstimate = { ...estimate, openQuestions: [{ topic: "STAKING", status: "UNDETERMINED", reason: huge, affectedEventIds: [] }] };
+    const first = createReportXlsx([event("e1")], wide);
+    const second = createReportXlsx([event("e1")], wide);
+    expect(first.byteLength).toBeGreaterThan(0);
+    expect(new Uint8Array(first)).toEqual(new Uint8Array(second));
+    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(createReportWorkbook([event("e1")], wide).Sheets.예외);
+    const cell = String(rows.find((row) => String(row.구분).includes("판단보류"))?.내용);
+    expect(cell.length).toBeLessThanOrEqual(XLSX_CELL_TEXT_LIMIT);
+    expect(cell.endsWith("…(잘림)")).toBe(true);
   });
 });

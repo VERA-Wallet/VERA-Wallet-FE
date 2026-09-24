@@ -97,7 +97,21 @@ export type EvidenceJudgmentLeaf = {
   breakdown?: { proceeds: string; cost: string; fee: string };
 };
 
-export type EvidenceLeaf = EvidenceHeaderLeaf | EvidenceJudgmentLeaf;
+/**
+ * 파일 잎 — 내보낸 파일 하나(CSV 또는 XLSX)의 지문. 파일 **바이트**의 해시이며,
+ * 계산 근거(헤더·판정)와 같은 루트 안에 들어가므로 루트 하나가 "이 계산으로 만든 이 파일들"을 덮는다.
+ * `buildReportBundle`(lib/export/report-bundle.ts)이 판정 뒤에 고정 순서로 붙인다 — 정렬에는 참여하지 않는다.
+ */
+export type EvidenceFileLeaf = {
+  kind: "file";
+  /** 어떤 내려받기인가. 화면의 두 행과 1:1이다. */
+  file: "csv" | "xlsx";
+  algorithm: "keccak256";
+  hash: string;
+  byteLength: number;
+};
+
+export type EvidenceLeaf = EvidenceHeaderLeaf | EvidenceJudgmentLeaf | EvidenceFileLeaf;
 
 export type EvidenceDocument = {
   version: number;

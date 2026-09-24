@@ -95,5 +95,7 @@ export const config = {
     "/api/events",
     "/api/events/:path*",
     "/api/anchor-proof",
+    "/api/tax-evidence",
+    "/api/tax-evidence/:path*",
   ],
 };
