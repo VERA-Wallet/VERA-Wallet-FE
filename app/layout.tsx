@@ -1,3 +1,4 @@
+import { NavigationTiming } from "@/components/diagnostics/navigation-timing";
 import type { Metadata, Viewport } from "next";
 import { AppNav } from "@/components/ui/app-nav";
 import { DisclaimerFooter } from "@/components/ui/disclaimer-footer";
@@ -27,6 +28,7 @@ export default function RootLayout({
     <html lang="ko">
       <body>
         <Providers>
+          <NavigationTiming />
           <div className="mx-auto flex min-h-dvh max-w-md flex-col bg-zinc-50 shadow-[0_0_0_1px_rgb(24_24_27/0.04)]">
             <div className="flex-1">
               {/* 불러오기 상태는 어느 탭에 있든 보여야 한다 — 지갑 등록이 시작시킨 일이지 대시보드만의 사정이 아니다.

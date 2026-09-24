@@ -1,3 +1,4 @@
+import { recordTiming } from "@/lib/diagnostics/performance";
 import { ReportVcError } from "@/lib/report-vc/types";
 
 /**
@@ -12,6 +13,7 @@ import { ReportVcError } from "@/lib/report-vc/types";
 export type PollStep<T> = { done: true; value: T } | { done: false; retryAfterMs: number };
 
 export type PollOptions<T> = {
+  diagnosticName?: "vc.link_wait" | "vc.issue_wait" | "vc.verify_wait";
   expiresAt: string;
   initialDelayMs: number;
   request: (signal: AbortSignal) => Promise<PollStep<T>>;
@@ -34,11 +36,14 @@ export function startPolling<T>(options: PollOptions<T>): () => void {
   const now = options.now ?? Date.now;
   const expires = Date.parse(options.expiresAt);
   const controller = new AbortController();
+  const startedAt = performance.now();
   let stopped = false;
   let requests = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
 
-  const stop = () => {
+  const stop = (outcome = "stopped") => {
+    if (stopped) return;
+    recordTiming({ kind: "interaction", name: options.diagnosticName ?? "vc.poll_wait", durationMs: performance.now() - startedAt, atMs: startedAt, outcome });
     stopped = true;
     controller.abort();
     if (timer !== undefined) clearTimeout(timer);
@@ -46,9 +51,9 @@ export function startPolling<T>(options: PollOptions<T>): () => void {
 
   async function tick() {
     if (stopped) return;
-    if (now() >= expires) { stop(); onExpired(); return; }
+    if (now() >= expires) { stop("expired"); onExpired(); return; }
     if (requests >= maxRequests) {
-      stop();
+      stop("error");
       onError(new ReportVcError(0, "poll_exhausted", "시간 안에 결과를 확인하지 못했습니다. 다시 시도하세요."));
       return;
     }
@@ -57,7 +62,7 @@ export function startPolling<T>(options: PollOptions<T>): () => void {
     try {
       const step = await request(AbortSignal.any([controller.signal, AbortSignal.timeout(requestTimeoutMs)]));
       if (stopped) return;
-      if (step.done) { stop(); onDone(step.value); return; }
+      if (step.done) { stop("done"); onDone(step.value); return; }
       delay = step.retryAfterMs;
     } catch (cause) {
       if (stopped) return;
@@ -67,12 +72,12 @@ export function startPolling<T>(options: PollOptions<T>): () => void {
         // 한 번의 요청이 늦은 것은 종결이 아니다. 다음 주기에 다시 묻는다.
         delay = 2000;
       } else {
-        stop();
+        stop("error");
         onError(cause);
         return;
       }
     }
-    if (now() >= expires) { stop(); onExpired(); return; }
+    if (now() >= expires) { stop("expired"); onExpired(); return; }
     timer = setTimeout(() => { void tick(); }, delay);
   }
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { recordTiming } from "@/lib/diagnostics/performance";
 import { useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { OpenDidError, openDidClient, type DidCountry, type DidOffer } from "@/lib/opendid/client";
@@ -12,6 +13,8 @@ export function OpenDidPresentation({ offer, country, onVerified, onError, onCan
 }) {
   const [remaining, setRemaining] = useState(0);
   useEffect(() => {
+    const startedAt = performance.now();
+    let outcome = "stopped";
     const controller = new AbortController();
     const expires = Date.parse(offer.expiresAt);
     let stopped = false;
@@ -21,6 +24,7 @@ export function OpenDidPresentation({ offer, country, onVerified, onError, onCan
       stopped = true;
       controller.abort();
       clearTimeout(timer);
+      outcome = "error";
       onError(message);
     };
     const tick = () => {
@@ -40,6 +44,7 @@ export function OpenDidPresentation({ offer, country, onVerified, onError, onCan
         if (result.status === "verified") {
           stopped = true;
           clearInterval(countdown);
+          outcome = "verified";
           onVerified(result.claim);
           return;
         }
@@ -58,7 +63,7 @@ export function OpenDidPresentation({ offer, country, onVerified, onError, onCan
       if (!stopped) timer = setTimeout(poll, delay);
     }
     if (!stopped) timer = setTimeout(poll, offer.pollAfterMs);
-    return () => { stopped = true; controller.abort(); clearTimeout(timer); clearInterval(countdown); };
+    return () => { recordTiming({ kind: "interaction", name: "did.presentation_wait", durationMs: performance.now() - startedAt, atMs: startedAt, outcome }); stopped = true; controller.abort(); clearTimeout(timer); clearInterval(countdown); };
   }, [offer, country, onVerified, onError]);
   return <div className="space-y-3 text-center">
     <div className="mx-auto w-fit rounded-xl bg-white p-4">

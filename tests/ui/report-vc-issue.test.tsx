@@ -190,7 +190,7 @@ describe("VC로 받기 카드", () => {
     });
     await request(fake);
     expect(fake.evidenceIssuance).toHaveBeenCalledTimes(2);
-    expect(surface("report-vc-issue-notice")?.textContent).toContain("진행 중인 발급");
+    expect(surface("report-vc-issue-notice")?.textContent).toContain("진행 중인 증명서 지갑 연결 또는 발급 요청");
   });
 
   it("이미 발급된 최근 건이 있으면 완료 상태로 열리고 새 버전 발급을 제안한다", async () => {

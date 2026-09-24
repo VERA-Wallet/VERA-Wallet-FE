@@ -92,6 +92,7 @@ export function ReportVerifyView({ client: override }: { client?: ReportVcClient
       const attempt = created.data;
       setPhase({ kind: "presenting", attempt });
       stopPolling.current = startPolling({
+        diagnosticName: "vc.verify_wait",
         expiresAt: attempt.expiresAt,
         initialDelayMs: attempt.pollAfterMs,
         request: async (signal) => {

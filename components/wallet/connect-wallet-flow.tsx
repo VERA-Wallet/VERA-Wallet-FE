@@ -1,5 +1,6 @@
 "use client";
 
+import { measure } from "@/lib/diagnostics/performance";
 import { useQueryClient } from "@tanstack/react-query";
 import { refreshRegisteredWallets } from "@/lib/queries/holdings";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -172,7 +173,7 @@ export function ConnectWalletFlow({
     setError(null);
     setIsConnecting(true);
     try {
-      const connected = await walletPort.connect(kind);
+      const connected = await measure("wallet.connect_approval", () => walletPort.connect(kind));
       if (connectingRun.current === run) setAccount(connected);
     } catch (cause) {
       if (connectingRun.current === run) setError(walletConnectionError(cause));
@@ -216,7 +217,7 @@ export function ConnectWalletFlow({
         expirationTime: new Date(nonce.expiresAtMs).toISOString(),
       }).prepareMessage();
       setSigningPhase("signing");
-      const signature = await walletPort.signMessage(message, signingAccount);
+      const signature = await measure("wallet.sign_approval", () => walletPort.signMessage(message, signingAccount));
       if (signingRun.current !== run) return;
       setSigningPhase("verifying");
       await authClient.verify({ message, signature });

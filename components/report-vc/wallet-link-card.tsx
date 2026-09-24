@@ -94,6 +94,7 @@ export function WalletLinkCard({ client: override }: { client?: ReportVcClient }
       setProvenance(created.provenance);
       setPhase({ kind: "presenting", attempt: created.data });
       stopPolling.current = startPolling({
+        diagnosticName: "vc.link_wait",
         expiresAt: created.data.expiresAt,
         initialDelayMs: created.data.pollAfterMs,
         request: async (signal) => {

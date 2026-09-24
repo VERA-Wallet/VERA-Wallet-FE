@@ -9,6 +9,7 @@ import { CircleCheck } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { ProvenanceChip } from "@/components/ui/provenance-chip";
 import { authClient as compositionAuthClient } from "@/lib/composition-root.client";
+import { measure } from "@/lib/diagnostics/performance";
 import { closeCxLogin, cxLoginEnabled, openCxLogin } from "@/lib/omnione/oacx";
 import type { Provenance } from "@/lib/http/envelope";
 import type { AuthClient, DidPresentation } from "@/lib/ports/auth-client";
@@ -74,7 +75,7 @@ export function DidLoginFlow({ authClient = compositionAuthClient, provenance = 
     const attempt = ++attemptRef.current;
     void (async () => {
       try {
-        const cxToken = await openCxLogin();
+        const cxToken = await measure("cx.interactive_flow", () => openCxLogin());
         if (attemptRef.current !== attempt) return;
         setState("awaiting");
         const claim = await authClient.presentDid({ country, cxToken });

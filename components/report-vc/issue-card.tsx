@@ -99,6 +99,7 @@ export function ReportVcIssueCard({ evidenceId, stale = false, client: override 
   function watch(gen: number, state: EvidenceIssuanceState, offer: IssuanceOffer) {
     if (!client) return;
     stopPolling.current = startPolling({
+        diagnosticName: "vc.issue_wait",
       expiresAt: offer.expiresAt,
       initialDelayMs: offer.pollAfterMs,
       request: async (signal) => {

@@ -29,6 +29,7 @@ async function forward(request: Request, context: { params: Promise<{ path: stri
     let offset = 0;
     for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.byteLength; }
   }
+  const startedAt = performance.now();
   try {
     const response = await fetch(target, {
       method: request.method, body: body as BodyInit | undefined,
@@ -36,9 +37,15 @@ async function forward(request: Request, context: { params: Promise<{ path: stri
       headers: { "accept": "application/json", "content-type": "application/json" },
       cache: "no-store", redirect: "error", signal: AbortSignal.timeout(35_000),
     });
-    const headers = { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
+    const duration = performance.now() - startedAt;
+    if (duration >= 1000 || process.env.PERF_TIMING === "true") console.info(JSON.stringify({ event: "did_proxy_timing", service: path[0], method: request.method, status: response.status, durationMs: Math.round(duration) }));
+    const headers = { "Server-Timing": `did_upstream_headers;dur=${duration.toFixed(1)}`, "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
     return new Response(response.body, { status: response.status, headers });
-  } catch { return Response.json({ code: "did_upstream_unavailable" }, { status: 502 }); }
+  } catch {
+    const duration = performance.now() - startedAt;
+    console.info(JSON.stringify({ event: "did_proxy_timing", service: path[0], method: request.method, status: 502, durationMs: Math.round(duration) }));
+    return Response.json({ code: "did_upstream_unavailable" }, { status: 502, headers: { "Server-Timing": `did_upstream_headers;dur=${duration.toFixed(1)}` } });
+  }
 }
 export const GET = forward;
 export const POST = forward;
