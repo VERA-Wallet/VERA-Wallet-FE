@@ -20,6 +20,7 @@ import {
   type FileCheckRequest,
   type FileCheckResult,
   type IssuanceOffer,
+  type IssuanceSettled,
   type IssuanceStatus,
   type LinkAttempt,
   type LinkAttemptStatus,
@@ -46,7 +47,7 @@ export interface ReportVcClient {
   unlinkWallet(): Promise<void>;
 
   evidenceIssuance(evidenceId: string, signal?: AbortSignal): Promise<WithProvenance<EvidenceIssuanceState>>;
-  requestIssuance(input: { evidenceId: string; idempotencyKey: string }, signal?: AbortSignal): Promise<WithProvenance<IssuanceOffer>>;
+  requestIssuance(input: { evidenceId: string; idempotencyKey: string }, signal?: AbortSignal): Promise<WithProvenance<IssuanceOffer | IssuanceSettled>>;
   issuanceStatus(issuanceId: string, signal: AbortSignal): Promise<WithProvenance<IssuanceStatus>>;
   cancelIssuance(issuanceId: string): Promise<void>;
 
@@ -145,7 +146,7 @@ export class HttpReportVcClient implements ReportVcClient {
   async requestIssuance(input: { evidenceId: string; idempotencyKey: string }, signal?: AbortSignal) {
     // 식별자만 보낸다. 금액·DID·머클루트는 BE가 저장된 기록과 세션에서 읽는다.
     const response = await send("/issuances", { ...json({ evidenceId: input.evidenceId }, { "idempotency-key": input.idempotencyKey }), signal });
-    return decode(response, issuanceOfferSchema);
+    return decode(response, issuanceOfferSchema.or(issuanceSettledSchema));
   }
 
   async issuanceStatus(issuanceId: string, signal: AbortSignal) {

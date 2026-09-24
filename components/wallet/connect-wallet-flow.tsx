@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { SiweMessage } from "siwe";
-import { AlertCircle, Building2, Check, ChevronLeft, ChevronRight, ClipboardPaste, Info, KeyRound, ShieldCheck, X } from "lucide-react";
+import { AlertCircle, Building2, Check, ChevronLeft, ChevronRight, ClipboardPaste, Info, KeyRound, LoaderCircle, ShieldCheck, X } from "lucide-react";
 import { BottomSheet } from "@/components/ui/bottom-sheet";
 import { ProvenanceChip } from "@/components/ui/provenance-chip";
 import type { Provenance } from "@/lib/http/envelope";
@@ -41,6 +41,8 @@ function isSameAddress(left: string, right: string | null) {
 
 /** 화면 순서. 확인은 별도 화면이 아니라 `address` 위에 뜨는 바텀시트다. */
 type Step = "method" | "address" | "siwe";
+type SigningPhase = "idle" | "preparing" | "signing" | "verifying" | "redirecting";
+const SIGNING_LABELS: Record<SigningPhase, string> = { idle: "서명하고 추가", preparing: "서명 요청 준비 중…", signing: "지갑에서 서명 대기 중…", verifying: "서명 확인 중…", redirecting: "거래 조회 준비 중…" };
 
 export type ConnectWalletMode = "onboarding" | "add";
 
@@ -97,7 +99,13 @@ export function ConnectWalletFlow({
   const [addressTouched, setAddressTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
-  const [isSigning, setIsSigning] = useState(false);
+  const [signingPhase, setSigningPhase] = useState<SigningPhase>("idle");
+  const signingRun = useRef<object | null>(null);
+  useEffect(() => () => { signingRun.current = null; }, []);
+  function cancelSigningView() {
+    signingRun.current = null;
+    setSigningPhase("idle");
+  }
   const [isRegistering, setIsRegistering] = useState(false);
 
   useEffect(() => walletPort.subscribeConnection(setAccount), [walletPort]);
@@ -106,6 +114,7 @@ export function ConnectWalletFlow({
   const adding = mode === "add";
 
   function go(next: Step) {
+    cancelSigningView();
     // 오류는 화면에 딸린 것이다. 남겨 두면 주소 형식 오류가 서명 화면에 떠 있게 된다.
     setError(null);
     setConfirmOpen(false);
@@ -154,7 +163,7 @@ export function ConnectWalletFlow({
   }
 
   async function signIn() {
-    if (!account) return;
+    if (!account || signingRun.current) return;
     setError(null);
     const signingAccount = walletPort.getAccount();
     if (!signingAccount || !isSameAddress(signingAccount.address, account.address) || signingAccount.chainId !== account.chainId) {
@@ -168,9 +177,12 @@ export function ConnectWalletFlow({
       setError("이미 등록된 지갑이에요. 지갑 확장 프로그램에서 다른 계정으로 바꾼 뒤 다시 시도해 주세요.");
       return;
     }
-    setIsSigning(true);
+    const run = {};
+    signingRun.current = run;
+    setSigningPhase("preparing");
     try {
       const nonce = await authClient.requestNonce({ chainId: account.chainId });
+      if (signingRun.current !== run) return;
       const message = new SiweMessage({
         address: account.address as `0x${string}`,
         version: "1",
@@ -181,15 +193,21 @@ export function ConnectWalletFlow({
         issuedAt: nonce.issuedAt,
         expirationTime: new Date(nonce.expiresAtMs).toISOString(),
       }).prepareMessage();
+      setSigningPhase("signing");
       const signature = await walletPort.signMessage(message, signingAccount);
+      if (signingRun.current !== run) return;
+      setSigningPhase("verifying");
       await authClient.verify({ message, signature });
+      if (signingRun.current !== run) return;
+      setSigningPhase("redirecting");
       // 서명이 끝나도 인덱서 동기화는 남아 있다. 대시보드로 그냥 보내면 사용자는 빈 화면을 먼저 보고
       // "연결이 안 됐나"로 읽는다. 온보딩 기본값은 `importing`을 달고 들어가 불러오기 모달을 띄운다.
       router.push(redirectTo);
     } catch (cause) {
+      if (signingRun.current !== run) return;
+      signingRun.current = null;
+      setSigningPhase("idle");
       setError(errorMessage(cause));
-    } finally {
-      setIsSigning(false);
     }
   }
 
@@ -215,6 +233,7 @@ export function ConnectWalletFlow({
         <Link
           href={exitTo}
           aria-label="닫기"
+          onClick={cancelSigningView}
           className="flex h-10 w-10 items-center justify-center rounded-full text-zinc-600 transition-colors hover:bg-zinc-100 active:bg-zinc-200"
         >
           <X aria-hidden="true" className="size-6" />
@@ -270,7 +289,7 @@ export function ConnectWalletFlow({
           boundAddress={boundAddress}
           error={error}
           isConnecting={isConnecting}
-          isSigning={isSigning}
+          signingPhase={signingPhase}
           onConnect={connectWallet}
           onSign={signIn}
           onFallback={() => go("address")}
@@ -614,13 +633,32 @@ function AddressStep({
   );
 }
 
+function WalletWaitHint({ kind }: { kind: "connect" | "sign" }) {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setVisible(true), 5000);
+    return () => clearTimeout(timer);
+  }, []);
+  if (!visible) return null;
+  return (
+    <div role="status" className="flex gap-2.5 rounded-[14px] bg-zinc-100 px-3.5 py-3">
+      <Info aria-hidden="true" className="mt-0.5 size-[18px] shrink-0 text-zinc-600" />
+      <p className="text-[13px] leading-[19px] text-zinc-700">
+        {kind === "connect"
+          ? "지갑 확장 프로그램을 열어 이 사이트의 연결 요청을 확인해 주세요. ‘연결(Connect)’ 버튼이 보이면 눌러 주세요."
+          : "지갑 확장 프로그램을 열어 서명 요청을 승인해 주세요."}
+      </p>
+    </div>
+  );
+}
+
 function SiweStep({
   flowLabel,
   account,
   boundAddress,
   error,
   isConnecting,
-  isSigning,
+  signingPhase,
   onConnect,
   onSign,
   onFallback,
@@ -630,23 +668,26 @@ function SiweStep({
   boundAddress: string | null;
   error: string | null;
   isConnecting: boolean;
-  isSigning: boolean;
+  signingPhase: SigningPhase;
   onConnect: () => void;
   onSign: () => void;
   onFallback: () => void;
 }) {
+  const isSigning = signingPhase !== "idle";
+  const signatureReceived = signingPhase === "verifying" || signingPhase === "redirecting";
   const duplicate = account !== null && isSameAddress(account.address, boundAddress);
   const timeline: Array<{ label: string; state: "done" | "active" | "pending"; note?: string }> = [
     { label: "지갑 연결 승인", state: account ? "done" : "active", note: account ? "완료" : isConnecting ? "지갑 응답 대기 중…" : undefined },
-    { label: "메시지 서명", state: account ? "active" : "pending", note: isSigning ? "지갑 앱에서 대기 중…" : undefined },
-    { label: "거래 불러오기", state: "pending" },
+    { label: "메시지 서명", state: signatureReceived ? "done" : account ? "active" : "pending", note: signatureReceived ? "승인 완료" : isSigning ? SIGNING_LABELS[signingPhase] : undefined },
+    { label: "서버 확인", state: signingPhase === "redirecting" ? "done" : signingPhase === "verifying" ? "active" : "pending" },
+    { label: "거래 불러오기", state: signingPhase === "redirecting" ? "active" : "pending", note: signingPhase === "redirecting" ? "네트워크별 조회 화면을 준비하고 있습니다" : undefined },
   ];
 
   return (
     <>
       <StepHeading
         eyebrow={`${flowLabel} 2/3`}
-        title={account ? "지갑 앱에서 서명을\n승인해 주세요" : "브라우저 지갑을\n연결해 주세요"}
+        title={signingPhase === "redirecting" ? "거래 조회 화면을\n준비하고 있습니다" : signingPhase === "verifying" ? "서명을 확인하고\n있습니다" : account ? "지갑 앱에서 서명을\n승인해 주세요" : "브라우저 지갑을\n연결해 주세요"}
         body="서명은 이 지갑이 내 것임을 확인하는 용도예요. 가스비가 들지 않고 자산이 움직이지도 않아요."
       />
 
@@ -699,18 +740,24 @@ function SiweStep({
         ) : null}
         {error && <InlineAlert tone="error">{error}</InlineAlert>}
 
-        <div className="flex gap-2.5 rounded-[14px] bg-zinc-100 px-3.5 py-3">
-          <Info aria-hidden="true" className="mt-0.5 size-[18px] shrink-0 text-zinc-600" />
-          <p className="text-[13px] leading-[19px] text-zinc-700">
-            서명창이 뜨지 않으면 지갑 확장 프로그램 아이콘을 눌러 보세요. 서명 요청은 만료되면 다시 시도할 수 있어요.
-          </p>
-        </div>
+        {signatureReceived ? (
+          <div className="flex gap-2.5 rounded-[14px] bg-zinc-100 px-3.5 py-3">
+            <Info aria-hidden="true" className="mt-0.5 size-[18px] shrink-0 text-zinc-600" />
+            <p className="text-[13px] leading-[19px] text-zinc-700">
+              {signingPhase === "redirecting"
+                ? "지갑 확인이 완료됐습니다. 잠시 후 네트워크별 거래 조회 진행 상황이 표시됩니다."
+                : "지갑에서 승인한 서명을 서버에서 확인하고 있습니다. 추가 서명은 필요하지 않습니다."}
+            </p>
+          </div>
+        ) : signingPhase === "signing" ? <WalletWaitHint key="sign" kind="sign" />
+          : !account && isConnecting ? <WalletWaitHint key="connect" kind="connect" /> : null}
       </div>
 
       <div className="mt-auto flex flex-col gap-2.5 px-5 pt-6">
         {account ? (
           <button type="button" className={CTA_CLASS} disabled={isSigning || duplicate} onClick={onSign}>
-            {isSigning ? "지갑에서 서명 대기 중…" : "서명하고 추가"}
+            {isSigning && <LoaderCircle aria-hidden="true" className="mr-2 size-5 animate-spin" />}
+            <span role={isSigning ? "status" : undefined}>{SIGNING_LABELS[signingPhase]}</span>
           </button>
         ) : (
           <button type="button" className={CTA_CLASS} disabled={isConnecting} onClick={onConnect}>

@@ -205,7 +205,7 @@ export function ReportVerifyView({ client: override }: { client?: ReportVcClient
             <VerificationResultView result={phase.result} provenance={provenance} />
             {phase.result.status === "verified" && client && capabilities && (
               <div className="border-t border-zinc-100 pt-4">
-                <FileCheck client={client} verificationId={phase.attempt.verificationId} capabilities={capabilities} />
+                <FileCheck client={client} verificationId={phase.attempt.verificationId} capabilities={capabilities} evidenceRoot={phase.result.claims?.evidenceRoot ?? ""} />
               </div>
             )}
             <button type="button" className={SECONDARY_BUTTON} onClick={reset}>새 검증 시작</button>

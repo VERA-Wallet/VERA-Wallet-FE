@@ -142,6 +142,12 @@ export function ReportVcIssueCard({ evidenceId, stale = false, client: override 
       const created = await client.requestIssuance({ evidenceId, idempotencyKey: idempotencyKey.current });
       if (generation.current !== gen) return;
       setProvenance(created.provenance);
+      if (created.data.status !== "offer_ready") {
+        idempotencyKey.current = null;
+        if (created.data.status === "issued") setPhase({ kind: "issued", state, issuance: created.data });
+        else setPhase({ kind: "idle", state, notice: { tone: "warn", message: "이전 발급 요청이 종료되었습니다. 새로 요청할 수 있습니다." } });
+        return;
+      }
       setPhase({ kind: "presenting", state, offer: created.data, waiting: "offer_ready" });
       watch(gen, state, created.data);
     } catch (error) {

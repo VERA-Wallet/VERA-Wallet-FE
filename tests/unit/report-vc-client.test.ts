@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { HttpReportVcClient } from "@/lib/report-vc/client";
-import { FIXTURE_CAPABILITIES, FIXTURE_LINKED, fixtureIssuanceOffer, fixtureVerificationResult } from "@/lib/report-vc/fixtures";
+import { FIXTURE_CAPABILITIES, FIXTURE_LINKED, fixtureIssuanceOffer, fixtureIssued, fixtureVerificationResult } from "@/lib/report-vc/fixtures";
 import { ReportVcError } from "@/lib/report-vc/types";
 
 const envelope = (data: unknown, status = 200, provenance = "live", headers: Record<string, string> = {}) =>
@@ -102,4 +102,11 @@ describe("HttpReportVcClient", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(failure("unauthorized", "Unauthorized", 401)));
     await expect(client.unlinkWallet()).rejects.toMatchObject({ code: "unauthorized" });
   });
+});
+
+it("accepts a completed idempotent issuance replay without fabricating a new QR", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(envelope(fixtureIssued(fixtureIssuanceOffer()))));
+  const result = await client.requestIssuance({ evidenceId: "root", idempotencyKey: "key" });
+  expect(result.data.status).toBe("issued");
+  expect(result.data).not.toHaveProperty("qr");
 });

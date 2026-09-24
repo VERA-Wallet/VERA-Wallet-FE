@@ -36,7 +36,7 @@ function detectFormat(file: File): VerifiableFileFormat | "pdf" | "unknown" {
   return "unknown";
 }
 
-export function FileCheck({ client, verificationId, capabilities }: { client: ReportVcClient; verificationId: string; capabilities: ReportVcCapabilities }) {
+export function FileCheck({ client, verificationId, capabilities, evidenceRoot }: { client: ReportVcClient; verificationId: string; capabilities: ReportVcCapabilities; evidenceRoot: string }) {
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const generation = useRef(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -67,15 +67,15 @@ export function FileCheck({ client, verificationId, capabilities }: { client: Re
     if (generation.current !== gen) return;
     setPhase({ kind: "checking", name: file.name, hash });
     try {
-      const { data } = await client.checkFile(verificationId, { format, algorithm: "keccak256", hash, byteLength });
+      const { data, provenance } = await client.checkFile(verificationId, { format, algorithm: "keccak256", hash, byteLength });
       if (generation.current !== gen) return;
       let localProof: "passed" | "failed" | "missing" = "missing";
       if (data.status === "included" && data.leaf && data.proof) {
         localProof = verifyProof(
           { ...data.leaf, hash: data.leaf.hash },
           data.proof.map((step) => ({ side: step.side, hash: step.hash as Hex })),
-          data.evidenceRoot as Hex,
-        ) && data.leaf.hash.toLowerCase() === hash.toLowerCase() ? "passed" : "failed";
+          evidenceRoot as Hex,
+        ) && provenance !== "mock" && data.evidenceRoot.toLowerCase() === evidenceRoot.toLowerCase() && data.leaf.file === format && data.leaf.byteLength === byteLength && data.leaf.hash.toLowerCase() === hash.toLowerCase() ? "passed" : "failed";
       }
       setPhase({ kind: "result", name: file.name, hash, result: data, localProof });
     } catch (error) {

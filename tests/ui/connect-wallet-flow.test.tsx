@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ConnectWalletFlow } from "@/components/wallet/connect-wallet-flow";
 import { AuthClientError, type AuthClient } from "@/lib/ports/auth-client";
@@ -130,4 +130,86 @@ describe("wallet connection SIWE flow", () => {
     fireEvent.click(screen.getByRole("button", { name: "서명하고 추가" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("인증 요청 불일치");
   });
+});
+const delayedNonce = { nonce: "noncefromserver123", domain: "wallet.example", uri: "https://wallet.example/login", chainId: 8453, issuedAt: "2026-07-30T00:00:00.000Z", expiresAtMs: 1785373200000 };
+
+it("keeps the action locked through server verification and delayed navigation", async () => {
+  push.mockReset();
+  const port = walletPort(), auth = authClient();
+  vi.mocked(auth.requestNonce).mockResolvedValue(delayedNonce);
+  let finish!: (value: Awaited<ReturnType<AuthClient["verify"]>>) => void;
+  vi.mocked(auth.verify).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  render(<ConnectWalletFlow walletPort={port} authClient={auth} initialStep="siwe" />);
+  const start = screen.getByRole("button", { name: "서명하고 추가" });
+  fireEvent.click(start); fireEvent.click(start);
+  expect(await screen.findByRole("button", { name: "서명 확인 중…" })).toBeDisabled();
+  expect(auth.requestNonce).toHaveBeenCalledTimes(1);
+  expect(auth.verify).toHaveBeenCalledTimes(1);
+  finish({} as Awaited<ReturnType<AuthClient["verify"]>>);
+  await waitFor(() => expect(push).toHaveBeenCalledTimes(1));
+  const pendingNavigation = screen.getByRole("button", { name: "거래 조회 준비 중…" });
+  expect(pendingNavigation).toBeDisabled();
+  fireEvent.click(pendingNavigation);
+  expect(auth.requestNonce).toHaveBeenCalledTimes(1);
+});
+
+it("does not verify a late wallet signature after leaving the signing step", async () => {
+  push.mockReset();
+  const port = walletPort(), auth = authClient();
+  vi.mocked(auth.requestNonce).mockResolvedValue(delayedNonce);
+  let finish!: (value: string) => void;
+  vi.mocked(port.signMessage).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  render(<ConnectWalletFlow walletPort={port} authClient={auth} initialStep="siwe" />);
+  fireEvent.click(screen.getByRole("button", { name: "서명하고 추가" }));
+  await waitFor(() => expect(port.signMessage).toHaveBeenCalledTimes(1));
+  fireEvent.click(screen.getByRole("button", { name: "뒤로" }));
+  finish("0xsigned");
+  await waitFor(() => expect(screen.getByRole("button", { name: /브라우저 지갑으로 연결/ })).toBeInTheDocument());
+  expect(auth.verify).not.toHaveBeenCalled();
+  expect(push).not.toHaveBeenCalled();
+});
+
+it("does not navigate on a late verification response after unmount", async () => {
+  push.mockReset();
+  const port = walletPort(), auth = authClient();
+  vi.mocked(auth.requestNonce).mockResolvedValue(delayedNonce);
+  let finish!: (value: Awaited<ReturnType<AuthClient["verify"]>>) => void;
+  vi.mocked(auth.verify).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  const view = render(<ConnectWalletFlow walletPort={port} authClient={auth} initialStep="siwe" />);
+  fireEvent.click(screen.getByRole("button", { name: "서명하고 추가" }));
+  await waitFor(() => expect(auth.verify).toHaveBeenCalledTimes(1));
+  view.unmount();
+  finish({} as Awaited<ReturnType<AuthClient["verify"]>>);
+  await Promise.resolve();
+  expect(push).not.toHaveBeenCalled();
+});
+
+
+it.each(["connect", "sign"] as const)("shows %s guidance only after five seconds of wallet waiting", async (kind) => {
+  vi.useFakeTimers();
+  const originalEthereum = (window as Window & { ethereum?: unknown }).ethereum;
+  try {
+    (window as Window & { ethereum?: unknown }).ethereum = {};
+    const port = walletPort(), auth = authClient();
+    if (kind === "connect") {
+      port.getAccount = () => null;
+      vi.mocked(port.connect).mockImplementation(() => new Promise(() => {}));
+    } else {
+      vi.mocked(auth.requestNonce).mockResolvedValue(delayedNonce);
+      vi.mocked(port.signMessage).mockImplementation(() => new Promise(() => {}));
+    }
+    const view = render(<ConnectWalletFlow walletPort={port} authClient={auth} initialStep="siwe" />);
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: kind === "connect" ? "지갑 연결하기" : "서명하고 추가" })); });
+    const message = kind === "connect" ? /이 사이트의 연결 요청을 확인/ : /지갑 확장 프로그램을 열어 서명 요청을 승인/;
+    await act(async () => { vi.advanceTimersByTime(4999); });
+    expect(screen.queryByText(message)).toBeNull();
+    await act(async () => { vi.advanceTimersByTime(1); });
+    expect(screen.getByText(message)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "뒤로" }));
+    expect(screen.queryByText(message)).toBeNull();
+    view.unmount();
+  } finally {
+    (window as Window & { ethereum?: unknown }).ethereum = originalEthereum;
+    vi.useRealTimers();
+  }
 });

@@ -220,3 +220,10 @@ describe("VC로 받기 카드", () => {
     expect(text).toContain("공식 문서가 아닙니다");
   });
 });
+
+it("완료된 멱등 재요청은 QR 대신 발급 완료로 표시한다", async () => {
+  const fake = fakeClient({ requestIssuance: vi.fn().mockResolvedValue(live(fixtureIssued(fixtureIssuanceOffer()))) });
+  await request(fake);
+  expect(fake.issuanceStatus).not.toHaveBeenCalled();
+  expect(surface("report-vc-issued")).not.toBeNull();
+});

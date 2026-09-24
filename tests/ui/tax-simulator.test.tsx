@@ -1098,7 +1098,7 @@ describe("리포트가 답 우선 3계층인가", () => {
     expect(screen.queryByLabelText("흔들리는 것")).not.toBeInTheDocument();
   });
 
-  it("재조회 중에는 옛 금액을 새 조건의 답인 척하지 않는다", async () => {
+  it("같은 조건 재조회 중에는 이전 금액임을 명시하고 결과를 유지한다", async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
@@ -1112,8 +1112,9 @@ describe("리포트가 답 우선 3계층인가", () => {
 
     ports.estimate.mockImplementation(() => new Promise(() => {}));
     void client.invalidateQueries({ queryKey: ["tax", "estimate"] });
-    await waitFor(() => expect(screen.queryByTestId("estimated-charge")).not.toBeInTheDocument());
-    expect(screen.getByText("계산 결과를 불러오는 중입니다")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText("이전 계산 결과")).toHaveAttribute("aria-busy", "true"));
+    expect(within(screen.getByLabelText("이전 계산 결과")).getByTestId("estimated-charge")).toHaveTextContent("1,015.44");
+    expect(screen.getByText(/새 결과 확인 전에는 내보내기와 증명서 발급에 사용하지 않습니다/)).toBeInTheDocument();
     // 결과가 없어도 조건은 바꿀 수 있어야 한다. 조건이 결과 안에 있으면 막다른 화면이 된다.
     expect(screen.getByText("계산 조건 바꾸기")).toBeInTheDocument();
     expect(screen.getByLabelText(/한계세율/)).toBeInTheDocument();

@@ -90,6 +90,10 @@ export function proxy(request: NextRequest) {
       if (value && /^[a-f0-9]{64}$/.test(value)) cookies.push(`${name}=${value}`);
     }
   }
+  if (request.nextUrl.pathname === "/api/report-vc/issuances" && request.method === "POST") {
+    const key = request.headers.get("idempotency-key");
+    if (key !== null) headers.set("idempotency-key", key);
+  }
   if (cookies.length) headers.set("cookie", cookies.join("; "));
 
   const destination = new URL(`${request.nextUrl.pathname}${request.nextUrl.search}`, origin);

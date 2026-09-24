@@ -242,6 +242,17 @@ describe("제3자 검증 화면", () => {
       expect(surface("report-vc-file-unverified")?.textContent).toContain("맞지 않습니다");
     });
 
+    it.each(["different_root", "mock"])("유효한 파일 증명이어도 VC 루트와 출처를 확인한다: %s", async (caseName) => {
+      const { root, bytes, leaf, proof } = csvEvidence();
+      const fake = fakeClient({ checkFile: vi.fn().mockResolvedValue({ data: { format: "csv", hash: leaf.hash, status: "included", leaf, proof, evidenceRoot: root }, provenance: caseName === "mock" ? "mock" : "live" }) });
+      const vcRoot = caseName === "different_root" ? `0x${"ee".repeat(32)}` : root;
+      await completeVerification(fake, fixtureVerificationResult("basic", { claims: { ...fixtureVerificationResult("basic").claims!, evidenceRoot: vcRoot } }));
+      upload("report.csv", bytes, "text/csv");
+      await flush(); await flush();
+      expect(surface("report-vc-file-included")).toBeNull();
+      expect(surface("report-vc-file-unverified")).not.toBeNull();
+    });
+
     it("근거에 없는 파일은 실패로 보인다", async () => {
       const { root, bytes } = csvEvidence();
       const fake = fakeClient({ checkFile: vi.fn().mockResolvedValue(live({ format: "csv", hash: keccak256(bytes), status: "not_included", evidenceRoot: root })) });

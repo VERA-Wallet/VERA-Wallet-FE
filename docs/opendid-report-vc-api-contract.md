@@ -483,3 +483,15 @@ type FileCheckResult = {
 - 증명서를 공식 문서, 납부가 끝난 사실, 계산 정확성의 보증으로 표현하지 않는다(`tests/unit/terminology-guard.test.ts`, `tests/unit/report-vc-terminology.test.ts`가 문구를 고정한다).
 - 금액은 KRW로만 표시한다(`formatFiat(value, "KRW")`).
 - 검증 결과에서 미확인(`unknown`)·미지원(`unsupported`)·실패(`failed`)는 어느 것도 성공 아이콘을 쓰지 않는다.
+
+## 2026-09-24 BE 구현 반영 사항
+
+BE `feat/opendid-report-vc`에서 이 계약의 API를 구현했다. 개발 환경에서 실폰 발급·제출 검증과 실제 체인/CSV 무결성 대조를 확인했다. 운영 환경은 별도 DB이므로 새 로그인·지갑 연결·발급으로 확인한다.
+
+- 발급 POST의 동일 멱등 키 재요청은 `IssuanceOffer | IssuanceSettled`를 반환할 수 있다. 이미 끝난 발급을 새 QR로 표시하지 않는다.
+- v1은 `basic`, CSV/XLSX만 지원한다. 금액 선택 공개와 PDF 대조는 지원하지 않는다.
+- 지갑 연결은 최근 15분 이내 실제 CX 본인인증이 필요하다. `cx_verification_required`, `cx_reauthentication_required`를 처리한다.
+- `claims.version`은 v1 근거 문서 형식 번호다. 최신 여부는 같은 계정·국가·연도의 최신 저장된 근거 루트로 비교한다. 과거 VC는 새 리포트 때문에 자동 폐기되지 않는다.
+- `verified`는 VP 검증뿐 아니라 현재 활성 상태와 실제 체인 앵커 대조까지 성공한 경우에만 반환한다.
+- 파일 대조는 응답 자체의 루트뿐 아니라 직전에 검증한 VC 루트와 같아야 한다. mock 출처는 실제 파일 검증 성공으로 표시하지 않는다.
+- 시도 보관 및 멱등 키 유지 기간은 만료 후 24시간이다. 공개 검증 완료 후 파일 대조는 QR 만료 시점부터 추가 10분 동안 가능하다.

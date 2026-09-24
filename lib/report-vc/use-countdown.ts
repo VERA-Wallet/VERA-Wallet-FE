@@ -20,5 +20,11 @@ export function useCountdown(expiresAt: string | null): number {
 /** 요청 한 번을 대표하는 키. 재시도(네트워크 실패)에는 같은 키를, 새 시도에는 새 키를 쓴다. */
 export function newIdempotencyKey(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
-  return `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}-${Math.random().toString(16).slice(2)}`;
+  // Tailnet HTTP is not a secure context: randomUUID may be absent, but
+  // getRandomValues is available and can produce the same UUID v4 contract.
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }

@@ -74,3 +74,16 @@ describe("report VC proxy", () => {
     expect(response.headers.get("x-verawallet-fe-rewrite")).toBeNull();
   });
 });
+
+it("preserves the issuance idempotency key only for issuance POST", () => {
+  const key = "c1d7af00-4252-4f63-bb2a-426a4c1f1234";
+  for (const [path, method, expected] of [
+    ["/api/report-vc/issuances", "POST", key],
+    ["/api/report-vc/issuances", "GET", null],
+    ["/api/auth/session", "GET", null],
+    ["/api/report-vc/verifications", "POST", null],
+  ] as const) {
+    const response = proxy(new NextRequest(`http://wallet.test${path}`, { method, headers: { "idempotency-key": key } }));
+    expect(response.headers.get("x-middleware-request-idempotency-key")).toBe(expected);
+  }
+});

@@ -5,6 +5,11 @@ import { ReportVcError } from "@/lib/report-vc/types";
  * 모르는 코드는 서버 메시지를 쓴다. 비밀값·토큰·VC 원문은 메시지에 실리지 않는다는 전제다(계약 §1.1).
  */
 const KNOWN: Record<string, string> = {
+  cx_verification_required: "모바일 신분증으로 본인인증한 계정에서 이용할 수 있습니다.",
+  cx_reauthentication_required: "증명서 지갑을 연결하려면 모바일 신분증으로 다시 로그인해 주세요.",
+  anchor_mismatch: "저장된 계산 근거와 체인 기록이 일치하지 않습니다.",
+  invalid_issuance_receipt: "발급 결과가 요청한 증명서와 일치하지 않습니다.",
+  invalid_provider_response: "증명서 서버의 응답을 확인하지 못했습니다.",
   feature_unavailable: "리포트 증명서 기능이 아직 준비되지 않았습니다.",
   unauthorized: "로그인이 만료되었습니다. 다시 로그인하세요.",
   attempt_not_bound: "이 브라우저에서 시작한 시도가 아닙니다. 처음부터 다시 시작하세요.",
