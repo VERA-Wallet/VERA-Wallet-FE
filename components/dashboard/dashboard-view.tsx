@@ -1,6 +1,6 @@
 "use client";
 
-import { Settings } from "lucide-react";
+import { SettingsLink } from "@/components/ui/settings-link";
 import Link from "next/link";
 import { useState } from "react";
 import { EventDetails } from "@/components/transactions/event-details";
@@ -84,9 +84,7 @@ export function DashboardView({ countryCode, provenance = "mock" }: { countryCod
           <div className="flex h-9 items-center gap-2">
             <ProvenanceChip provenance={provenance} />
             {/* 설정은 탭 자리를 차지할 만큼 자주 가는 곳이 아니지만, 들어갈 문이 없으면 없는 화면이 된다. */}
-            <Link href="/settings" aria-label="설정" className="rounded-lg p-1 text-zinc-400">
-              <Settings aria-hidden="true" className="size-5" />
-            </Link>
+            <SettingsLink />
           </div>
           {/* 잔액만 가린다 — 배지·건수는 확인에 필요한 사실이지 금액이 아니므로 그대로 둔다. */}
           <button

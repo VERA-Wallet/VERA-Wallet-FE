@@ -1,3 +1,4 @@
+import { SettingsLink } from "@/components/ui/settings-link";
 import Link from "next/link";
 import { ProvenanceChip } from "@/components/ui/provenance-chip";
 import type { Provenance } from "@/lib/http/envelope";
@@ -25,7 +26,10 @@ export function DashboardEmptyState({ countryCode, provenance = "mock" }: { coun
             {countryCode ? `거주 국가: ${getRuleSet(countryCode)?.label ?? countryCode}` : "거주 국가를 확인하지 못했습니다."}
           </p>
         </div>
-        <ProvenanceChip provenance={provenance} />
+        <div className="flex shrink-0 items-center gap-2">
+          <ProvenanceChip provenance={provenance} />
+          <SettingsLink />
+        </div>
       </header>
 
       {/* 데이터를 불러오는 단일 행동. 지갑 연결 페이지로 이동한다. */}

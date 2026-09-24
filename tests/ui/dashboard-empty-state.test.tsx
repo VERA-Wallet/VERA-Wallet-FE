@@ -44,3 +44,8 @@ describe("빈 요약", () => {
     expect(screen.getByText("계산 대상 이벤트")).toBeInTheDocument();
   });
 });
+
+it("keeps settings and the logout entry reachable before a wallet is connected", () => {
+  render(<DashboardEmptyState countryCode="KR" provenance="live" />);
+  expect(screen.getByRole("link", { name: "설정" })).toHaveAttribute("href", "/settings");
+});
