@@ -133,6 +133,9 @@ type WalletLinkState =
 
 ### `POST /api/report-vc/wallet/link-attempts`
 
+같은 계정의 유효한 연결 시도가 있고 요청의 `vw_vc_link_attempt` 쿠키가 일치하면 기존 QR과 원래 `expiresAt`을 반환한다. 화면 이동 후 다시 연결을 눌러도 새 시도를 만들거나 만료 시간을 연장하지 않는다. 쿠키가 다르거나 아직 QR 생성 중이면 `409 link_in_progress`를 반환한다. 만료·취소된 시도는 재사용하지 않는다.
+
+
 요청 본문은 `{}`다(사용자 신원은 세션이 정한다). 응답에 `Set-Cookie: vw_vc_link_attempt`가 실린다.
 
 ```ts

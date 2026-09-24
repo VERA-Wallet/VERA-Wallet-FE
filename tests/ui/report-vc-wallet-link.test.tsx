@@ -248,3 +248,18 @@ it("shows a reauthentication link rather than asking the signed-in user to log o
   expect(screen.queryByRole("button", { name: "증명서 지갑 연결" })).toBeNull();
   expect(fake.linkAttemptStatus).not.toHaveBeenCalled();
 });
+
+it("restores the existing QR after returning without restarting its expiry", async () => {
+  const offer = fixtureLinkAttempt(Date.now(), 10_000);
+  const fake = fakeClient({ createLinkAttempt: vi.fn().mockResolvedValue(live(offer)) });
+  await startLinking(fake);
+  cleanup();
+  await tick(4000);
+  await startLinking(fake);
+  expect(screen.getByTitle("증명서 지갑 연결 QR 코드")).toBeInTheDocument();
+  await tick(2000);
+  expect(fake.linkAttemptStatus).toHaveBeenCalledWith(offer.attemptId, expect.any(AbortSignal));
+  expect(fake.cancelLinkAttempt).not.toHaveBeenCalled();
+  await tick(5000);
+  expect(screen.getByRole("status")).toHaveTextContent("만료");
+});
