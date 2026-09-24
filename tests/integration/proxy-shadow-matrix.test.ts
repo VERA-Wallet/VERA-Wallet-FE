@@ -6,6 +6,7 @@ const FE = "http://localhost:3300";
 const RECORDER = "http://localhost:3500";
 
 const routes: Array<{ name: string; method: "GET" | "POST" | "PATCH"; path: string; expectedPath?: string }> = [
+  { name: "DID offer", method: "POST", path: "/api/auth/did/offer" },
   { name: "DID present", method: "POST", path: "/api/auth/did/present" },
   { name: "nonce", method: "POST", path: "/api/auth/nonce" },
   { name: "verify", method: "POST", path: "/api/auth/verify" },
@@ -71,4 +72,19 @@ it("does not proxy FE-owned routes", async () => {
   expect(response.headers.get("x-verawallet-fe-rewrite")).toBeNull();
   const recorded = await readRecorded();
   expect(recorded.some((entry) => entry.path === path)).toBe(false);
+});
+
+it("preserves browser binding and response cookies across the production proxy", async () => {
+  recorder.reset();
+  const response = await fetch(`${FE}/api/auth/did/offer`, { method: "POST", headers: {
+    origin: FE, "content-type": "application/json", authorization: "Bearer injected",
+    cookie: `vw_session=private; vw_access_token=session; vw_did_attempt=${"a".repeat(64)}`,
+  }, body: JSON.stringify({ country: "KR" }) });
+  expect(response.headers.get("set-cookie")).toContain(`vw_did_attempt=${"b".repeat(64)}`);
+  expect(response.headers.get("set-cookie")).toContain("HttpOnly");
+  expect(response.headers.get("cache-control")).toContain("no-store");
+  const request = recorder.recorded.find(r => r.path === "/api/auth/did/offer")!;
+  expect(request.headers.origin).toBe(FE);
+  expect(request.headers.cookie).toBe(`vw_access_token=session; vw_did_attempt=${"a".repeat(64)}`);
+  expect(request.headers.authorization).toBeUndefined();
 });

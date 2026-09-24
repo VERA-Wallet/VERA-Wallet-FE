@@ -17,8 +17,8 @@ export const wagmiWalletPort: WalletPort = {
   getAccount() {
     return toWalletAccount(getAccount(wagmiConfig));
   },
-  signMessage(message) {
-    return signMessage(wagmiConfig, { message });
+  signMessage(message, account) {
+    return signMessage(wagmiConfig, { message, ...(account ? { account: account.address as `0x${string}` } : {}) });
   },
   subscribeConnection(callback) {
     return watchAccount(wagmiConfig, {

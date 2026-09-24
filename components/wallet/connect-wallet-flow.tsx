@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { SiweMessage } from "siwe";
@@ -29,6 +29,7 @@ function errorMessage(cause: unknown) {
     if (SIWE_CHALLENGE_MISMATCH_CODES.has(cause.code)) return "인증 요청 불일치";
     if (cause.code === "challenge_not_found") return "인증 요청을 찾을 수 없습니다. 다시 시도해 주세요.";
     if (cause.code === "challenge_expired") return "만료됨. 다시 시도";
+    if (cause.code === "unauthorized") return "로그인 세션이 만료되었거나 유효하지 않습니다. 다시 로그인해 주세요.";
     if (cause.status === 401) return "서명을 확인할 수 없습니다.";
   }
   return cause instanceof Error ? cause.message : "인증 중 오류가 발생했습니다.";
@@ -99,6 +100,8 @@ export function ConnectWalletFlow({
   const [isSigning, setIsSigning] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
 
+  useEffect(() => walletPort.subscribeConnection(setAccount), [walletPort]);
+
   const assessment = useMemo(() => assessWalletAddress(addressInput, boundAddress), [addressInput, boundAddress]);
   const adding = mode === "add";
 
@@ -153,6 +156,12 @@ export function ConnectWalletFlow({
   async function signIn() {
     if (!account) return;
     setError(null);
+    const signingAccount = walletPort.getAccount();
+    if (!signingAccount || !isSameAddress(signingAccount.address, account.address) || signingAccount.chainId !== account.chainId) {
+      setAccount(signingAccount);
+      setError("연결된 지갑 계정 또는 네트워크가 변경되었습니다. 확인 후 다시 서명해 주세요.");
+      return;
+    }
     // 확장 프로그램은 이미 승인된 오리진에서 활성 계정을 그대로 돌려준다. 그대로 서명하면 같은 지갑을
     // 다시 등록하는 셈이고 서버는 upsert라 조용히 아무 일도 일어나지 않는다 — 서명을 요구하기 전에 끊는다.
     if (isSameAddress(account.address, boundAddress)) {
@@ -172,7 +181,7 @@ export function ConnectWalletFlow({
         issuedAt: nonce.issuedAt,
         expirationTime: new Date(nonce.expiresAtMs).toISOString(),
       }).prepareMessage();
-      const signature = await walletPort.signMessage(message);
+      const signature = await walletPort.signMessage(message, signingAccount);
       await authClient.verify({ message, signature });
       // 서명이 끝나도 인덱서 동기화는 남아 있다. 대시보드로 그냥 보내면 사용자는 빈 화면을 먼저 보고
       // "연결이 안 됐나"로 읽는다. 온보딩 기본값은 `importing`을 달고 들어가 불러오기 모달을 띄운다.

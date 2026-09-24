@@ -14,6 +14,7 @@ const ACCESS_TOKEN_COOKIE_NAME = "vw_access_token";
  * VERAWALLET_MOCK_MODE=true면 backendOrigin()이 undefined를 돌려 프록시가 전면 OFF(FE mock 처리)한다.
  */
 const BACKEND_OWNED_PATHS = new Set([
+  "/api/auth/did/offer",
   "/api/auth/did/present",
   "/api/auth/nonce",
   "/api/auth/verify",
@@ -61,7 +62,17 @@ export function proxy(request: NextRequest) {
     if (value !== null) headers.set(name, value);
   }
   const token = request.cookies.get(ACCESS_TOKEN_COOKIE_NAME)?.value;
-  if (token) headers.set("cookie", `${ACCESS_TOKEN_COOKIE_NAME}=${token}`);
+  const cookies = token ? [`${ACCESS_TOKEN_COOKIE_NAME}=${token}`] : [];
+  if (["/api/auth/did/offer", "/api/auth/did/present"].includes(request.nextUrl.pathname)) {
+    // Preserve the browser's Origin for BE validation; never synthesize a trusted origin.
+    const browserOrigin = request.headers.get("origin");
+    if (browserOrigin) headers.set("origin", browserOrigin);
+    const browser = request.cookies.get("vw_did_client")?.value;
+    if (browser && /^[a-f0-9]{32}\.[a-f0-9]{64}$/.test(browser)) cookies.push(`vw_did_client=${browser}`);
+    const attempt = request.cookies.get("vw_did_attempt")?.value;
+    if (attempt && /^[a-f0-9]{64}$/.test(attempt)) cookies.push(`vw_did_attempt=${attempt}`);
+  }
+  if (cookies.length) headers.set("cookie", cookies.join("; "));
 
   const destination = new URL(`${request.nextUrl.pathname}${request.nextUrl.search}`, origin);
   const res = NextResponse.rewrite(destination, { request: { headers } });
@@ -72,6 +83,7 @@ export function proxy(request: NextRequest) {
 export const config = {
   // 실효 allowlist와 같은 폭으로 좁힌다. matcher가 더 넓으면 앞으로 추가될 auth 라우트가 조용히 proxy를 타게 된다.
   matcher: [
+    "/api/auth/did/offer",
     "/api/auth/did/present",
     "/api/auth/nonce",
     "/api/auth/verify",

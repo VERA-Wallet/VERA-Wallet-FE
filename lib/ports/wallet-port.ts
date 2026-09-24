@@ -6,6 +6,6 @@ export interface WalletAccount {
 export interface WalletPort {
   connect(): Promise<WalletAccount>;
   getAccount(): WalletAccount | null;
-  signMessage(message: string): Promise<string>;
+  signMessage(message: string, account?: WalletAccount): Promise<string>;
   subscribeConnection(callback: (state: WalletAccount | null) => void): () => void;
 }
