@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { installPerformanceDiagnostics, measure, recordTiming, safePath } from "@/lib/diagnostics/performance";
+import { installPerformanceDiagnostics, measure, recordTiming, safePath, startInteraction } from "@/lib/diagnostics/performance";
 const api = () => (window as unknown as { veraPerformance: { enable(): void; disable(): void; snapshot(): unknown[]; clear(): void } }).veraPerformance;
 beforeEach(() => { installPerformanceDiagnostics(); api().disable(); });
 describe("local performance diagnostics", () => {
@@ -24,4 +24,11 @@ describe("local performance diagnostics", () => {
     expect(api().snapshot()).toEqual([expect.objectContaining({ outcome: "ok" }), expect.objectContaining({ outcome: "error" })]);
     expect(JSON.stringify(api().snapshot())).not.toContain("secret");
   });
+});
+
+it("records an abandoned CX flow once even if its SDK promise never settles", () => {
+  api().enable();
+  const finish = startInteraction("cx.interactive_flow");
+  finish("stopped"); finish("ok");
+  expect(api().snapshot()).toEqual([expect.objectContaining({ name: "cx.interactive_flow", outcome: "stopped" })]);
 });

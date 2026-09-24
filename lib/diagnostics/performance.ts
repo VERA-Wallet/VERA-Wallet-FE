@@ -14,6 +14,14 @@ export function recordTiming(entry: Timing) {
   entries.push(entry);
   if (entries.length > 500) entries.shift();
 }
+export function startInteraction(name: "cx.interactive_flow") {
+  const start = performance.now(); let finished = false;
+  return (outcome: "ok" | "error" | "stopped") => {
+    if (finished) return;
+    finished = true;
+    recordTiming({ kind: "interaction", name, durationMs: performance.now() - start, atMs: start, outcome });
+  };
+}
 export async function measure<T>(name: "wallet.connect_approval" | "wallet.sign_approval" | "cx.interactive_flow", work: () => Promise<T>): Promise<T> {
   const start = performance.now(); let outcome = "ok";
   try { return await work(); } catch (error) { outcome = "error"; throw error; }
@@ -40,6 +48,7 @@ export function installPerformanceDiagnostics() {
     if (!PerformanceObserver.supportedEntryTypes.includes(type)) continue;
     const observer = new PerformanceObserver(list => {
       for (const entry of list.getEntries()) {
+        if (type === "navigation" && entry.duration === 0) continue;
         const resource = entry as PerformanceResourceTiming;
         let prefix = "";
         if (type === "resource") {

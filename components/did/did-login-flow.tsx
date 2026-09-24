@@ -9,7 +9,7 @@ import { CircleCheck } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { ProvenanceChip } from "@/components/ui/provenance-chip";
 import { authClient as compositionAuthClient } from "@/lib/composition-root.client";
-import { measure } from "@/lib/diagnostics/performance";
+import { startInteraction } from "@/lib/diagnostics/performance";
 import { closeCxLogin, cxLoginEnabled, openCxLogin } from "@/lib/omnione/oacx";
 import type { Provenance } from "@/lib/http/envelope";
 import type { AuthClient, DidPresentation } from "@/lib/ports/auth-client";
@@ -73,9 +73,11 @@ export function DidLoginFlow({ authClient = compositionAuthClient, provenance = 
     // CX 모달은 presenting 진입 후 마운트 지점(#oacxDiv)이 DOM에 생긴 다음 열어야 한다.
     if (!cxEnabled || state !== "presenting") return;
     const attempt = ++attemptRef.current;
+    const finishTiming = startInteraction("cx.interactive_flow");
     void (async () => {
       try {
-        const cxToken = await measure("cx.interactive_flow", () => openCxLogin());
+        const cxToken = await openCxLogin();
+        finishTiming("ok");
         if (attemptRef.current !== attempt) return;
         setState("awaiting");
         const claim = await authClient.presentDid({ country, cxToken });
@@ -83,13 +85,14 @@ export function DidLoginFlow({ authClient = compositionAuthClient, provenance = 
         setClaim(claim);
         setState("claimed");
       } catch (cause) {
+        finishTiming("error");
         if (attemptRef.current !== attempt) return;
         setError(cause instanceof Error ? cause.message : "모바일신분증 인증을 완료하지 못했습니다.");
         setState("idle");
       }
     })();
     // presenting을 벗어나거나(취소·성공 전이) 언마운트되면 오버레이 iframe을 걷어낸다.
-    return () => closeCxLogin();
+    return () => { finishTiming("stopped"); closeCxLogin(); };
   }, [authClient, country, cxEnabled, state]);
 
   useEffect(() => {
