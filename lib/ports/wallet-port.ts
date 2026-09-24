@@ -4,7 +4,7 @@ export interface WalletAccount {
 }
 
 export interface WalletPort {
-  connect(): Promise<WalletAccount>;
+  connect(kind?: "browser" | "metamask"): Promise<WalletAccount>;
   getAccount(): WalletAccount | null;
   signMessage(message: string, account?: WalletAccount): Promise<string>;
   subscribeConnection(callback: (state: WalletAccount | null) => void): () => void;

@@ -35,6 +35,17 @@ function errorMessage(cause: unknown) {
   return cause instanceof Error ? cause.message : "인증 중 오류가 발생했습니다.";
 }
 
+function walletConnectionError(cause: unknown): string {
+  let current = cause;
+  for (let depth = 0; depth < 6 && current && typeof current === "object"; depth++) {
+    const error = current as { code?: number; cause?: unknown };
+    if (error.code === 4001) return "지갑 연결을 취소했습니다. 다시 연결할 수 있어요.";
+    if (error.code === -32002) return "지갑에 진행 중인 요청이 있습니다. MetaMask 앱 또는 지갑 확장 프로그램에서 확인해 주세요.";
+    current = error.cause;
+  }
+  return "지갑 연결을 완료하지 못했습니다. MetaMask 앱 또는 브라우저 지갑을 확인한 뒤 다시 시도해 주세요.";
+}
+
 function isSameAddress(left: string, right: string | null) {
   return right !== null && left.toLowerCase() === right.toLowerCase();
 }
@@ -101,9 +112,12 @@ export function ConnectWalletFlow({
   const [isConnecting, setIsConnecting] = useState(false);
   const [signingPhase, setSigningPhase] = useState<SigningPhase>("idle");
   const signingRun = useRef<object | null>(null);
-  useEffect(() => () => { signingRun.current = null; }, []);
+  const connectingRun = useRef<object | null>(null);
+  useEffect(() => () => { signingRun.current = null; connectingRun.current = null; }, []);
   function cancelSigningView() {
     signingRun.current = null;
+    connectingRun.current = null;
+    setIsConnecting(false);
     setSigningPhase("idle");
   }
   const [isRegistering, setIsRegistering] = useState(false);
@@ -146,19 +160,22 @@ export function ConnectWalletFlow({
     }
   }
 
-  async function connectWallet() {
+  async function connectWallet(kind: "browser" | "metamask" = "browser") {
+    if (connectingRun.current) return;
+    const run = {};
+    connectingRun.current = run;
     setError(null);
-    if (!(window as Window & { ethereum?: unknown }).ethereum) {
-      setError("브라우저 지갑을 찾을 수 없습니다. 지갑 확장 프로그램을 설치하거나 활성화하세요.");
-      return;
-    }
     setIsConnecting(true);
     try {
-      setAccount(await walletPort.connect());
-    } catch {
-      setError("지갑 연결을 완료하지 못했습니다.");
+      const connected = await walletPort.connect(kind);
+      if (connectingRun.current === run) setAccount(connected);
+    } catch (cause) {
+      if (connectingRun.current === run) setError(walletConnectionError(cause));
     } finally {
-      setIsConnecting(false);
+      if (connectingRun.current === run) {
+        connectingRun.current = null;
+        setIsConnecting(false);
+      }
     }
   }
 
@@ -290,7 +307,8 @@ export function ConnectWalletFlow({
           error={error}
           isConnecting={isConnecting}
           signingPhase={signingPhase}
-          onConnect={connectWallet}
+          onConnect={() => void connectWallet("browser")}
+          onConnectMetaMask={() => void connectWallet("metamask")}
           onSign={signIn}
           onFallback={() => go("address")}
         />
@@ -416,7 +434,7 @@ function MethodStep({
           icon={<KeyRound aria-hidden="true" className="size-[22px]" />}
           iconClass="bg-zinc-100 text-zinc-700"
           title="브라우저 지갑으로 연결"
-          description="MetaMask 등에서 서명해 소유까지 한 번에 증명해요"
+          description="MetaMask 앱·브라우저 지갑에서 서명해 소유를 증명해요"
           onClick={onSiwe}
         />
         {/* 거래소 연동은 아직 파이프라인이 없다. 되는 척하는 입력을 두지 않고 준비 중임만 알린다. */}
@@ -645,8 +663,8 @@ function WalletWaitHint({ kind }: { kind: "connect" | "sign" }) {
       <Info aria-hidden="true" className="mt-0.5 size-[18px] shrink-0 text-zinc-600" />
       <p className="text-[13px] leading-[19px] text-zinc-700">
         {kind === "connect"
-          ? "지갑 확장 프로그램을 열어 이 사이트의 연결 요청을 확인해 주세요. ‘연결(Connect)’ 버튼이 보이면 눌러 주세요."
-          : "지갑 확장 프로그램을 열어 서명 요청을 승인해 주세요."}
+          ? "MetaMask 앱 또는 지갑 확장 프로그램을 열어 이 사이트의 연결 요청을 확인해 주세요. ‘연결(Connect)’ 버튼이 보이면 눌러 주세요."
+          : "MetaMask 앱 또는 지갑 확장 프로그램을 열어 서명 요청을 승인해 주세요. 승인 후 이 브라우저로 돌아오면 확인을 이어갑니다."}
       </p>
     </div>
   );
@@ -660,6 +678,7 @@ function SiweStep({
   isConnecting,
   signingPhase,
   onConnect,
+  onConnectMetaMask,
   onSign,
   onFallback,
 }: {
@@ -670,6 +689,7 @@ function SiweStep({
   isConnecting: boolean;
   signingPhase: SigningPhase;
   onConnect: () => void;
+  onConnectMetaMask: () => void;
   onSign: () => void;
   onFallback: () => void;
 }) {
@@ -699,7 +719,7 @@ function SiweStep({
             </span>
             <div className="min-w-0 flex-1">
               <p className="flex items-center gap-1.5 text-[15px] font-bold text-zinc-900">
-                브라우저 지갑
+                연결된 지갑
                 <span className="flex items-center gap-1 text-xs font-medium text-zinc-500">
                   <ChainIcon chainId={account.chainId} />
                   {chainLabel(account.chainId)}
@@ -760,9 +780,15 @@ function SiweStep({
             <span role={isSigning ? "status" : undefined}>{SIGNING_LABELS[signingPhase]}</span>
           </button>
         ) : (
-          <button type="button" className={CTA_CLASS} disabled={isConnecting} onClick={onConnect}>
-            {isConnecting ? "지갑 응답 대기 중…" : "지갑 연결하기"}
-          </button>
+          <>
+            <button type="button" className={CTA_CLASS} disabled={isConnecting} onClick={onConnectMetaMask}>
+              {isConnecting ? "지갑 응답 대기 중…" : "MetaMask로 연결"}
+            </button>
+            <button type="button" className="flex h-12 items-center justify-center rounded-[14px] border border-zinc-200 font-semibold disabled:opacity-50" disabled={isConnecting} onClick={onConnect}>
+              지갑 연결하기
+            </button>
+            <p className="text-xs leading-5 text-zinc-500">모바일에서는 MetaMask로 연결을 선택하세요. 앱에서 연결을 승인한 뒤 이 브라우저로 돌아와 ‘서명하고 추가’를 눌러 주세요. 앱이 열리지 않으면 연결 창의 안내를 따르세요.</p>
+          </>
         )}
         <button type="button" onClick={onFallback} className="flex h-11 items-center justify-center text-[15px] font-semibold text-primary-500">
           대신 주소만 붙여넣기

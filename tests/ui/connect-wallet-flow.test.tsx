@@ -213,3 +213,48 @@ it.each(["connect", "sign"] as const)("shows %s guidance only after five seconds
     vi.useRealTimers();
   }
 });
+
+
+describe("MetaMask mobile connection", () => {
+  it("connects without an injected extension and waits for approval before offering signature", async () => {
+    const port = walletPort();
+    port.getAccount = () => null;
+    let resolve!: (account: { address: string; chainId: number }) => void;
+    vi.mocked(port.connect).mockImplementation(() => new Promise(done => { resolve = done; }));
+    const auth = authClient();
+    render(<ConnectWalletFlow walletPort={port} authClient={auth} initialStep="siwe" />);
+    fireEvent.click(screen.getByRole("button", { name: "MetaMask로 연결" }));
+    expect(port.connect).toHaveBeenCalledWith("metamask");
+    expect(screen.getByRole("button", { name: "지갑 응답 대기 중…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "지갑 연결하기" })).toBeDisabled();
+    expect(auth.requestNonce).not.toHaveBeenCalled();
+    await act(async () => resolve({ address: "0x71C7656EC7ab88b098defB751B7401B5f6d8976F", chainId: 8453 }));
+    expect(screen.getByRole("button", { name: "서명하고 추가" })).toBeEnabled();
+    expect(port.signMessage).not.toHaveBeenCalled();
+  });
+
+  it("allows retry after MetaMask rejects the connection", async () => {
+    const port = walletPort(); port.getAccount = () => null;
+    vi.mocked(port.connect).mockRejectedValue({ cause: { code: 4001 } });
+    render(<ConnectWalletFlow walletPort={port} authClient={authClient()} initialStep="siwe" />);
+    fireEvent.click(screen.getByRole("button", { name: "MetaMask로 연결" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("지갑 연결을 취소했습니다");
+    expect(screen.getByRole("button", { name: "MetaMask로 연결" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "MetaMask로 연결" }));
+    await waitFor(() => expect(port.connect).toHaveBeenCalledTimes(2));
+  });
+
+  it("does not re-enter signing when a late mobile approval arrives after leaving", async () => {
+    const port = walletPort(); port.getAccount = () => null;
+    let resolve!: (account: { address: string; chainId: number }) => void;
+    vi.mocked(port.connect).mockImplementation(() => new Promise(done => { resolve = done; }));
+    const auth = authClient();
+    render(<ConnectWalletFlow walletPort={port} authClient={auth} initialStep="siwe" />);
+    fireEvent.click(screen.getByRole("button", { name: "MetaMask로 연결" }));
+    fireEvent.click(screen.getByRole("button", { name: "대신 주소만 붙여넣기" }));
+    await act(async () => resolve({ address: "0x71C7656EC7ab88b098defB751B7401B5f6d8976F", chainId: 8453 }));
+    expect(screen.getByLabelText("지갑 주소")).toBeInTheDocument();
+    expect(auth.requestNonce).not.toHaveBeenCalled();
+    expect(port.signMessage).not.toHaveBeenCalled();
+  });
+});
