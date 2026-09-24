@@ -250,6 +250,8 @@ export function useReportInputs({
     rulesetsFailed,
     usesField,
     freshEstimate,
+    // 같은 입력의 재조회에만 이전 결과를 표시한다. 설정 변경·오류·비활성에는 재사용하지 않는다.
+    previousResult: freshEstimate.state === "pending" && !estimate.isPlaceholderData ? estimate.data : undefined,
     result,
     headerNote,
     ruleNotes,

@@ -21,7 +21,7 @@ export default async function TransactionsPage({
     // 그에 필요한 Suspense 경계가 따라오는데, 여기서 필요한 건 첫 탭 하나뿐이다
     // (대시보드의 `importing` 처리와 같은 이유).
     const query = await searchParams;
-    const initialTab = query?.tab === "review" ? "review" : "all";
+    const initialTab = query?.tab === "review" ? "review" : query?.tab === "taxable" ? "taxable" : "all";
     // `?spam=1`은 설정의 "스팸 거래 보기"가 타고 온다 — 라벨이 말한 목록에 바로 도착해야 한다.
     const initialSpam = query?.spam === "1";
     // BE의 list와 summary가 둘 다 listOrSync를 타므로, 클라이언트 훅이 병렬로 나가기 전에 한 번 채워

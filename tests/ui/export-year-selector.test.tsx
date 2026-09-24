@@ -161,7 +161,7 @@ describe("리포트 귀속연도 선택기", () => {
     // 헤더 칩도 선택 연도를 따른다.
     expect(await screen.findByRole("button", { name: /2027년 귀속/ })).toBeInTheDocument();
     // 시행 후(PARTIAL) 계산이 리포트에 실린다 — 예상 부담 실제값.
-    await waitFor(() => expect(screen.getByTestId("estimated-charge").textContent).toContain("₩183,333.34"));
+    await waitFor(() => expect(screen.getByTestId("estimated-charge").textContent).toContain("₩183,333"));
     // 시행 후를 보는 중에는 "가정"이 성립하지 않으므로 배너도 없다.
     expect(document.querySelector("[data-surface='assume-effective']")).toBeNull();
   });
@@ -177,7 +177,7 @@ describe("리포트 귀속연도 선택기", () => {
     );
     // 가정임을 배너로 계속 말하고, 총평균 실제 부담(=시행 후 계산값)이 리포트에 실린다.
     expect(await screen.findByText(/시행 가정으로 보는 중입니다/)).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByTestId("estimated-charge").textContent).toContain("₩183,333.34"));
+    await waitFor(() => expect(screen.getByTestId("estimated-charge").textContent).toContain("₩183,333"));
     // 시행 전이라는 사실은 지워지지 않고 접힘 안에 남는다.
     expect(screen.getByText("시행 전인 지금 실제 부담은")).toBeInTheDocument();
 

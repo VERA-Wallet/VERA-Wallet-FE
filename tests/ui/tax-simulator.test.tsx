@@ -151,7 +151,7 @@ describe("리포트 계산 표면", () => {
     // 2025년 데모 시나리오에 2027 시행 규칙(거주자별 총평균법)을 그대로 적용한 값이
     // 첫 화면부터 보인다(2026-09-17 사용자 결정 — "반영됐다 치고" 보여 준다).
     await waitFor(() =>
-      expect(screen.getByTestId("estimated-charge").textContent).toContain("₩1,480,517.64"),
+      expect(screen.getByTestId("estimated-charge").textContent).toContain("₩1,480,518"),
     );
     // 큰 금액 옆에 가정이라는 사실이 계속 있어야 한다.
     expect(screen.getByText(/시행 가정으로 보는 중입니다/)).toBeInTheDocument();
@@ -179,7 +179,7 @@ describe("리포트 계산 표면", () => {
     await screen.findByText("한국 · 2027");
     // 시행 후 규칙이 실제로 돌아간다: 과세표준 6,729,625.62 × 20% + 지방소득세 10%
     await waitFor(() =>
-      expect(screen.getByTestId("estimated-charge").textContent).toContain("₩1,480,517.64"),
+      expect(screen.getByTestId("estimated-charge").textContent).toContain("₩1,480,518"),
     );
     // 미래 연도를 아무 말 없이 계산하면 사용자는 확정된 답으로 읽는다.
     // 이제는 배지로 보이고, 전문은 그 배지를 펼쳐야 나오는 접힘 안에 보존된다.

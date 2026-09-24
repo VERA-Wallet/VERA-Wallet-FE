@@ -116,7 +116,7 @@ export function EventRow({
           사이에서 줄을 바꾸고, 부호와 금액은 한 덩어리로 묶어 "+" 뒤에서 끊기지 않게 한다. 양보는 왼쪽 수량 줄이 한다(truncate). */}
       {isExcluded || isDuplicate || inPeriod !== null ? (
         <div data-surface="event-gain" className="flex max-w-[62%] shrink-0 flex-col items-end text-right">
-          <span className="sr-only">거래 평가액 </span>
+          <span className="text-xs font-normal text-zinc-500">거래 당시 평가액</span>
           {event.fiat_value !== null ? (
             <span className="text-[0.9375rem] font-bold tabular-nums text-zinc-900">
               {hideBalances ? "•••••" : formatFiat(event.fiat_value, event.fiat_currency)}

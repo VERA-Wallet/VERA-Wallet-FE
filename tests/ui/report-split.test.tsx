@@ -137,7 +137,7 @@ describe("리포트 메인은 세금 보고서와 내보내기만 말한다", ()
 
     // 세금 보고서: 답과 신고 기입란 8줄.
     expect(await screen.findByText("기타소득 계산")).toBeInTheDocument();
-    expect(screen.getByTestId("estimated-charge").textContent).toContain("₩183,333.34");
+    expect(screen.getByTestId("estimated-charge").textContent).toContain("₩183,333");
     // 내보내기: 구독 상태와 내려받기 2종.
     expect(screen.getByText("내려받기")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /직접 신고용 내려받기/ })).toBeInTheDocument();

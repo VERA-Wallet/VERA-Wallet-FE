@@ -74,6 +74,7 @@ export function TransactionsView({
     spamItems,
     listItems,
     reviewItems,
+    taxableItems,
     displayedItems,
     undatedInTab,
     swapInLegOf,
@@ -256,6 +257,10 @@ export function TransactionsView({
               {events.isLoading ? <Skeleton className="h-3 w-3" /> : listItems.length}
             </span>
           </button>
+          <button role="tab" aria-selected={tab === "taxable"} type="button" className={tabClass(tab === "taxable")} onClick={() => setTab("taxable")}>
+            과세 대상
+            <span aria-hidden="true" className="text-xs">{judgmentsPending ? "…" : taxableItems.length}</span>
+          </button>
           <button role="tab" aria-selected={tab === "review"} type="button" className={tabClass(tab === "review")} onClick={() => setTab("review")}>
             확인 필요
             <span
@@ -269,6 +274,9 @@ export function TransactionsView({
       </div>
 
       <section className="px-5">
+        <p className="mt-3 text-xs text-zinc-500">거래 당시 평가액은 해당 수량의 가치이며 세금이 아닙니다. 세금은 기간 전체의 손익과 공제 등을 합산해 계산합니다.</p>
+        {tab === "taxable" && !showSpam ? <p role="status" className="mt-2 text-sm text-zinc-500">{judgmentsPending ? "과세 대상 판정을 확인하는 중입니다." : `${taxYear}년 계산에서 과세 대상 처분·소득으로 분류된 거래입니다. 손실 거래도 포함하며, 건별 납부 금액을 뜻하지 않습니다.`}</p> : null}
+
         {tab === "review" && !showSpam ? (
           <div className="mt-3 text-sm text-zinc-500">
             <p>계산에서 빠졌거나 확인이 필요한 거래만 모았습니다.</p>

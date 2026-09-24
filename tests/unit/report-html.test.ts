@@ -53,7 +53,7 @@ describe("P2-F 신고 근거자료 보고서(PDF 인쇄본)", () => {
     expect(html).toContain("2027-01-01 ~ 2027-12-31");
     // 신고 요약 4줄. 총수입금액 = Σ양도가액, 예상 부담 = 소득세 + 지방소득세.
     expect(html).toContain("₩5,000,000");
-    expect(html).toContain("₩183,333.34");
+    expect(html).toContain("₩183,333");
     expect(html).toContain("과세표준");
   });
 

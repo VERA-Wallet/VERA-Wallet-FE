@@ -187,7 +187,10 @@ export function useTransactionList({
       item.isDuplicate
     );
   });
-  const tabItems = tab === "review" ? reviewItems : listItems;
+  const taxableItems = listItems.filter((item) => !item.isDuplicate &&
+    judgments.rowsOf(item.record.event.id).some((row) => row.inPeriod &&
+      (row.group === "taxable" || row.group === "income")));
+  const tabItems = tab === "review" ? reviewItems : tab === "taxable" ? taxableItems : listItems;
   // 판정을 못 불러오면 그룹 필터를 유지할 근거가 없다. 조용히 빈 목록을 보이면 사용자가 원인을 모른다.
   // 탭을 바꿨는데 그 그룹이 이 탭에 없으면 필터를 유지할 근거가 없다.
   // 유지하면 "확인이 필요한 거래가 없습니다"만 보이고 왜 비었는지 알 수 없다.
@@ -350,6 +353,7 @@ export function useTransactionList({
     periodNarrowed,
     listItems,
     reviewItems,
+    taxableItems,
     tabItems,
     displayedItems,
     undatedInTab,

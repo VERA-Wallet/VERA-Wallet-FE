@@ -1,7 +1,9 @@
+import Link from "next/link";
+
 import { Card } from "@/components/ui/card";
 import { ProvenanceChip } from "@/components/ui/provenance-chip";
 import { buildFilingSummary } from "@/lib/export/report";
-import { formatFiat } from "@/lib/format";
+import { formatFiat, formatFiatExact } from "@/lib/format";
 import { estimateConfidence } from "@/lib/tax/estimate-summary";
 import type { TaxEstimate } from "@/lib/tax/types";
 
@@ -53,6 +55,7 @@ export function ReportCard({ estimate }: { estimate: TaxEstimate }) {
         </div>
         <ProvenanceChip provenance={estimate.provenance} />
       </div>
+      {estimate.currency === "KRW" && <p className="mt-2 text-xs text-zinc-500">원 단위 반올림 표시입니다. 계산에는 소수점 원값을 사용하므로 표시된 항목의 합계와 차이가 날 수 있습니다.</p>}
       <dl className="mt-4">
         {REPORT_LINES.map((line) => {
           const emphasize = line.role === "subtotal" || line.role === "total";
@@ -65,7 +68,8 @@ export function ReportCard({ estimate }: { estimate: TaxEstimate }) {
             >
               <dt className={`text-sm ${emphasize ? "font-semibold text-zinc-900" : "text-zinc-600"}`}>{line.label}</dt>
               <dd
-                className={`tabular-nums ${
+                title={`반올림 전: ${formatFiatExact(filingAmount(line.source), estimate.currency)}`}
+                className={`min-w-0 break-words text-right tabular-nums ${
                   line.role === "total"
                     ? "text-base font-bold text-primary-600"
                     : emphasize
@@ -80,6 +84,13 @@ export function ReportCard({ estimate }: { estimate: TaxEstimate }) {
           );
         })}
       </dl>
+      {confidenceParts.length > 0 && (
+        <div className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
+          <p>이 결과에는 확인이 필요한 거래가 있습니다. 예상 부담이 0원이어도 최종 부담이 확정된 것은 아닙니다.</p>
+          <p className="mt-1 text-xs">미반영은 계산에서 제외된 거래, 원가 0원은 취득 이력이 부족해 원가를 0원으로 계산한 거래입니다.</p>
+          <Link href="/export/issues" className="mt-2 inline-block underline">계산에서 빠진 항목과 원가 근거 확인</Link>
+        </div>
+      )}
       {confidenceParts.length > 0 && (
         <p className="mt-4 inline-flex rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-600 tabular-nums">
           {confidenceParts.join(" · ")}

@@ -97,24 +97,18 @@ export function nativeSymbol(chainId: number): string {
   return NATIVE_SYMBOL[chainId] ?? "NATIVE";
 }
 
-/**
- * 통화 금액 표기의 단일 규칙.
- *
- * 규칙은 둘뿐이다:
- * 1. **값을 숨기지 않는다.** 자릿수는 통화 관례를 따르되(EUR 2, KRW 0),
- *    관례보다 잔여 소수가 더 있으면 그만큼 더 보인다(최대 2).
- *    ₩13,130.5를 ₩13,131로 반올림해 보이면 화면이 계산과 다른 말을 한다.
- * 2. **값을 바꾸지 않는다.** Decimal 문자열을 `Number`로 태우면 2^53을 넘는 금액이
- *    다른 금액으로 표시된다. 자릿수만 Intl에서 배워 오고, 숫자는 문자열로 조립한다.
- *
- * 대시보드와 세금 탭이 서로 다른 자릿수로 같은 금액을 그리던 것을 이 함수로 합쳤다.
+/** 화면용 통화 표시. KRW는 원 단위 반올림, 0이 아닌 1원 미만은 별도 표시한다.
+ * 계산 원문과 상세 근거는 변경하지 않는다. 큰 금액도 문자열 연산으로 처리한다.
  */
 export function formatFiat(value: string | null, currency: string): string {
   if (value === null) return "-";
   const parsed = parseDecimal(value);
   if (!parsed) return `${value} ${currency}`;
   try {
-    const digits = Math.max(currencyDigits(currency), significantFractionDigits(parsed.fraction));
+    if (currency === "KRW" && parsed.integer === "0" && /[1-9]/.test(parsed.fraction)) {
+      return parsed.negative ? "-₩1 미만" : "₩1 미만";
+    }
+    const digits = currency === "KRW" ? 0 : Math.max(currencyDigits(currency), significantFractionDigits(parsed.fraction));
     const scaled = roundToDigits(parsed.integer, parsed.fraction, digits);
     return assemble(currency, parsed.negative, scaled.integer, scaled.fraction);
   } catch {

@@ -275,3 +275,22 @@ describe("로딩 중에는 0건을 말하지 않는다", () => {
     expect(screen.getByRole("tab", { name: "확인 필요" }).textContent).not.toMatch(/0/);
   });
 });
+
+
+describe("과세 대상 탭", () => {
+  it("기간 내 과세 처분과 소득만 표시하고 원가 취득 및 면세 거래는 제외한다", async () => {
+    const ids = ["disposal", "income", "acquisition", "exempt", "old"];
+    serve(ids.map((id) => event(id)));
+    ports.getSummary.mockResolvedValue({ currency: "KRW", period: { from: "2027-01-01T00:00:00Z", to: "2027-12-31T00:00:00Z" } });
+    ports.estimate.mockResolvedValue({
+      currency: "KRW", period: { from: "2027-01-01T00:00:00Z", to: "2028-01-01T00:00:00Z" },
+      excludedEventIds: [], limitations: [], status: "CONFIRMED",
+      judgments: ids.map((eventId, i) => ({ eventId, group: ["taxable", "income", "acquire", "exempt", "taxable"][i], inPeriod: i !== 4, amountKind: "cost", amount: "0" })),
+    });
+    renderTransactions();
+    await vi.waitFor(() => expect(rowIds()).toHaveLength(5));
+    fireEvent.click(screen.getByRole("tab", { name: /과세 대상/ }));
+    await vi.waitFor(() => expect(rowIds().sort()).toEqual(["disposal", "income"]));
+    expect(screen.getByText(/건별 납부 금액을 뜻하지 않습니다/)).toBeInTheDocument();
+  });
+});

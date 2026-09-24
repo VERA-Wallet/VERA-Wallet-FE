@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { computeTaxEstimate } from "@/lib/tax/engine";
 import { listRuleSetSummaries } from "@/lib/tax/rulesets";
@@ -121,6 +121,20 @@ beforeEach(() => {
 });
 
 describe("리포트 estimate 배선", () => {
+  it("같은 조건 재조회 중에는 이전 계산 카드를 표시하고 새 결과로 교체한다", async () => {
+    const { client } = renderReport();
+    await screen.findByText("기타소득 계산");
+    let complete!: (value: TaxEstimate) => void;
+    ports.estimate.mockImplementation(() => new Promise<TaxEstimate>((resolve) => { complete = resolve; }));
+    act(() => { void client.invalidateQueries({ queryKey: ["tax", "estimate"] }); });
+    const previous = await screen.findByRole("region", { name: "이전 계산 결과" });
+    expect(previous).toHaveAttribute("aria-busy", "true");
+    expect(within(previous).getByText("₩183,333")).toBeInTheDocument();
+    await act(async () => { complete(estimate); });
+    await waitFor(() => expect(screen.queryByRole("region", { name: "이전 계산 결과" })).not.toBeInTheDocument());
+    expect(screen.getByText("기타소득 계산")).toBeInTheDocument();
+  });
+
   it("거주국·귀속연도로 estimate를 요청해 그룹형 리포트를 estimate에서 파생한다", async () => {
     renderReport();
 
@@ -139,8 +153,8 @@ describe("리포트 estimate 배선", () => {
     expect(screen.getByText("₩5,000,000")).toBeInTheDocument();
     // 답(L1)과 리포트 카드의 "예상 부담"은 같은 estimate에서 나오므로 같은 금액이 두 자리에 선다.
     // 두 estimate였다면 여기서 두 숫자가 갈린다.
-    expect(screen.getByTestId("estimated-charge").textContent).toContain("₩183,333.34");
-    expect(screen.getAllByText("₩183,333.34").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByTestId("estimated-charge").textContent).toContain("₩183,333");
+    expect(screen.getAllByText("₩183,333").length).toBeGreaterThanOrEqual(2);
     // 세무사 전달용 카드가 4시트가 무엇을 담는지 말한다(취득가액 명세·예외는 이 카드에만 있다).
     expect(screen.getByText(/취득가액 명세/)).toBeInTheDocument();
     expect(screen.getByText(/판단보류·미반영/)).toBeInTheDocument();

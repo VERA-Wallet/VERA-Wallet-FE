@@ -102,7 +102,7 @@ describe("보고서 앱 화면", () => {
     await waitFor(() => expect(ports.estimate).toHaveBeenCalledWith(expect.objectContaining({ country: "KR", taxYear: 2027, source: "wallet" })));
     expect(await screen.findByText("2027년 귀속 · 한국 · 거주자별 총평균법")).toBeInTheDocument();
     // 결론 밴드와 신고 요약의 합계는 같은 빌더에서 나온 같은 금액이다.
-    expect(screen.getAllByText("₩183,333.34").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText("₩183,333").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText("1. 신고 요약")).toBeInTheDocument();
     expect(screen.getByText("총수입금액")).toBeInTheDocument();
     // 세율 줄은 카드에서는 빠지지만 보고서에는 종이처럼 남는다.
@@ -150,7 +150,7 @@ describe("보고서 앱 화면", () => {
     const html = print.printReportHtml.mock.calls[0][0];
     expect(html).toContain("기타소득 신고 근거자료");
     expect(html).toContain("2027년 귀속 · 한국 · 거주자별 총평균법");
-    expect(html).toContain("₩183,333.34");
+    expect(html).toContain("₩183,333");
     expect(html).toContain("<title>verawallet-신고근거-2027년귀속-");
   });
 
@@ -201,7 +201,7 @@ describe("보고서 앱 화면", () => {
     expect(await screen.findByText("플랜을 구독하면 보고서가 열립니다")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /플랜 보기/ })).toHaveAttribute("href", "/plan");
     expect(screen.queryByText("1. 신고 요약")).toBeNull();
-    expect(screen.queryByText("₩183,333.34")).toBeNull();
+    expect(screen.queryByText("₩183,333")).toBeNull();
   });
 
   it("지갑 미연결(DID-only)에는 보고서로 만들 거래가 없다. 파일과 같은 이유를 말하고 문서를 만들지 않는다", async () => {

@@ -27,6 +27,7 @@ import { taxYearWindow } from "@/lib/tax/year-window";
 export function ReportMain() {
   const {
     result,
+    previousResult,
     freshEstimate,
     rulesets,
     rulesetsFailed,
@@ -223,6 +224,14 @@ export function ReportMain() {
         />
       ) : null}
       {showReportCard && result ? <ReportCard estimate={result} /> : null}
+      {!result && previousResult ? (
+        <section aria-busy="true" aria-label="이전 계산 결과">
+          <p role="status" className="mt-4 text-sm text-zinc-500">업데이트 중입니다. 이전 계산 결과를 표시합니다. 새 결과 확인 전에는 내보내기와 증명서 발급에 사용하지 않습니다.</p>
+          {previousResult.country === "KR" ? <ReportCard estimate={previousResult} /> : (
+            <ReportSummary result={previousResult} hasNothingToCompute={false} comparingLabel={comparingLabel} onReturnHome={returnHome} />
+          )}
+        </section>
+      ) : null}
 
       {/* 4. 내보내기 — 구독 상태와 내려받기. 이 화면의 본업이므로 메뉴보다 위에 둔다.
           요약을 아직 못 읽었으면(summary === null) 건수·게이지는 그리지 않는다 — 근거 없는 숫자는

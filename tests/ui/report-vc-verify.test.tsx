@@ -156,7 +156,7 @@ describe("제3자 검증 화면", () => {
     await completeVerification(fake, fixtureVerificationResult("with_amounts"));
     expect(fake.createVerification).toHaveBeenCalledWith({ disclosure: "with_amounts" });
     const amounts = surface("report-vc-verify-amounts") as HTMLElement;
-    expect(amounts.textContent).toContain("₩183,333.34");
+    expect(amounts.textContent).toContain("₩183,333");
     expect(amounts.textContent).toContain("₩1,200,000");
   });
 
