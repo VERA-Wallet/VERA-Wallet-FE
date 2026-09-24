@@ -9,7 +9,7 @@ const routes: Record<string, { port: number; get?: string[]; post?: string[] }> 
     "propose-restore-diddoc", "request-restore-diddoc", "confirm-restore-diddoc",
   ] },
   list: { port: 8090, get: ["allowed-ca/list", "vcplan/list"] },
-  issuer: { port: 8091, get: ["certificate-vc", "vc-schema"] },
+  issuer: { port: 8091, get: ["certificate-vc", "vc-schema", "vc/vcschema"] },
   verifier: { port: 8092, get: ["certificate-vc"], post: ["request-profile", "request-verify", "request-proof-request-profile", "request-verify-proof"] },
   "api-gateway": { port: 8093, get: ["did-doc", "vc-meta", "zkp-cred-def", "zkp-cred-schema"] },
   cas: { port: 8094, get: ["certificate-vc"], post: ["request-attested-appinfo", "request-wallet-tokendata"] },

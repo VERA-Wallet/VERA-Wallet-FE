@@ -7,6 +7,8 @@ describe("public DID boundary", () => {
   it("allows native wallet protocol routes only", () => {
     expect(publicDidTarget("tas/api/v1/request-register-user".split("/"), "POST", "host.docker.internal")?.port).toBe("8090");
     expect(publicDidTarget("api-gateway/api/v1/did-doc".split("/"), "GET", "host.docker.internal")?.port).toBe("8093");
+    expect(publicDidTarget("issuer/api/v1/vc/vcschema".split("/"), "GET", "host.docker.internal")?.pathname).toBe("/issuer/api/v1/vc/vcschema");
+    expect(publicDidTarget("issuer/api/v1/vc/vcschema".split("/"), "POST", "host.docker.internal")).toBeNull();
     for (const path of ["issuer/api/v1/verawallet/report/offers", "issuer/admin/v1/user", "tas/api/v1/test/user/latest", "verifier/api/v1/confirm-verify", "verifier/api/v1/request-offer-qr", "issuer/api/v1/certificate-vc/..", "tas/api/v1/%2e%2e", "tas/api/v1/request-register-user;"]) {
       for (const method of ["GET", "POST"]) expect(publicDidTarget(path.split("/"), method, "host.docker.internal")).toBeNull();
     }
