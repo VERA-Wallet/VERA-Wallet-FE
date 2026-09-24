@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DidLoginFlow } from "@/components/did/did-login-flow";
@@ -5,7 +6,8 @@ import type { AuthClient, AuthSession } from "@/lib/ports/auth-client";
 import type { OacxResult } from "@/lib/omnione/oacx";
 
 const push = vi.fn();
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
+const refresh = vi.fn();
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push, refresh }) }));
 
 // 인증 직후 세션 조회 기본값 — 지갑 없음. claimed 상태에 들어가면 이 값을 조회해 목적지를 정한다.
 const DEFAULT_SESSION: AuthSession = { didVerified: true, countryCode: null, walletAddress: null };
@@ -33,6 +35,22 @@ describe("DID login flow", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     delete window.OACX;
+  });
+
+  it("reauthenticates without logging out and returns to credential wallet settings", async () => {
+    vi.stubEnv("NEXT_PUBLIC_OMNIONE_CX_AUTH_URL", "https://cx.example.test:17543/ent/esign");
+    window.OACX = { LOAD_MODULE: vi.fn((_config: string, _options: Record<string, unknown>, onResult: (result?: OacxResult | string) => void) => onResult(JSON.stringify({ token: "fresh-cx-token", resultCode: "200" }))) };
+    const authClient = stubAuthClient({ presentDid: vi.fn().mockResolvedValue({ countryCode: "US", ruleset: { country: "US", cost_basis: "FIFO", badge_label: "US 규칙" } }) });
+    const cache = new QueryClient(); cache.setQueryData(["portfolio", "wallets"], { wallets: ["previous-session"] });
+    render(<QueryClientProvider client={cache}><DidLoginFlow authClient={authClient} provider="omnione_cx" initialCountry="US" reauthentication /></QueryClientProvider>);
+    fireEvent.click(screen.getByRole("button", { name: "모바일 신분증으로 다시 본인확인" }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(authClient.presentDid).toHaveBeenCalledWith({ country: "US", cxToken: "fresh-cx-token" });
+    expect(authClient.logout).not.toHaveBeenCalled();
+    expect(push).toHaveBeenCalledWith("/settings#credential-wallet");
+    expect(refresh).toHaveBeenCalled();
+    expect(cache.getQueryData(["portfolio", "wallets"])).toBeUndefined();
   });
 
   it("moves from country selection through presentation and waiting to a success state", async () => {

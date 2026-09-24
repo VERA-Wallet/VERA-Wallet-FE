@@ -29,6 +29,7 @@ type Phase =
   | { kind: "loading" }
   | { kind: "unavailable"; message: string }
   | { kind: "session_expired" }
+  | { kind: "reauthentication_required"; message: string }
   | { kind: "unlinked"; notice?: { tone: "info" | "warn" | "error"; message: string } }
   | { kind: "creating" }
   | { kind: "presenting"; attempt: LinkAttempt }
@@ -44,6 +45,7 @@ export function WalletLinkCard({ client: override }: { client?: ReportVcClient }
 
   const fail = useCallback((error: unknown, gen: number) => {
     if (generation.current !== gen) return;
+    if (error instanceof ReportVcError && error.code === "cx_reauthentication_required") { setPhase({ kind: "reauthentication_required", message: describeError(error) }); return; }
     if (isSessionExpired(error)) { setPhase({ kind: "session_expired" }); return; }
     if (isFeatureUnavailable(error)) { setPhase({ kind: "unavailable", message: describeError(error) }); return; }
     if (error instanceof ReportVcError && error.code === "attempt_cancelled") { setPhase({ kind: "unlinked", notice: { tone: "info", message: "연결을 취소했습니다." } }); return; }
@@ -162,6 +164,14 @@ export function WalletLinkCard({ client: override }: { client?: ReportVcClient }
       {phase.kind === "loading" && (client ? <Spinner label="연결 상태를 확인하고 있습니다..." /> : <Spinner label="미리보기 데이터를 준비하고 있습니다..." />)}
 
       {phase.kind === "unavailable" && <Notice tone="info" surface="report-vc-wallet-unavailable">{phase.message}</Notice>}
+
+      {phase.kind === "reauthentication_required" && (
+        <Notice tone="info" surface="report-vc-wallet-reauthentication">
+          <p>{phase.message}</p>
+          <Link href="/settings/verify-identity" className="mt-2 inline-block font-semibold underline underline-offset-4">본인확인 다시 하기</Link>
+          <p className="mt-1 text-xs">로그아웃할 필요 없이 인증 후 이 화면으로 돌아옵니다.</p>
+        </Notice>
+      )}
 
       {phase.kind === "session_expired" && <SessionExpiredNotice surface="report-vc-wallet-session" />}
 

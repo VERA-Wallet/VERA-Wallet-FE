@@ -238,3 +238,13 @@ describe("설정 화면의 증명서 지갑 섹션", () => {
     expect(authClient.presentDid).not.toHaveBeenCalled();
   });
 });
+
+
+it("shows a reauthentication link rather than asking the signed-in user to log out", async () => {
+  const fake = fakeClient({ createLinkAttempt: vi.fn().mockRejectedValue(new ReportVcError(403, "cx_reauthentication_required", "recent verification required")) });
+  await startLinking(fake);
+  expect(screen.getByText(/최근 본인확인 후 15분/)).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "본인확인 다시 하기" })).toHaveAttribute("href", "/settings/verify-identity");
+  expect(screen.queryByRole("button", { name: "증명서 지갑 연결" })).toBeNull();
+  expect(fake.linkAttemptStatus).not.toHaveBeenCalled();
+});

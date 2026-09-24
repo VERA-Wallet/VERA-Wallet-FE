@@ -6,7 +6,7 @@ import { ReportVcError } from "@/lib/report-vc/types";
  */
 const KNOWN: Record<string, string> = {
   cx_verification_required: "모바일 신분증으로 본인인증한 계정에서 이용할 수 있습니다.",
-  cx_reauthentication_required: "증명서 지갑을 연결하려면 모바일 신분증으로 다시 로그인해 주세요.",
+  cx_reauthentication_required: "최근 본인확인 후 15분이 지났습니다. 안전한 증명서 지갑 연결을 위해 본인확인을 다시 진행해 주세요.",
   anchor_mismatch: "저장된 계산 근거와 체인 기록이 일치하지 않습니다.",
   invalid_issuance_receipt: "발급 결과가 요청한 증명서와 일치하지 않습니다.",
   invalid_provider_response: "증명서 서버의 응답을 확인하지 못했습니다.",

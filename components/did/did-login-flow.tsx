@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { QueryClientContext } from "@tanstack/react-query";
+import { useContext, useCallback, useEffect, useRef, useState } from "react";
 import { OpenDidPresentation } from "@/components/did/opendid-presentation";
 import { openDidClient, type DidOffer } from "@/lib/opendid/client";
 import { useRouter } from "next/navigation";
@@ -28,9 +29,10 @@ const SESSION_WAIT_CAP_MS = 3000;
  * `provenance`는 서버 페이지가 계산해 준다(`identityProvenance`): FE API 모드·FE 인증창 스위치·BE 신원 공급자가
  * 모두 실모드여야 live다. 하나라도 mock이면 인증창이 떠도 토큰이 검증되지 않는 반쪽 실모드라 배지는 mock이어야 한다.
  */
-export function DidLoginFlow({ authClient = compositionAuthClient, provenance = "mock", provider }: { authClient?: AuthClient; provenance?: Provenance; provider?: "mock" | "omnione_cx" | "opendid" | "unavailable" }) {
+export function DidLoginFlow({ authClient = compositionAuthClient, provenance = "mock", provider, reauthentication = false, initialCountry = "KR" }: { authClient?: AuthClient; provenance?: Provenance; provider?: "mock" | "omnione_cx" | "opendid" | "unavailable"; reauthentication?: boolean; initialCountry?: Country }) {
   const router = useRouter();
-  const [country, setCountry] = useState<Country>("KR");
+  const queryClient = useContext(QueryClientContext);
+  const [country, setCountry] = useState<Country>(initialCountry);
   const [state, setState] = useState<FlowState>("idle");
   const [claim, setClaim] = useState<DidPresentation | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -99,7 +101,7 @@ export function DidLoginFlow({ authClient = compositionAuthClient, provenance = 
     if (state !== "claimed" || !claim) return;
     let cancelled = false;
     let capTimer = 0;
-    const session = authClient
+    const session = reauthentication ? Promise.resolve("/settings#credential-wallet") : authClient
       .getSession()
       .then((result) => (result.walletAddress ? "/dashboard" : "/connect-wallet"))
       .catch(() => "/dashboard");
@@ -111,7 +113,9 @@ export function DidLoginFlow({ authClient = compositionAuthClient, provenance = 
       void destination.then((path) => {
         if (cancelled) return;
         setState("done");
+        if (reauthentication) queryClient?.clear();
         router.push(path);
+        if (reauthentication) router.refresh();
       });
     }, CLAIMED_AUTO_ADVANCE_MS);
     return () => {
@@ -119,7 +123,7 @@ export function DidLoginFlow({ authClient = compositionAuthClient, provenance = 
       window.clearTimeout(timer);
       window.clearTimeout(capTimer);
     };
-  }, [authClient, claim, router, state]);
+  }, [authClient, claim, router, state, reauthentication, queryClient]);
 
   async function startPresentation() {
     if (issuingRef.current || provider === "unavailable") return;
@@ -152,7 +156,7 @@ export function DidLoginFlow({ authClient = compositionAuthClient, provenance = 
       <div data-surface="did-login" className="space-y-4">
         {state === "idle" && (
           <button disabled={issuing || provider === "unavailable"} className="w-full rounded-xl bg-primary-500 py-3.5 font-semibold text-white disabled:opacity-50" onClick={startPresentation} type="button">
-            {provider === "unavailable" ? "인증 서비스에 연결할 수 없습니다" : openDidEnabled ? "Open DID 지갑으로 시작하기" : cxEnabled ? "모바일신분증으로 시작하기" : "QR/딥링크 제시"}
+            {provider === "unavailable" ? "인증 서비스에 연결할 수 없습니다" : openDidEnabled ? "Open DID 지갑으로 시작하기" : cxEnabled ? (reauthentication ? "모바일 신분증으로 다시 본인확인" : "모바일신분증으로 시작하기") : "QR/딥링크 제시"}
           </button>
         )}
 

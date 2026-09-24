@@ -91,7 +91,7 @@ export function SettingsView({ authClient = compositionAuthClient, reportVcClien
       </section>
 
       {/* 증명서 지갑은 로그인 공급자 설정과 별개다. CX 로그인이든 Open DID 로그인이든 이 섹션은 같은 모습이다. */}
-      <section aria-label="증명서 지갑" className="mt-6">
+      <section id="credential-wallet" aria-label="증명서 지갑" className="mt-6">
         <p className="mb-2 text-sm font-semibold text-zinc-500">증명서 지갑</p>
         <WalletLinkCard client={reportVcClient} />
       </section>
