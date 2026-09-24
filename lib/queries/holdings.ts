@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { holdingsProvider, walletsProvider } from "@/lib/composition-root.client";
 
 export const holdingsQueryKey = ["portfolio", "holdings"] as const;
@@ -45,4 +45,12 @@ export function useRemoveWallet() {
       ]);
     },
   });
+}
+
+/** Registration changed the address set before indexing finishes. Stop pre-registration
+ * responses from restoring a fresh old list, then refetch on the next list mount. */
+export async function refreshRegisteredWallets(client: QueryClient) {
+  const keys = [walletsQueryKey, holdingsQueryKey];
+  await Promise.all(keys.map(queryKey => client.cancelQueries({ queryKey })));
+  await Promise.all(keys.map(queryKey => client.invalidateQueries({ queryKey, refetchType: "none" })));
 }

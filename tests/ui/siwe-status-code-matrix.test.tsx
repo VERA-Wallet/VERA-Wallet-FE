@@ -1,12 +1,13 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render as renderBase, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { ConnectWalletFlow } from "@/components/wallet/connect-wallet-flow";
 import { AuthClientError, type AuthClient } from "@/lib/ports/auth-client";
 import type { WalletAccount, WalletPort } from "@/lib/ports/wallet-port";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
 
 const account: WalletAccount = { address: "0x1111111111111111111111111111111111111111", chainId: 1 };
 
@@ -61,3 +62,8 @@ describe("SIWE error code mapping", () => {
     expect(alert).not.toHaveTextContent("인증 요청 불일치");
   });
 });
+
+function render(ui: React.ReactNode) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return renderBase(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}

@@ -1,5 +1,7 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
+import { refreshRegisteredWallets } from "@/lib/queries/holdings";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -103,6 +105,7 @@ export function ConnectWalletFlow({
   provenance?: Provenance;
 }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [step, setStep] = useState<Step>(initialStep);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [account, setAccount] = useState<WalletAccount | null>(() => walletPort.getAccount());
@@ -152,7 +155,9 @@ export function ConnectWalletFlow({
     setIsRegistering(true);
     try {
       await authClient.registerWatchWallet({ address: assessment.address });
+      await refreshRegisteredWallets(queryClient);
       router.push(redirectTo);
+      router.refresh();
     } catch (cause) {
       setError(errorMessage(cause));
     } finally {
@@ -216,10 +221,13 @@ export function ConnectWalletFlow({
       setSigningPhase("verifying");
       await authClient.verify({ message, signature });
       if (signingRun.current !== run) return;
+      await refreshRegisteredWallets(queryClient);
+      if (signingRun.current !== run) return;
       setSigningPhase("redirecting");
       // 서명이 끝나도 인덱서 동기화는 남아 있다. 대시보드로 그냥 보내면 사용자는 빈 화면을 먼저 보고
       // "연결이 안 됐나"로 읽는다. 온보딩 기본값은 `importing`을 달고 들어가 불러오기 모달을 띄운다.
       router.push(redirectTo);
+      router.refresh();
     } catch (cause) {
       if (signingRun.current !== run) return;
       signingRun.current = null;

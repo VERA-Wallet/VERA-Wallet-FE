@@ -1,11 +1,13 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, fireEvent, render as renderBase, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ConnectWalletFlow } from "@/components/wallet/connect-wallet-flow";
 import { AuthClientError, type AuthClient } from "@/lib/ports/auth-client";
 import type { WalletPort } from "@/lib/ports/wallet-port";
 
 const push = vi.fn();
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
+const refresh = vi.fn();
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push, refresh }) }));
 
 function walletPort(): WalletPort {
   return {
@@ -21,14 +23,16 @@ function authClient(): AuthClient {
 }
 
 describe("wallet connection SIWE flow", () => {
-  beforeEach(() => { push.mockReset(); });
+  beforeEach(() => { push.mockReset(); refresh.mockReset(); });
 
   it("uses server nonce fields in the SIWE message and verifies the signature", async () => {
     const port = walletPort();
     const auth = authClient();
     const nonce = { nonce: "noncefromserver123", domain: "wallet.example", uri: "https://wallet.example/login", chainId: 8453, issuedAt: "2026-07-30T00:00:00.000Z", expiresAtMs: 1785373200000 };
     vi.mocked(auth.requestNonce).mockResolvedValue(nonce);
-    render(<ConnectWalletFlow walletPort={port} authClient={auth} />);
+    const cache = new QueryClient();
+    cache.setQueryData(["portfolio", "wallets"], { wallets: [] });
+    render(<ConnectWalletFlow walletPort={port} authClient={auth} />, cache);
     // 기본 경로는 주소 입력이다. 서명 경로는 방법 선택에서 브라우저 지갑 행을 골라야 나온다.
     fireEvent.click(screen.getByRole("button", { name: /브라우저 지갑으로 연결/ }));
     fireEvent.click(screen.getByRole("button", { name: "서명하고 추가" }));
@@ -43,6 +47,8 @@ describe("wallet connection SIWE flow", () => {
     // 서명 성공은 대시보드 진입이 아니라 **불러오기 진입**이다. 쿼리가 빠지면 모달이 뜨지 않고
     // 사용자는 동기화가 끝나기 전 대시보드를 빈 화면으로 본다.
     expect(push).toHaveBeenCalledWith("/dashboard?importing=1");
+    expect(cache.getQueryState(["portfolio", "wallets"])?.isInvalidated).toBe(true);
+    expect(refresh).toHaveBeenCalledTimes(1);
   });
 
   it("does not sign a stale address after the extension changes account", async () => {
@@ -61,7 +67,9 @@ describe("wallet connection SIWE flow", () => {
   it("registers a pasted address without signing, normalizing it to checksum form", async () => {
     const auth = authClient();
     vi.mocked(auth.registerWatchWallet).mockResolvedValue({ walletAddress: "0x71C7656EC7ab88b098defB751B7401B5f6d8976F" });
-    render(<ConnectWalletFlow walletPort={walletPort()} authClient={auth} />);
+    const cache = new QueryClient();
+    cache.setQueryData(["portfolio", "wallets"], { wallets: [] });
+    render(<ConnectWalletFlow walletPort={walletPort()} authClient={auth} />, cache);
 
     fireEvent.click(screen.getByRole("button", { name: /주소로 추가/ }));
     fireEvent.change(screen.getByLabelText("지갑 주소"), { target: { value: "0x71c7656ec7ab88b098defb751b7401b5f6d8976f" } });
@@ -74,6 +82,8 @@ describe("wallet connection SIWE flow", () => {
     await waitFor(() => expect(auth.registerWatchWallet).toHaveBeenCalledWith({ address: "0x71C7656EC7ab88b098defB751B7401B5f6d8976F" }));
     expect(auth.verify).not.toHaveBeenCalled();
     await waitFor(() => expect(push).toHaveBeenCalledWith("/dashboard?importing=1"));
+    expect(cache.getQueryState(["portfolio", "wallets"])?.isInvalidated).toBe(true);
+    expect(refresh).toHaveBeenCalledTimes(1);
   });
 
   it("rejects an address whose checksum does not match instead of registering it", async () => {
@@ -258,3 +268,7 @@ describe("MetaMask mobile connection", () => {
     expect(port.signMessage).not.toHaveBeenCalled();
   });
 });
+
+function render(ui: React.ReactNode, client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
+  return renderBase(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
