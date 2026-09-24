@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { CircleCheck, ShieldCheck } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -154,6 +156,8 @@ export function WalletLinkCard({ client: override }: { client?: ReportVcClient }
         </div>
         {provenance === "mock" ? <ProvenanceChip provenance="mock" /> : null}
       </div>
+
+      <Link href="/did-wallet/install" className="inline-block text-sm text-primary-600 underline underline-offset-4">DID CA 앱 설치·처음 사용하는 방법</Link>
 
       {phase.kind === "loading" && (client ? <Spinner label="연결 상태를 확인하고 있습니다..." /> : <Spinner label="미리보기 데이터를 준비하고 있습니다..." />)}
 
