@@ -40,19 +40,19 @@ describe("하단 탭 내비게이션", () => {
 
     // 리포트 잠금 배너를 타고 들어온 사용자가 탭으로 돌아갈 수 있어야 한다.
     expect(screen.getByTestId("app-nav")).toBeInTheDocument();
-    // 플랜은 매일 누르는 화면이 아니다 — 탭은 4개 그대로 두고 노출만 허용한다.
+    // 설정은 모든 주요 화면에서 계정·로그아웃으로 가는 공통 진입점이다.
     // 세금 탭은 없다: 리포트(/export)가 계산·다운로드를 한 화면에서 말한다.
-    expect(tabLabels()).toEqual(["요약", "거래", "지갑", "리포트"]);
+    expect(tabLabels()).toEqual(["요약", "거래", "지갑", "리포트", "설정"]);
     // 어느 탭도 활성이 아니다. 플랜은 탭이 아니므로 남의 탭에 불을 켜면 현재 위치를 속이는 셈이다.
     expect(screen.queryByRole("link", { current: "page" })).toBeNull();
   });
 
-  it("설정 화면에서도 탭이 남아 있다 — 설정도 탭이 아닌 곁길이다", () => {
+  it("설정 화면에서는 설정 탭이 활성이다", () => {
     pathname.mockReturnValue("/settings");
     renderNav();
 
     expect(screen.getByTestId("app-nav")).toBeInTheDocument();
-    expect(screen.queryByRole("link", { current: "page" })).toBeNull();
+    expect(screen.getByRole("link", { current: "page" })).toHaveTextContent("설정");
   });
 
   it("온보딩 경로에서는 탭을 감춘다 — 세션 가드에 막힐 이동을 권하지 않는다", () => {
@@ -108,4 +108,10 @@ describe("하단 탭 내비게이션", () => {
     await screen.findByTestId("app-nav");
     expect(await screen.findByRole("link", { name: "거래" })).toBeInTheDocument();
   });
+});
+
+it.each(["/dashboard", "/transactions", "/wallets", "/export", "/export/basis", "/settings"])("keeps settings reachable from %s", path => {
+  pathname.mockReturnValue(path);
+  renderNav();
+  expect(screen.getByRole("link", { name: "설정" })).toHaveAttribute("href", "/settings");
 });

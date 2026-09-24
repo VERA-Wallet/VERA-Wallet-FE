@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Settings } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useEventSummary } from "@/lib/queries/events";
 
@@ -46,11 +47,15 @@ const items: NavItem[] = [
       </svg>
     ),
   },
+  {
+    href: "/settings",
+    label: "설정",
+    icon: <Settings aria-hidden="true" className="h-5 w-5" />,
+  },
 ];
 
-// 탭이 아니지만 탭을 띄워야 하는 화면. 플랜·설정은 요약 헤더나 잠금 배너를 타고 들어오는
-// 곁길이라 탭 자리를 차지할 이유가 없지만, 여기서 내비를 감추면 돌아갈 길 없는 막다른 길이 된다.
-const sideRoutes = ["/plan", "/settings"];
+// 플랜 화면에서도 주요 화면으로 돌아갈 수 있도록 내비게이션을 유지한다.
+const sideRoutes = ["/plan"];
 const navRoutes = [...items.map((item) => item.href), ...sideRoutes];
 
 export function AppNav() {
@@ -70,7 +75,7 @@ export function AppNav() {
 
   return (
     <nav aria-label="주요 화면" data-testid="app-nav" className="border-t border-zinc-200 bg-white/95 backdrop-blur">
-      <ul className="grid grid-cols-4">
+      <ul className="grid grid-cols-5">
         {items.map((item) => {
           const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
           const badge = item.href === "/transactions" && hasPendingReview;
