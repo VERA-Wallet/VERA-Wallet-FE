@@ -15,7 +15,7 @@ const PAGE_LIMIT = 1_000;
 /** 한 번에 이어 받을 최대 페이지 수. 화면의 "더 불러오기"가 이 값을 늘린다. */
 const MAX_PAGES = 50;
 
-export function useEventList(maxPages: number = MAX_PAGES) {
+export function useEventList(maxPages: number = MAX_PAGES, enabled = true) {
   return useQuery({
     queryKey: [...eventQueryKey, maxPages] as const,
     queryFn: async () => {
@@ -30,10 +30,11 @@ export function useEventList(maxPages: number = MAX_PAGES) {
       // 사용자는 자기 거래가 잘못 걸렸는지 확인할 길이 없다(거래 탭의 스팸 보기가 이 배열을 그린다).
       const items = collected.items.filter((item) => !isSpam(item.event));
       const spamItems = collected.items.filter((item) => isSpam(item.event));
-      return { ...collected, items, spamItems, spam: spamItems.length };
+      return { ...collected, rawItems: collected.items, items, spamItems, spam: spamItems.length };
     },
     // "더 불러오기"로 상한이 바뀌면 키가 달라진다. 이전 목록을 유지해 화면이 빈 상태로 튀지 않게 한다.
     placeholderData: (previous) => previous,
+    enabled,
   });
 }
 

@@ -107,10 +107,10 @@ describe("리포트 구독 상태 카드", () => {
 
     const card = await screen.findByText("플러스 플랜 · 2026년 귀속");
     expect(card.closest("[data-surface='plan-status']")).toBeInTheDocument();
-    expect(screen.getByText("1,000건 중 250건 사용")).toBeInTheDocument();
+    expect(await screen.findByText("1,000건 중 250건 사용")).toBeInTheDocument();
     expect(screen.getByText("과세연도당 한 번 결제")).toBeInTheDocument();
 
-    const gauge = screen.getByRole("progressbar", { name: "내보내기 사용량" });
+    const gauge = await screen.findByRole("progressbar", { name: "내보내기 사용량" });
     expect(gauge).toHaveAttribute("aria-valuemin", "0");
     expect(gauge).toHaveAttribute("aria-valuemax", "100");
     expect(gauge).toHaveAttribute("aria-valuenow", "25");
@@ -120,7 +120,7 @@ describe("리포트 구독 상태 카드", () => {
     renderWith(planDefinition("plus").exportLimit + 1, plusPlan);
 
     await screen.findByText("플러스 플랜 · 2026년 귀속");
-    const gauge = screen.getByRole("progressbar", { name: "내보내기 사용량" });
+    const gauge = await screen.findByRole("progressbar", { name: "내보내기 사용량" });
     expect(gauge).toHaveAttribute("aria-valuenow", "100");
   });
 

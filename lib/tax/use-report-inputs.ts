@@ -66,6 +66,7 @@ export type ReportInputsOptions = {
   currentYear?: number;
   latestActivityYear?: number;
   walletConnected?: boolean;
+  dataReady?: boolean;
 };
 
 export function useReportInputs({
@@ -73,6 +74,7 @@ export function useReportInputs({
   currentYear = new Date().getFullYear(),
   latestActivityYear,
   walletConnected = true,
+  dataReady = true,
 }: ReportInputsOptions) {
   // DID가 주는 UK 같은 별칭을 여기서 한 번 표준화한다.
   const [country, setCountry] = useState(() => canonicalCountryCode(countryCode ?? "") ?? FALLBACK_COUNTRY);
@@ -151,10 +153,10 @@ export function useReportInputs({
       defiOwnershipTransferred,
       carriedLosses,
     }),
-  }, selected !== undefined, catalogSignature(selected));
+  }, selected !== undefined && (source === "scenario" || dataReady), catalogSignature(selected));
   // 재조회 중이거나 실패했으면 이전 결과를 답으로 쓰지 않는다.
   // 설정을 바꾼 직후 옛 금액이 새 설정의 답인 척하는 것이 이 화면의 가장 큰 거짓이었다.
-  const freshEstimate = fresh(estimate, selected === undefined);
+  const freshEstimate = fresh(estimate, selected === undefined || (source === "wallet" && !dataReady));
   const result = freshEstimate.data;
 
   // 어떤 입력을 쓰는지는 룰셋이 선언한다. 화면이 국가 코드로 다시 판단하면 두 곳이 갈린다.

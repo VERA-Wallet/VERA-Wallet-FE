@@ -1,10 +1,12 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useEventList, useEventSummary } from "@/lib/queries/events";
+import { taxYearFor } from "@/lib/tax/engine";
 
 import { groupJudgments, type GroupRow } from "@/components/report/why-this-amount";
-import { anchorProofProvider, eventRepository, summaryProvider } from "@/lib/composition-root.client";
-import { collectAllEvents } from "@/lib/export/collect";
+import { anchorProofProvider } from "@/lib/composition-root.client";
 import type { SummaryDTO } from "@/lib/http/dto";
 import type { Provenance } from "@/lib/http/envelope";
 import { exportEventAllowance, planDefinition, usePlan } from "@/lib/plan/use-plan";
@@ -68,35 +70,36 @@ export function ReportInputsProvider({
   provenance = "mock",
   gateEnabled = true,
 }: ReportInputsOptions & { children: React.ReactNode; provenance?: Provenance; gateEnabled?: boolean }) {
-  const inputs = useReportInputs({ countryCode, currentYear, latestActivityYear, walletConnected });
+  const ledger = useEventList(50, walletConnected);
+  const summaryQuery = useEventSummary(walletConnected);
+  const items = walletConnected ? ledger.data?.rawItems : undefined;
+  const events = useMemo(() => items?.map(({ event }) => event) ?? [], [items]);
+  const activityYear = useMemo(() => {
+    const latest = ledger.data?.items.reduce<string | null>((max, { event }) =>
+      max === null || Date.parse(event.block_timestamp) > Date.parse(max) ? event.block_timestamp : max, null);
+    return latest && countryCode ? taxYearFor(countryCode, latest) : undefined;
+  }, [ledger.data, countryCode]);
+  const ledgerError = walletConnected
+    ? ledger.error?.message ?? summaryQuery.error?.message ?? (ledger.data?.truncated ? "거래 내역을 모두 불러오지 못했습니다." : null)
+    : null;
+  const inputs = useReportInputs({ countryCode, currentYear,
+    latestActivityYear: latestActivityYear ?? activityYear, walletConnected,
+    dataReady: !walletConnected || (ledger.isSuccess && !ledger.data.truncated),
+  });
   const { result, hasNothingToCompute, country, homeCountry, isHomeCountry, selected, setCountry, source } = inputs;
-
-  const [events, setEvents] = useState<NormalizedEvent[]>([]);
-  const [summary, setSummary] = useState<SummaryDTO | null>(null);
-  const [proof, setProof] = useState<Awaited<ReturnType<typeof anchorProofProvider.getProof>>>(null);
-  const [ledgerError, setLedgerError] = useState<string | null>(null);
+  const summary = walletConnected ? summaryQuery.data ?? null : null;
+  const firstEventId = items?.[0]?.event.id;
+  const proofQuery = useQuery({
+    queryKey: ["events", "anchor-proof", firstEventId],
+    queryFn: () => anchorProofProvider.getProof(firstEventId!),
+    enabled: walletConnected && firstEventId !== undefined,
+  });
+  // An anchor request must not hold already loaded ledger/summary data hostage.
+  // A missing or failed proof remains null; it is never represented as verified.
+  const proof = firstEventId ? proofQuery.data ?? null : null;
   const { plan } = usePlan();
 
-  useEffect(() => {
-    // 지갑 미연결(DID-only)에는 낼 지갑 이력이 없다. 그래도 계산은 데모 시나리오로 보여 준다 —
-    // 대신 원장·요약·앵커 증명은 부르지 않는다(ON 모드에서 bound-wallet 404가 난다).
-    if (!walletConnected) return;
-    let active = true;
-    void Promise.all([collectAllEvents(eventRepository), summaryProvider.getSummary()])
-      .then(async ([items, nextSummary]) => {
-        const nextProof = items[0] ? await anchorProofProvider.getProof(items[0].event.id) : null;
-        if (!active) return;
-        setEvents(items.map(({ event }) => event));
-        setSummary(nextSummary);
-        setProof(nextProof);
-      })
-      .catch((cause: unknown) => {
-        if (active) setLedgerError(cause instanceof Error ? cause.message : "내보내기 데이터를 불러오지 못했습니다.");
-      });
-    return () => { active = false; };
-  }, [walletConnected]);
-
-  const ready = summary !== null && ledgerError === null;
+  const ready = walletConnected && ledger.isSuccess && !ledger.data.truncated && summary !== null && ledgerError === null;
   // 파일명·기간 라벨은 선택 연도를 따른다 — estimate.period가 선택 연도의 과세기간을 싣는다.
   const activePeriod = result?.period ?? summary?.period ?? null;
 

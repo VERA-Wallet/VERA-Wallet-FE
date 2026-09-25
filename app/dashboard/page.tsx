@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
-import { getSessionCookieHeaderForEventReader, requireCompletedOnboarding, requireDidSession } from "@/lib/dal";
-import { warmUpBeEventSync } from "@/lib/adapters/http/event-repository.server";
+import { requireCompletedOnboarding, requireDidSession } from "@/lib/dal";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { ImportProgressGate } from "@/components/dashboard/import-progress-gate";
@@ -22,10 +21,6 @@ export default async function DashboardPage({
     // 불러오기 모달은 지갑 연결 직후 진입(`?importing=1`)에서만 뜬다. 진입 판정을 서버에서 하면
     // 클라이언트가 `useSearchParams`로 URL을 읽지 않아도 되고, 그 경우 필요한 Suspense 경계도 없어진다.
     const importing = (await searchParams)?.importing === "1";
-    // BE의 list와 summary가 둘 다 listOrSync를 타므로, 클라이언트 훅이 병렬로 나가기 전에 한 번 채워
-    // 첫 동기화 경합과 비멱등 앵커 재제출을 줄인다. 게이트가 아니므로 실패해도 렌더는 계속한다.
-    const warmUp = await warmUpBeEventSync(await getSessionCookieHeaderForEventReader());
-    if (warmUp.status === "failed") console.warn("BE 이벤트 warm-up이 실패했다.", warmUp);
     // 거주국은 DID 클레임에서 이미 확정됐다. 화면이 다시 묻지 않도록 서버에서 내려준다.
     return (
       <>
