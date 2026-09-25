@@ -1,5 +1,6 @@
 "use client";
 
+import { ValueText } from "@/components/ui/value-text";
 import { useState } from "react";
 import { OtherCountryJudgments } from "@/components/transactions/other-country-judgments";
 import { ValueOverrideEditor } from "@/components/transactions/value-override-editor";
@@ -139,7 +140,7 @@ export function EventDetails({
 
   return (
     <BottomSheet open onClose={onClose} title="거래 상세">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-baseline justify-between">
         <h2 className="text-lg font-bold text-zinc-900">거래 상세</h2>
         <button type="button" className="-mr-2 px-2 py-1 text-sm font-medium text-zinc-500" onClick={onClose}>닫기</button>
       </div>
@@ -152,16 +153,16 @@ export function EventDetails({
           <div className="flex min-w-0 items-center gap-2">
             <SplitAssetLogo left={event} right={swapInLeg} size={36} />
             <p className="min-w-0 truncate text-xl font-bold tracking-tight">
-              <span className="text-rose-700">{formatSignedTokenAmount(event)} {assetTicker(event)}</span>
+              <span className="text-rose-700"><ValueText>{formatSignedTokenAmount(event)}</ValueText> {assetTicker(event)}</span>
               <span className="text-zinc-400"> → </span>
-              <span className="text-emerald-700">{formatSignedTokenAmount(swapInLeg)} {assetTicker(swapInLeg)}</span>
+              <span className="text-emerald-700"><ValueText>{formatSignedTokenAmount(swapInLeg)}</ValueText> {assetTicker(swapInLeg)}</span>
             </p>
           </div>
         ) : (
           <div className="flex min-w-0 items-center gap-2">
             <AssetLogo event={event} size={36} />
             <p className={`min-w-0 truncate text-2xl font-bold tracking-tight ${FLOW_TEXT_CLASS[assetFlow(event)]}`}>
-              {formatSignedTokenAmount(event)} <span className="text-base font-semibold text-zinc-500">{assetLabel(event)}</span>
+              <ValueText>{formatSignedTokenAmount(event)}</ValueText> <span className="text-base font-semibold text-zinc-500">{assetLabel(event)}</span>
             </p>
           </div>
         )}
@@ -169,7 +170,7 @@ export function EventDetails({
       </div>
       {/* 거래 상세는 정확한 "언제"가 중요한 자리라 시각을 UTC·KST로 병기한다(한국 신고용). 목록 머리글은 UTC 날짜 그대로다. */}
       <p className="mt-1 text-sm text-zinc-500">
-        {formatDateTime(event.block_timestamp)} · {event.price_status === "UNKNOWN" ? "가격 미확인" : formatFiat(event.fiat_value, event.fiat_currency)}
+        {formatDateTime(event.block_timestamp)} · <ValueText>{event.price_status === "UNKNOWN" ? "가격 미확인" : formatFiat(event.fiat_value, event.fiat_currency)}</ValueText>
         {event.price_status === "ESTIMATED" ? " (추정)" : ""}
       </p>
 
@@ -192,12 +193,12 @@ export function EventDetails({
           <h3 className="text-sm font-semibold text-zinc-700">스왑 구성: 한 거래, 두 다리</h3>
           <div className="mt-2 space-y-2 text-sm">
             <p className="text-zinc-700">
-              <span className="font-semibold text-rose-700">내보낸 자산</span> {formatSignedTokenAmount(event)} {assetTicker(event)}
+              <span className="font-semibold text-rose-700">내보낸 자산</span> <ValueText>{formatSignedTokenAmount(event)}</ValueText> {assetTicker(event)}
               <span className="text-zinc-500"> · 손익 계산은 아래 근거표에서 확인할 수 있습니다.</span>
             </p>
             <div className="rounded-lg bg-white p-3">
-              <p className="font-semibold text-emerald-700">받은 자산 {formatSignedTokenAmount(swapInLeg)} {assetTicker(swapInLeg)}</p>
-              <p className="mt-1 text-zinc-700">취득가액 · {formatFiat(swapInLeg.fiat_value, swapInLeg.fiat_currency)}</p>
+              <p className="font-semibold text-emerald-700">받은 자산 <ValueText>{formatSignedTokenAmount(swapInLeg)}</ValueText> {assetTicker(swapInLeg)}</p>
+              <p className="mt-1 text-zinc-700">취득가액 · <ValueText>{formatFiat(swapInLeg.fiat_value, swapInLeg.fiat_currency)}</ValueText></p>
               {/* 받은 다리가 목록·대표 배지에서 빠지므로, 이 다리의 확인 필요(가격 미확정 등)는
                   취득원가를 고치는 바로 이 자리에서 밝힌다 — 안 그러면 취득원가를 바로잡을 길이 없다. */}
               {needsReview(swapInLeg) ? (
@@ -263,7 +264,7 @@ export function EventDetails({
         <div><dt className="text-zinc-500">이력</dt><dd className="mt-1 font-medium text-zinc-900">{event.user_override ? `사용자 확정 · ${formatDate(event.user_override.overridden_at)}` : "자동 분류"}</dd></div>
         {/* 가스는 체인 네이티브 수량이라 법정통화 환산 없이는 원가·양도가액에 넣을 수 없다
             (LIMITATION_MESSAGE.GAS_FEE). 위 손익 근거의 `− 수수료`가 왜 0인지 여기서만 답할 수 있다. */}
-        <div><dt className="text-zinc-500">가스</dt><dd className="mt-1 font-medium text-zinc-900">{formatTokenAmount(event.gas_fee_native, 0)} {nativeSymbol(event.chain_id)}</dd></div>
+        <div><dt className="text-zinc-500">가스</dt><dd className="mt-1 font-medium text-zinc-900"><ValueText>{formatTokenAmount(event.gas_fee_native, 0)}</ValueText> {nativeSymbol(event.chain_id)}</dd></div>
       </dl>
       {gainRows.length > 0 ? (
         <section className="mt-4 rounded-lg bg-zinc-50 p-3">
@@ -280,24 +281,24 @@ export function EventDetails({
                   <dl className="mt-2 grid gap-1 rounded-lg bg-white p-3 text-sm">
                     <div className="flex items-baseline justify-between gap-3">
                       <dt className="text-zinc-500">양도가액</dt>
-                      <dd className="font-medium text-zinc-900">{formatFiatExact(row.breakdown.proceeds, currency)}</dd>
+                      <dd className="ml-auto min-w-0 max-w-full text-right font-medium text-zinc-900"><ValueText>{formatFiatExact(row.breakdown.proceeds, currency)}</ValueText></dd>
                     </div>
                     <div className="flex items-baseline justify-between gap-3">
                       <dt className="text-zinc-500">− 취득가액</dt>
-                      <dd className="font-medium text-zinc-900">{formatFiatExact(row.breakdown.cost, currency)}</dd>
+                      <dd className="ml-auto min-w-0 max-w-full text-right font-medium text-zinc-900"><ValueText>{formatFiatExact(row.breakdown.cost, currency)}</ValueText></dd>
                     </div>
                     <div className="flex items-baseline justify-between gap-3">
                       <dt className="text-zinc-500">− 수수료</dt>
-                      <dd className="font-medium text-zinc-900">{formatFiatExact(row.breakdown.fee, currency)}</dd>
+                      <dd className="ml-auto min-w-0 max-w-full text-right font-medium text-zinc-900"><ValueText>{formatFiatExact(row.breakdown.fee, currency)}</ValueText></dd>
                     </div>
                     <div className="mt-1 flex items-baseline justify-between gap-3 border-t border-zinc-200 pt-1">
                       <dt className="font-medium text-zinc-700">= 손익</dt>
-                      <dd className="font-bold text-zinc-900">{formatFiatExact(row.amount, currency)}</dd>
+                      <dd className="ml-auto min-w-0 max-w-full text-right font-bold text-zinc-900"><ValueText>{formatFiatExact(row.amount, currency)}</ValueText></dd>
                     </div>
                   </dl>
                 ) : null}
                 <dl className="mt-2 grid grid-cols-2 gap-3 text-sm">
-                  <div><dt className="text-zinc-500">손익</dt><dd className="mt-1 font-medium text-zinc-900">{isZero(row.amount) ? "손익 없음" : formatFiat(row.amount, currency)}</dd></div>
+                  <div><dt className="text-zinc-500">손익</dt><dd className="mt-1 font-medium text-zinc-900"><ValueText>{isZero(row.amount) ? "손익 없음" : formatFiat(row.amount, currency)}</ValueText></dd></div>
                   <div>
                     <dt className="text-zinc-500">보유일</dt>
                     {/* 여러 취득분을 소비하면 보유기간이 하나로 정해지지 않는다.
@@ -350,7 +351,7 @@ export function EventDetails({
                     취득·수령·이연에는 그 표가 없으므로, 금액이 세금이 아니라 무엇인지 밝힐 곳이 여기뿐이다. */}
                 {row.amountKind !== "gain" ? (
                   <p className="mt-1 text-zinc-700">
-                    {AMOUNT_KIND_LABEL[row.amountKind]} · {isZero(row.amount) ? "원가 없음" : formatFiat(row.amount, currency)}
+                    {AMOUNT_KIND_LABEL[row.amountKind]} · <ValueText>{isZero(row.amount) ? "원가 없음" : formatFiat(row.amount, currency)}</ValueText>
                     {row.inPeriod ? "" : " · 기간 밖(원가 추적용)"}
                   </p>
                 ) : null}
@@ -379,7 +380,7 @@ export function EventDetails({
             {isZero(marginalContribution)
               ? "이 거래를 제외해도 예상 세금은 같습니다."
               : isNegative(marginalContribution)
-                ? <>이 거래를 제외하면 취득원가가 감소하여 예상 세금이 증가합니다. · {formatFiat(marginalContribution, currency)}</>
+                ? <>이 거래를 제외하면 취득원가가 감소하여 예상 세금이 증가합니다. · <ValueText>{formatFiat(marginalContribution, currency)}</ValueText></>
                 : formatFiat(marginalContribution, currency)}
           </p>
           <p className="mt-1 text-sm text-zinc-500">거래별 납부 금액이 아니라, 이 거래를 제외했을 때의 예상 세금 차이입니다.</p>

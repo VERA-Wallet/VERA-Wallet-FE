@@ -101,14 +101,14 @@ export function CopyValue({ label, value, display = shortHash }: { label: string
           type="button"
           aria-label={`${label} 복사`}
           title={value}
-          className="inline-flex min-h-11 max-w-full items-center gap-1.5 truncate font-mono text-xs text-primary-600 underline"
+          className="inline-flex min-h-11 min-w-0 max-w-full items-center gap-1.5 truncate font-mono text-xs text-primary-600 underline"
           onClick={() => { void navigator.clipboard.writeText(value).then(() => setCopied(true)).catch(() => {}); }}
         >
           <span className="truncate">{copied ? "복사됨" : display(value)}</span>
           <Copy aria-hidden className="size-3.5 shrink-0" strokeWidth={2.2} />
         </button>
       ) : (
-        <span className="min-w-0 break-all text-right font-mono text-xs text-zinc-800">{value}</span>
+        <span data-layout-value="" className="min-w-0 max-w-full wrap-anywhere text-right font-mono text-xs text-zinc-800">{value}</span>
       )}
     </div>
   );

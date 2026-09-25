@@ -1,3 +1,4 @@
+import { ValueText } from "@/components/ui/value-text";
 import Link from "next/link";
 
 import { Card } from "@/components/ui/card";
@@ -46,8 +47,8 @@ export function ReportCard({ estimate }: { estimate: TaxEstimate }) {
 
   return (
     <Card className="mt-5">
-      <div data-surface="report-preview" className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
+      <div data-surface="report-preview" className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <p className="font-semibold text-zinc-900">기타소득 계산</p>
           {estimate.status === "PARTIAL" && (
             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">잠정</span>
@@ -62,14 +63,14 @@ export function ReportCard({ estimate }: { estimate: TaxEstimate }) {
           return (
             <div
               key={line.source}
-              className={`flex items-center justify-between gap-3 py-2 ${
+              className={`flex flex-wrap items-baseline justify-between gap-3 py-2 ${
                 line.role === "subtotal" ? "border-t border-zinc-200" : line.role === "total" ? "mt-1 border-t-2 border-zinc-300" : ""
               }`}
             >
               <dt className={`text-sm ${emphasize ? "font-semibold text-zinc-900" : "text-zinc-600"}`}>{line.label}</dt>
               <dd
                 title={`반올림 전: ${formatFiatExact(filingAmount(line.source), estimate.currency)}`}
-                className={`min-w-0 break-words text-right tabular-nums ${
+                className={`ml-auto min-w-0 max-w-full wrap-anywhere text-right tabular-nums ${
                   line.role === "total"
                     ? "text-base font-bold text-primary-600"
                     : emphasize
@@ -78,7 +79,7 @@ export function ReportCard({ estimate }: { estimate: TaxEstimate }) {
                 }`}
               >
                 {line.role === "subtract" ? "− " : ""}
-                {formatFiat(filingAmount(line.source), estimate.currency)}
+                <ValueText>{formatFiat(filingAmount(line.source), estimate.currency)}</ValueText>
               </dd>
             </div>
           );

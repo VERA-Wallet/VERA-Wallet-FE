@@ -1,3 +1,4 @@
+import { ValueText } from "@/components/ui/value-text";
 import { TransactionLogo } from "@/components/transactions/transaction-logo";
 import { TransactionTypeBadge } from "@/components/transactions/transaction-type-badge";
 import { assetTicker, chainLabel, formatFiat, formatSignedTokenAmount } from "@/lib/format";
@@ -66,14 +67,14 @@ export function EventRow({
   // 카드는 이벤트 id로 식별한다. 금액 라벨은 유효 분류에 따라 부호가 뒤집히므로(재분류 후 +0.01 → -0.01)
   // 그걸 식별자로 쓰면 "방금 고친 카드"를 다시 찾지 못한다.
   // 한 줄 레이아웃 — 왼쪽: 로고(체인은 코너 배지)·거래 타입·티커 / 오른쪽: 손익·수익률.
-  const rowClass = "flex min-w-0 items-center gap-3 rounded-card border border-zinc-200 bg-white px-4 py-3 text-left shadow-card";
+  const rowClass = "flex min-w-0 flex-wrap items-center gap-3 rounded-card border border-zinc-200 bg-white px-4 py-3 text-left shadow-card";
 
   const body = (
     <>
       {/* 왼쪽 로고 클러스터. 체인 이름은 텍스트로 쓰지 않고 로고만 코너 배지로 얹는다.
           스왑은 두 자산 로고, 브릿지는 두 체인 배지로 그린다. */}
       <TransactionLogo event={event} swapInLeg={swapInLeg} />
-      <div className="flex min-w-0 flex-grow flex-col gap-1">
+      <div className="flex min-w-0 flex-[1_1_4rem] flex-col gap-1">
         <TransactionTypeBadge event={event} />
         {/* 티커 줄. e2e·테스트가 이 속성으로 행을 집으므로 레이아웃이 바뀌어도 유지한다.
             스왑 페어는 "−보낸 수량 → +받은 수량"(얼마를 얼마만큼), 같은 자산 브릿지는 부호 없는 수량과 티커,
@@ -82,9 +83,9 @@ export function EventRow({
         <span data-event-label className="mt-0.5 block truncate text-[0.8125rem] text-zinc-500">
           {swapInLeg ? (
             <>
-              <span className="text-rose-700">{hideBalances ? "•••••" : `${formatSignedTokenAmount(event)} ${assetTicker(event)}`}</span>
+              <span className="text-rose-700"><ValueText>{hideBalances ? "•••••" : `${formatSignedTokenAmount(event)} ${assetTicker(event)}`}</ValueText></span>
               <span className="text-zinc-400"> → </span>
-              <span className="text-emerald-700">{hideBalances ? "•••••" : `${formatSignedTokenAmount(swapInLeg)} ${assetTicker(swapInLeg)}`}</span>
+              <span className="text-emerald-700"><ValueText>{hideBalances ? "•••••" : `${formatSignedTokenAmount(swapInLeg)} ${assetTicker(swapInLeg)}`}</ValueText></span>
             </>
           ) : event.swap_to_symbol !== null
             ? `${assetTicker(event)} → ${event.swap_to_symbol}`
@@ -111,15 +112,14 @@ export function EventRow({
           상승은 receive(녹)·하락은 dispose(적) 토큰을 쓰되 색만으로 못 가르는 사용자를 위해 부호를 함께 둔다.
           판정이 아직 오지 않았으면(보류) 오른쪽을 비운다 — 손익 블록의 유무가 곧 정착 신호다.
           배지(판정 도장·미검증·확인 필요 등)는 목록이 아니라 거래 상세에서만 말한다.
-          이 칸은 제 폭을 지키되(`shrink-0`) **상한이 있다**(`max-w-[62%]`). 상한 없이 고정하면 "실현 손익 +₩… (+…%)"가
-          긴 행이 행 폭을 넘기고, 그 행이 목록 전체를 껍데기 밖으로 민다(실측 510px). 상한을 넘으면 라벨·금액·수익률
-          사이에서 줄을 바꾸고, 부호와 금액은 한 덩어리로 묶어 "+" 뒤에서 끊기지 않게 한다. 양보는 왼쪽 수량 줄이 한다(truncate). */}
+          금액 열은 기본적으로 행 너비의 62%를 사용한다. 공간이 부족하면 다음 줄로 이동하며,
+          긴 금액은 전체 값을 유지한 채 줄바꿈한다. 왼쪽 수량 요약은 상세 화면에서 확인할 수 있다. */}
       {isExcluded || isDuplicate || inPeriod !== null ? (
-        <div data-surface="event-gain" className="flex max-w-[62%] shrink-0 flex-col items-end text-right">
+        <div data-surface="event-gain" className="ml-auto flex min-w-0 max-w-full flex-[0_1_62%] flex-col items-end text-right">
           <span className="text-xs font-normal text-zinc-500">거래 당시 평가액</span>
           {event.fiat_value !== null ? (
             <span className="text-[0.9375rem] font-bold tabular-nums text-zinc-900">
-              {hideBalances ? "•••••" : formatFiat(event.fiat_value, event.fiat_currency)}
+              <ValueText>{hideBalances ? "•••••" : formatFiat(event.fiat_value, event.fiat_currency)}</ValueText>
             </span>
           ) : (
             <span className="text-[0.9375rem] font-bold tabular-nums text-zinc-400">-</span>
@@ -132,9 +132,9 @@ export function EventRow({
             ) : (
               <span className={`mt-0.5 text-[0.8125rem] font-semibold tabular-nums ${isPositive(gain) ? "text-receive" : isNegative(gain) ? "text-dispose" : "text-zinc-500"}`}>
                 <span className="font-normal text-zinc-400">실현 손익 </span>
-                <span className="whitespace-nowrap">{isPositive(gain) ? "+" : ""}{formatFiat(gain, currency)}</span>
+                <span className="inline-block max-w-full whitespace-normal wrap-anywhere">{isPositive(gain) ? "+" : ""}<ValueText>{formatFiat(gain, currency)}</ValueText></span>
                 {returnPercent !== null ? (
-                  <span className="whitespace-nowrap font-normal text-zinc-400"> (<span className="sr-only">수익률 </span>{isPositive(returnPercent) ? "+" : ""}{returnPercent}%)</span>
+                  <span className="inline-block max-w-full whitespace-normal wrap-anywhere font-normal text-zinc-400"> (<span className="sr-only">수익률 </span>{isPositive(returnPercent) ? "+" : ""}{returnPercent}%)</span>
                 ) : null}
               </span>
             )

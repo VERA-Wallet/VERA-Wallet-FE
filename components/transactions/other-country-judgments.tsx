@@ -1,5 +1,6 @@
 "use client";
 
+import { ValueText } from "@/components/ui/value-text";
 import { AMOUNT_KIND_LABEL, JudgmentBadge } from "@/components/ui/judgment-badge";
 import { formatFiat } from "@/lib/format";
 import { fresh, freshNotice, type FreshState } from "@/lib/queries/fresh";
@@ -56,7 +57,7 @@ export function OtherCountryJudgments({
         {row.leg === "dispose" ? <span className="text-zinc-500">내보냄</span> : null}
         {row.leg === "receive" ? <span className="text-zinc-500">받음</span> : null}
         <JudgmentBadge group={row.group} label={row.label} />
-        <span>{AMOUNT_KIND_LABEL[row.amountKind]} · {isZero(row.amount) ? "없음" : formatFiat(row.amount, estimate.currency)}</span>
+        <span>{AMOUNT_KIND_LABEL[row.amountKind]} · <ValueText>{isZero(row.amount) ? "없음" : formatFiat(row.amount, estimate.currency)}</ValueText></span>
       </p>
     ));
   };

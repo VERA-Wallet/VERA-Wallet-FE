@@ -1,5 +1,6 @@
 "use client";
 
+import { ValueText } from "@/components/ui/value-text";
 import { CircleCheck, CircleHelp, CircleX, MinusCircle } from "lucide-react";
 
 import { CopyValue } from "@/components/report-vc/primitives";
@@ -101,18 +102,18 @@ export function VerificationResultView({ result, provenance }: { result: Verific
         <div className="space-y-2 rounded-card border border-zinc-200 bg-white p-3" data-surface="report-vc-verify-claims">
           <p className="text-sm font-semibold text-zinc-900">공개된 항목</p>
           <dl className="space-y-1.5 text-sm">
-            <div className="flex items-center justify-between gap-3"><dt className="text-zinc-500">리포트</dt><dd className="truncate font-mono text-xs text-zinc-800">{claims.reportId}</dd></div>
-            <div className="flex items-center justify-between gap-3"><dt className="text-zinc-500">버전</dt><dd className="text-zinc-800">{claims.version}</dd></div>
-            <div className="flex items-center justify-between gap-3"><dt className="text-zinc-500">귀속연도</dt><dd className="text-zinc-800">{claims.taxYear}년 · {claims.countryCode}</dd></div>
-            <div className="flex items-center justify-between gap-3"><dt className="text-zinc-500">발급 시각</dt><dd className="text-right text-zinc-800">{formatDateTime(claims.issuedAt)}</dd></div>
+            <div className="flex flex-wrap items-baseline justify-between gap-3"><dt className="text-zinc-500">리포트</dt><dd className="truncate font-mono text-xs text-zinc-800">{claims.reportId}</dd></div>
+            <div className="flex flex-wrap items-baseline justify-between gap-3"><dt className="text-zinc-500">버전</dt><dd className="ml-auto min-w-0 max-w-full text-right text-zinc-800">{claims.version}</dd></div>
+            <div className="flex flex-wrap items-baseline justify-between gap-3"><dt className="text-zinc-500">귀속연도</dt><dd className="ml-auto min-w-0 max-w-full text-right text-zinc-800">{claims.taxYear}년 · {claims.countryCode}</dd></div>
+            <div className="flex flex-wrap items-baseline justify-between gap-3"><dt className="text-zinc-500">발급 시각</dt><dd className="text-right text-zinc-800">{formatDateTime(claims.issuedAt)}</dd></div>
           </dl>
           <CopyValue label="근거 루트" value={claims.evidenceRoot} />
           {claims.anchor?.txHash && <CopyValue label="체인 거래" value={claims.anchor.txHash} />}
           {claims.totals ? (
             <dl className="mt-2 space-y-1.5 border-t border-zinc-100 pt-2 text-sm" data-surface="report-vc-verify-amounts">
-              <div className="flex items-center justify-between gap-3"><dt className="text-zinc-500">예상 세금</dt><dd className="font-semibold text-zinc-900">{formatFiat(claims.totals.estimatedCharge, "KRW")}</dd></div>
-              <div className="flex items-center justify-between gap-3"><dt className="text-zinc-500">과세 대상</dt><dd className="text-zinc-800">{formatFiat(claims.totals.taxableGains, "KRW")}</dd></div>
-              <div className="flex items-center justify-between gap-3"><dt className="text-zinc-500">수령 소득</dt><dd className="text-zinc-800">{formatFiat(claims.totals.incomeTotal, "KRW")}</dd></div>
+              <div className="flex flex-wrap items-baseline justify-between gap-3"><dt className="text-zinc-500">예상 세금</dt><dd className="ml-auto min-w-0 max-w-full text-right font-semibold text-zinc-900"><ValueText>{formatFiat(claims.totals.estimatedCharge, "KRW")}</ValueText></dd></div>
+              <div className="flex flex-wrap items-baseline justify-between gap-3"><dt className="text-zinc-500">과세 대상</dt><dd className="ml-auto min-w-0 max-w-full text-right text-zinc-800"><ValueText>{formatFiat(claims.totals.taxableGains, "KRW")}</ValueText></dd></div>
+              <div className="flex flex-wrap items-baseline justify-between gap-3"><dt className="text-zinc-500">수령 소득</dt><dd className="ml-auto min-w-0 max-w-full text-right text-zinc-800"><ValueText>{formatFiat(claims.totals.incomeTotal, "KRW")}</ValueText></dd></div>
             </dl>
           ) : (
             <p className="text-xs text-zinc-500">금액은 이 검증에서 공개되지 않았습니다.</p>

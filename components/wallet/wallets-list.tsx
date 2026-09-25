@@ -1,5 +1,6 @@
 "use client";
 
+import { ValueText } from "@/components/ui/value-text";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
@@ -46,10 +47,10 @@ export function WalletsList(): React.JSX.Element {
         </div>
 
         <div data-surface="wallets-total" aria-busy={balanceState === "pending"} className="mt-5">
-          <p className="flex items-baseline gap-2 text-xl font-bold text-zinc-900">
+          <p className="flex flex-wrap items-baseline gap-2 text-xl font-bold text-zinc-900">
             <span>전체 평가액</span>
             {data ? (
-              <span className="tabular-nums">{formatFiat(data.totalValueKrw, "KRW")}</span>
+              <span className="tabular-nums"><ValueText>{formatFiat(data.totalValueKrw, "KRW")}</ValueText></span>
             ) : balanceState === "error" ? (
               <span className="text-zinc-400">-</span>
             ) : (
@@ -60,7 +61,7 @@ export function WalletsList(): React.JSX.Element {
             <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-400">
               {holdings.data ? <ProvenanceChip provenance={holdings.data.provenance} /> : null}
               <span>
-                {holdings.data?.provenance === "mock" ? "데모 예시 데이터(원화) 기준" : `온체인 잔액 × DexScreener 시세 · US$1 = ${formatFiat(data.fx.usdKrw, "KRW")} · ${formatAsOf(data.asOf)} 기준`}
+                <ValueText>{holdings.data?.provenance === "mock" ? "데모 예시 데이터(원화) 기준" : `온체인 잔액 × DexScreener 시세 · US$1 = ${formatFiat(data.fx.usdKrw, "KRW")} · ${formatAsOf(data.asOf)} 기준`}</ValueText>
                 {wallets.data && wallets.data.wallets.length > 1 ? ` · 지갑 ${wallets.data.wallets.length}개 합산` : ""}
                 {data.unpricedCount > 0 ? ` · 시세 없는 자산 ${data.unpricedCount}개 제외` : ""}
               </span>
@@ -179,7 +180,7 @@ function WalletRow({ wallet, summary, balanceState }: { wallet: RegisteredWallet
         </span>
         <div className="min-w-0 flex-1">
           {summary ? (
-            <p className="text-lg font-bold tabular-nums text-zinc-900">{formatFiat(summary.totalValueKrw, "KRW")}</p>
+            <p className="text-lg font-bold tabular-nums text-zinc-900"><ValueText>{formatFiat(summary.totalValueKrw, "KRW")}</ValueText></p>
           ) : failed ? (
             <p className="text-lg font-bold text-zinc-900">₩?</p>
           ) : (

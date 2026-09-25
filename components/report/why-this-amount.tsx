@@ -1,3 +1,4 @@
+import { ValueText } from "@/components/ui/value-text";
 import Link from "next/link";
 
 import { AMOUNT_KIND_LABEL, GROUP_SHORT_LABEL, JudgmentBadge } from "@/components/ui/judgment-badge";
@@ -74,7 +75,7 @@ export function WhyThisAmount({ groups, currency }: { groups: GroupRow[]; curren
             key={`${row.group}-${row.amountKind}`}
             data-group={row.group}
             data-amount-kind={row.amountKind}
-            className="flex items-start justify-between gap-3 rounded-card border border-zinc-200 bg-white p-3 shadow-card"
+            className="flex flex-wrap items-start justify-between gap-3 rounded-card border border-zinc-200 bg-white p-3 shadow-card"
           >
             <div className="min-w-0">
               <JudgmentBadge group={row.group} label={row.label} />
@@ -82,8 +83,8 @@ export function WhyThisAmount({ groups, currency }: { groups: GroupRow[]; curren
                 {row.count}건 · {AMOUNT_KIND_LABEL[row.amountKind]}
               </p>
             </div>
-            <p className="shrink-0 text-sm font-semibold text-zinc-900">
-              {formatFiat(row.amount, currency)}
+            <p className="ml-auto min-w-0 max-w-full text-right text-sm font-semibold text-zinc-900">
+              <ValueText>{formatFiat(row.amount, currency)}</ValueText>
             </p>
           </li>
         ))}

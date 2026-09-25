@@ -181,7 +181,7 @@ export function EvidenceView({ merkleRoot: root }: { merkleRoot: string }) {
               <>
                 <p className="mt-2 font-semibold">체인의 값이 이 근거와 다릅니다</p>
                 <p className="mt-1 break-all">
-                  체인의 해시: <span className="font-mono text-xs">{check.anchoredPayloadHash ?? "읽지 못함"}</span>
+                  체인의 해시: <span className="wrap-anywhere font-mono text-xs">{check.anchoredPayloadHash ?? "읽지 못함"}</span>
                 </p>
               </>
             ) : (
@@ -284,22 +284,22 @@ export function EvidenceView({ merkleRoot: root }: { merkleRoot: string }) {
                   {header.lines.length > 0 && (
                     <dl className="mt-3 divide-y divide-zinc-100 border-y border-zinc-100 text-sm">
                       {header.lines.map((line) => (
-                        <div key={line.key} className="flex items-start justify-between gap-3 py-2">
+                        <div key={line.key} className="flex flex-wrap items-start justify-between gap-3 py-2">
                           <dt className="min-w-0 text-zinc-600">
                             {line.label}
                             {line.rate && <span className="ml-1 text-xs text-zinc-400">{line.rate}</span>}
                             {line.basis && <span className="block text-xs wrap-anywhere text-zinc-400">{line.basis}</span>}
                           </dt>
-                          <dd className="shrink-0 font-semibold text-zinc-900">{isCountLine(line) ? `${line.amount}건` : money(line.amount)}</dd>
+                          <dd className="ml-auto min-w-0 max-w-full wrap-anywhere text-right font-semibold text-zinc-900">{isCountLine(line) ? `${line.amount}건` : money(line.amount)}</dd>
                         </div>
                       ))}
                     </dl>
                   )}
-                  <dl className="mt-3 grid grid-cols-2 gap-2">
+                  <dl className="mt-3 flex flex-wrap gap-2">
                     {TOTAL_LABELS.filter(({ key }) => header.totals[key] !== undefined).map(({ key, label }) => (
-                      <div key={key} className="rounded-card border border-zinc-200 p-3">
+                      <div key={key} className="min-w-0 max-w-full flex-[1_1_max-content] rounded-card border border-zinc-200 p-3">
                         <dt className="text-xs text-zinc-500">{label}</dt>
-                        <dd className="mt-1 text-sm font-bold text-zinc-900">{money(header.totals[key])}</dd>
+                        <dd className="mt-1 wrap-anywhere text-sm font-bold text-zinc-900">{money(header.totals[key])}</dd>
                       </div>
                     ))}
                   </dl>

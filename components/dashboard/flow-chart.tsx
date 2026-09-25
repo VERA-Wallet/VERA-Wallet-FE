@@ -1,5 +1,6 @@
 "use client";
 
+import { ValueText } from "@/components/ui/value-text";
 import { TrendingDown, TrendingUp } from "lucide-react";
 import { useState } from "react";
 import { formatDate, formatFiat } from "@/lib/format";
@@ -133,7 +134,7 @@ export function FlowChart({
           {/* 그릴 것이 없으면 금액 자리를 비운다. `—`도 0도 모두 "값이 있다"는 인상을 준다. */}
           {last && currency ? (
             <p data-testid="flow-total" className="mt-1 text-3xl font-bold tracking-tight text-zinc-900">
-              {hideBalances ? "•••••" : formatFiat(last.value, currency)}
+              <ValueText>{hideBalances ? "•••••" : formatFiat(last.value, currency)}</ValueText>
             </p>
           ) : null}
           {last ? (
@@ -161,7 +162,7 @@ export function FlowChart({
                 ) : (
                   <>
                     {isNegative(slice.change) ? "-" : "+"}
-                    {formatFiat(abs(slice.change), currency)}
+                    <ValueText>{formatFiat(abs(slice.change), currency)}</ValueText>
                     {slice.changePercent === null ? "" : ` · ${abs(slice.changePercent)}%`}
                   </>
                 )}
@@ -256,7 +257,7 @@ export function FlowChart({
               style={{ left: `clamp(3rem, ${(mark.x / WIDTH) * 100}%, calc(100% - 3rem))` }}
             >
               <span className="block tabular-nums">
-                {hideBalances || currency === null ? "•••••" : formatFiat(mark.value, currency)}
+                <ValueText>{hideBalances || currency === null ? "•••••" : formatFiat(mark.value, currency)}</ValueText>
               </span>
               <span className="block font-medium text-zinc-300">{formatDate(new Date(mark.atMs).toISOString())}</span>
             </div>

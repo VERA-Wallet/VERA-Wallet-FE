@@ -48,7 +48,7 @@ describe("wallets list (지갑 탭)", () => {
     const rows = await screen.findAllByRole("link", { name: /포트폴리오 열기/ });
     expect(rows).toHaveLength(2);
     expect(rows[0]).toHaveAttribute("href", `/wallets/${A.toLowerCase()}`);
-    expect(await screen.findByText("₩4,050", { selector: "[data-surface='wallet-row'] p" })).toBeInTheDocument();
+    expect(await screen.findByText("₩4,050", { selector: "[data-surface='wallet-row'] [data-layout-value]" })).toBeInTheDocument();
     expect(rows[0]).toHaveTextContent("0xF8D09e…B1EFAD");
     expect(screen.getByLabelText("네트워크 Ethereum, Optimism, Polygon, Base, Arbitrum")).toBeInTheDocument();
     for (const gone of ["미검증", "소유 증명됨", "등록한 주소", "브라우저 지갑", "네트워크 ·", "자산 9개", "포트폴리오"]) {

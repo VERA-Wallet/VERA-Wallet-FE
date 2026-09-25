@@ -1,5 +1,6 @@
 "use client";
 
+import { ValueText } from "@/components/ui/value-text";
 import { StatusBadge } from "@/components/report/labels";
 import { OtherCountries } from "@/components/report/other-countries";
 import { useReportContext } from "@/components/report/report-context";
@@ -40,11 +41,11 @@ export function ReportCompare() {
             {/* 답을 내지 않은 상태(시행 전·규칙 미확정·셀 것 없음)를 0원으로 적으면 "낼 게 없다"로 읽힌다.
                 메인과 같은 규칙으로 이유를 그대로 말한다. */}
             <p data-testid="compare-charge" className="mt-1 text-3xl font-bold tracking-tight text-zinc-900">
-              {omitsCharge(result.status)
+              <ValueText>{omitsCharge(result.status)
                 ? noChargeHeadline(result.status)
                 : hasNothingToCompute
                   ? "계산할 거래 없음"
-                  : formatFiat(result.totals.estimatedCharge, result.currency)}
+                  : formatFiat(result.totals.estimatedCharge, result.currency)}</ValueText>
             </p>
             {!omitsCharge(result.status) && !hasNothingToCompute ? (
               <p className="mt-1 text-sm text-zinc-500">실효세율 {result.totals.effectiveRatePercent}%</p>
@@ -59,7 +60,7 @@ export function ReportCompare() {
             ].map((row) => (
               <div key={row.label} className="flex items-start justify-between gap-3 rounded-card border border-zinc-200 bg-white p-3 shadow-card">
                 <dt className="shrink-0 text-sm text-zinc-500">{row.label}</dt>
-                <dd className="text-right text-sm font-medium text-zinc-900">{row.value}</dd>
+                <dd className="min-w-0 wrap-anywhere text-right text-sm font-medium text-zinc-900">{row.value}</dd>
               </div>
             ))}
           </dl>

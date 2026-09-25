@@ -1,5 +1,6 @@
 "use client";
 
+import { ValueText } from "@/components/ui/value-text";
 import { EvidenceAnchor } from "@/components/report/evidence-anchor";
 import { StatusBadge, TOPIC_LABEL } from "@/components/report/labels";
 import { useReportContext } from "@/components/report/report-context";
@@ -33,14 +34,14 @@ export function ReportBasis() {
           <h2 className="font-bold text-zinc-900">계산 내역</h2>
           <ul className="mt-3 divide-y divide-zinc-100 rounded-card border border-zinc-200 bg-white">
             {result.lines.map((line) => (
-              <li key={line.key} className="flex items-start justify-between gap-3 p-3">
+              <li key={line.key} className="flex flex-wrap items-start justify-between gap-3 p-3">
                 <div>
                   <p className="text-sm font-medium text-zinc-800">{line.label}</p>
                   {line.basis ? <p className="mt-0.5 text-xs text-zinc-400">{line.basis}</p> : null}
                 </div>
-                <div className="text-right">
+                <div className="ml-auto min-w-0 max-w-full text-right">
                   <p className="text-sm font-semibold text-zinc-900">
-                    {line.unit === "count" ? `${line.amount}건` : formatFiat(line.amount, result.currency)}
+                    <ValueText>{line.unit === "count" ? `${line.amount}건` : formatFiat(line.amount, result.currency)}</ValueText>
                   </p>
                   {line.rate ? <p className="mt-0.5 text-xs text-zinc-500">{line.rate}</p> : null}
                 </div>

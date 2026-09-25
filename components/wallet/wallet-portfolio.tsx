@@ -1,5 +1,6 @@
 "use client";
 
+import { ValueText } from "@/components/ui/value-text";
 import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
 import type { HoldingsFxDTO } from "@/lib/http/dto";
@@ -74,7 +75,7 @@ function GainInline({ gainKrw, costKrw, reason }: { gainKrw: string | null; cost
   const gainText = `${direction > 0 ? "+" : ""}${formatFiat(gainKrw, "KRW")}`;
   const percentText = percent === null ? null : `${direction > 0 ? "+" : ""}${percent}%`;
   return (
-    <span className={`tabular-nums ${tone}`}>
+    <span className={`inline-block max-w-full whitespace-normal wrap-anywhere tabular-nums ${tone}`}>
       {gainText}
       {percentText ? ` · ${percentText}` : ""}
     </span>
@@ -115,7 +116,7 @@ function GroupRow({ group }: { group: HoldingGroup }) {
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
         aria-label={`${group.symbol} 체인별 보기`}
-        className="flex w-full items-center gap-3 py-3 text-left"
+        className="flex w-full flex-wrap items-center gap-3 py-3 text-left"
       >
         <span className="relative inline-flex shrink-0" aria-hidden="true">
           <AssetLogo
@@ -130,16 +131,16 @@ function GroupRow({ group }: { group: HoldingGroup }) {
             ))}
           </span>
         </span>
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-[1_1_4rem]">
           <p className="min-w-0 truncate font-semibold text-zinc-900">
             {group.symbol}
             {multi ? <span className="ml-1.5 text-xs font-medium text-zinc-400">{group.chainIds.length}개 체인</span> : null}
           </p>
-          <p className="mt-0.5 truncate text-sm text-zinc-500">{formatFiat(group.priceKrw, "KRW")}</p>
+          <p className="mt-0.5 text-sm text-zinc-500"><ValueText>{formatFiat(group.priceKrw, "KRW")}</ValueText></p>
         </div>
-        {/* 오른쪽 열은 폭을 갖되(min-w-0) 행의 60%를 넘지 않는다. 긴 심볼이 수량 줄을 밀어 행 전체를 화면 밖으로 내보내지 않게. */}
-        <div className="min-w-0 max-w-[60%] shrink-0 text-right">
-          <p className="font-semibold tabular-nums text-zinc-900">{formatFiat(group.valueKrw, "KRW")}</p>
+        {/* 금액 열은 내용과 화면 폭에 따라 다음 줄로 이동한다. 전체 금액은 유지하고 수량 요약만 축약한다. */}
+        <div className="ml-auto min-w-0 max-w-full flex-[1_1_8rem] text-right">
+          <p className="font-semibold tabular-nums text-zinc-900"><ValueText>{formatFiat(group.valueKrw, "KRW")}</ValueText></p>
           <p className="mt-0.5 text-xs font-medium">
             <GainInline gainKrw={gain} costKrw={group.costKrw} reason={reason} />
           </p>
@@ -157,8 +158,8 @@ function GroupRow({ group }: { group: HoldingGroup }) {
             <li key={member.key} data-surface="holding-group-member" className="flex items-center gap-2 py-2 text-sm">
               <ChainIcon chainId={member.chainId} size={16} />
               <span className="min-w-0 flex-1 truncate text-zinc-700">{member.chainName}</span>
-              <span className="min-w-0 max-w-[60%] shrink-0 text-right">
-                <span className="block tabular-nums font-semibold text-zinc-900">{formatFiat(member.valueKrw, "KRW")}</span>
+              <span className="ml-auto min-w-0 max-w-full flex-[1_1_8rem] text-right">
+                <span className="block tabular-nums font-semibold text-zinc-900"><ValueText>{formatFiat(member.valueKrw, "KRW")}</ValueText></span>
                 <span className="block truncate text-xs tabular-nums text-zinc-400">{member.amount} {member.symbol}</span>
               </span>
             </li>
@@ -180,7 +181,7 @@ function TokenHoldingsSummary({ holdings }: { holdings: Holding[] }): React.JSX.
   return (
     <div data-surface="wallet-holdings-summary" className="mt-3 rounded-card border border-zinc-100 p-4 shadow-card">
       <p className="text-xs text-zinc-500">보유 토큰 평가액</p>
-      <p className="mt-1 text-2xl font-bold tabular-nums text-zinc-900">{formatFiat(summary.valueKrw, "KRW")}</p>
+      <p className="mt-1 text-2xl font-bold tabular-nums text-zinc-900"><ValueText>{formatFiat(summary.valueKrw, "KRW")}</ValueText></p>
       <p className="mt-1 text-sm font-semibold">
         <span className="text-zinc-500">평가손익 </span>
         <GainInline gainKrw={summary.gainKrw} costKrw={summary.costKrw} />
@@ -219,7 +220,7 @@ function NftCard({ nft }: { nft: NftHolding }) {
       </p>
       <p className="truncate text-xs text-zinc-500">{nft.collection}</p>
       <p className="mt-1 text-sm font-semibold tabular-nums text-zinc-900">
-        {formatFiat(nft.floorKrw, "KRW")} <span className="text-xs font-normal text-zinc-400">바닥가</span>
+        <ValueText>{formatFiat(nft.floorKrw, "KRW")}</ValueText> <span className="text-xs font-normal text-zinc-400">바닥가</span>
       </p>
     </li>
   );
@@ -243,12 +244,12 @@ function DefiRow({ position }: { position: DefiPosition }) {
       <BadgedAvatar chainId={position.chainId} ariaLabel={`${position.protocol} · ${position.chainName}`}>
         <ProtocolMark protocol={position.protocol} />
       </BadgedAvatar>
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-[1_1_4rem]">
         <p className="min-w-0 truncate font-semibold text-zinc-900">{position.protocol}</p>
-        <p className="mt-0.5 truncate text-sm text-zinc-500">{meta}</p>
+        <p className="mt-0.5 text-sm text-zinc-500">{meta}</p>
       </div>
       <div className="shrink-0 text-right">
-        <p className="font-semibold tabular-nums text-zinc-900">{formatFiat(position.valueKrw, "KRW")}</p>
+        <p className="font-semibold tabular-nums text-zinc-900"><ValueText>{formatFiat(position.valueKrw, "KRW")}</ValueText></p>
         <p className="mt-0.5 text-xs text-zinc-400">{position.chainName}</p>
       </div>
     </li>
@@ -354,8 +355,8 @@ export function WalletPortfolio({
           <h1 className="text-3xl font-bold tracking-tight text-zinc-900">{walletLabel(verification)}</h1>
         </div>
 
-        <div className="mt-3 flex items-center gap-2">
-          <span className="inline-flex items-center gap-2 rounded-full bg-zinc-100 px-3 py-1.5">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <span className="inline-flex min-w-0 max-w-full flex-wrap items-center gap-2 rounded-full bg-zinc-100 px-3 py-1.5">
             {/* 단일 체인 배지가 아니라 자산이 놓인 체인들을 겹쳐 보인다 — EVM 주소는 어느 한 체인의 것이 아니다. */}
             <span className="flex items-center" aria-label={`네트워크 ${chains.map((chain) => chain.chainName).join(", ")}`}>
               {chains.map((chain, index) => (
@@ -364,7 +365,7 @@ export function WalletPortfolio({
                 </span>
               ))}
             </span>
-            <span className="font-mono text-sm text-zinc-700">{shortHash(address)}</span>
+            <span className="min-w-0 wrap-anywhere font-mono text-sm text-zinc-700">{shortHash(address)}</span>
             <button
               type="button"
               onClick={copyAddress}
@@ -383,7 +384,7 @@ export function WalletPortfolio({
         </div>
 
         <p data-surface="wallet-total" className="mt-5 text-4xl font-bold tracking-tight text-zinc-900">
-          {formatFiat(total, "KRW")}
+          <ValueText>{formatFiat(total, "KRW")}</ValueText>
         </p>
         {provenance === "mock" ? (
           <p className="mt-1 flex items-center gap-2 text-xs text-zinc-400">
@@ -392,7 +393,7 @@ export function WalletPortfolio({
           </p>
         ) : (
           <p data-surface="wallet-total-note" className="mt-1 text-xs text-zinc-400">
-            토큰 평가액: 온체인 잔액 × DexScreener 시세(USD){fx ? `, US$1 = ${formatFiat(fx.usdKrw, "KRW")}로 환산` : ""}{asOf ? ` (${formatAsOf(asOf)} 기준)` : ""}. 취득원가는 거래 내역의 원화 금액을 기준으로 표시합니다. NFT·디파이는 아직 조회하지 않습니다.
+            토큰 평가액: 온체인 잔액 × DexScreener 시세(USD)<ValueText>{fx ? `, US$1 = ${formatFiat(fx.usdKrw, "KRW")}로 환산` : ""}</ValueText>{asOf ? ` (${formatAsOf(asOf)} 기준)` : ""}. 취득원가는 거래 내역의 원화 금액을 기준으로 표시합니다. NFT·디파이는 아직 조회하지 않습니다.
             {unpriced > 0 ? ` 시세 없는 자산 ${unpriced}개는 총액에서 뺐습니다.` : ""}
           </p>
         )}
@@ -433,7 +434,7 @@ export function WalletPortfolio({
         </div>
 
         <div className="mt-3 flex items-center">
-          <label className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 px-3 py-1.5 text-sm text-zinc-600">
+          <label className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full border border-zinc-200 px-3 py-1.5 text-sm text-zinc-600">
             <svg aria-hidden="true" width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
               <path d="M3 5h18M6 12h12M10 19h4" strokeLinecap="round" />
             </svg>
@@ -441,7 +442,7 @@ export function WalletPortfolio({
             <select
               value={network}
               onChange={(event) => setNetwork(event.target.value === "all" ? "all" : Number(event.target.value))}
-              className="bg-transparent pr-1 font-semibold text-zinc-700 focus:outline-none"
+              className="min-w-0 max-w-full bg-transparent pr-1 font-semibold text-zinc-700 focus:outline-none"
             >
               <option value="all">모든 네트워크</option>
               {activeChainIds.map((chain) => (

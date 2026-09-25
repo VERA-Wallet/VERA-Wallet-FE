@@ -1,3 +1,4 @@
+import { ValueText } from "@/components/ui/value-text";
 import { StatusBadge } from "@/components/report/labels";
 import { formatFiat } from "@/lib/format";
 import { halfOpenPeriodLabel } from "@/lib/period";
@@ -100,12 +101,12 @@ export function ReportSummary({
           <div className="mt-3 rounded-card border border-primary-200 bg-white p-5 shadow-card">
             <p className="text-sm text-zinc-500">예상 세금</p>
             <p data-testid="estimated-charge" className="mt-1 text-4xl font-bold tracking-tight text-primary-600">
-              {formatFiat(result.totals.estimatedCharge, result.currency)}
+              <ValueText>{formatFiat(result.totals.estimatedCharge, result.currency)}</ValueText>
             </p>
             <p className="mt-1 text-sm text-zinc-500">실효세율 {result.totals.effectiveRatePercent}%</p>
           </div>
           {/* 답을 이루는 세 덩어리. 답보다 작게 둔다. */}
-          <dl className="mt-3 grid grid-cols-3 gap-2">
+          <dl className="mt-3 flex flex-wrap gap-2">
             {[
               { label: "과세 대상", value: result.totals.taxableGains, note: null, showNoteWhenZero: false },
               // exemptGains는 독일 보유기간 면세뿐 아니라 호주 50% 할인·캐나다 inclusion 비포함분·
@@ -116,9 +117,9 @@ export function ReportSummary({
               { label: "과세표준 제외", value: result.totals.exemptGains, note: "면세·할인·공제 합계", showNoteWhenZero: false },
               { label: "수령 소득", value: result.totals.incomeTotal, note: null, showNoteWhenZero: false },
             ].map((item) => (
-              <div key={item.label} className="rounded-card border border-zinc-200 bg-white p-3 shadow-card">
+              <div key={item.label} className="min-w-0 max-w-full flex-[1_1_max-content] rounded-card border border-zinc-200 bg-white p-3 shadow-card">
                 <dt className="text-xs text-zinc-500">{item.label}</dt>
-                <dd className="mt-1 text-sm font-bold text-zinc-900">{formatFiat(item.value, result.currency)}</dd>
+                <dd className="mt-1 text-sm font-bold text-zinc-900"><ValueText>{formatFiat(item.value, result.currency)}</ValueText></dd>
                 {item.note !== null && (item.showNoteWhenZero || item.value !== "0") ? (
                   <p className="mt-0.5 text-[11px] leading-4 text-zinc-400">{item.note}</p>
                 ) : null}
@@ -130,7 +131,7 @@ export function ReportSummary({
       {result.lossCarryforward !== "0" ? (
         // 룰셋의 lossCarryforward는 이번 기간에서 다 쓰지 못해 **다음 기간으로 넘길** 손실이다.
         <p className="mt-2 text-sm text-zinc-600">
-          이월 손실: {formatFiat(result.lossCarryforward, result.currency)}
+          이월 손실: <ValueText>{formatFiat(result.lossCarryforward, result.currency)}</ValueText>
           {hasNothingToCompute ? " (이 기간에는 상계할 손익이 없었습니다)" : ""}
         </p>
       ) : null}

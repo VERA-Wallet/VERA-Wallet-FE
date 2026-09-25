@@ -23,7 +23,7 @@ export function SummaryCard({
   return (
     <Card>
       <p className="text-sm font-medium text-zinc-500">{label}</p>
-      <p className="mt-2 text-3xl font-bold tracking-tight text-zinc-900">{value}</p>
+      <p data-layout-value="" className="mt-2 min-w-0 max-w-full wrap-anywhere text-3xl font-bold tracking-tight text-zinc-900">{value}</p>
       {supportingText ? (
         <p className="mt-2 text-sm text-zinc-500">{supportingText}</p>
       ) : null}

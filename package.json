@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "test:layout": "node scripts/check-value-layout.mjs",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:proxy-shadow": "vitest run --config vitest.proxy-shadow.config.ts",
     "test:e2e:aside": "bash tests/e2e-aside/run.sh"
