@@ -197,28 +197,28 @@ const REVIEW_TAB = "확인 필요 탭에서";
  * 매핑이 없는 문구는 그대로 보인다 — 지어내지 않는다.
  */
 const EXCLUSION_PLAIN: Record<TaxExclusionReason, Plain> = {
-  "가격 확인 필요": { title: "거래 당시 가격을 확인하지 못했습니다.", action: `${REVIEW_TAB} 가격을 넣으면 계산에 들어갑니다.` },
-  "분류 확인 필요": { title: "어떤 거래인지(매도·이체·수령 등) 아직 정하지 못했습니다.", action: `${REVIEW_TAB} 분류를 정하면 계산에 들어갑니다.` },
+  "가격 확인 필요": { title: "거래 당시 가격을 확인하지 못했습니다.", action: `${REVIEW_TAB} 가격을 입력하면 계산에 반영됩니다.` },
+  "분류 확인 필요": { title: "어떤 거래인지(매도·이체·수령 등) 아직 정하지 못했습니다.", action: `${REVIEW_TAB} 분류를 지정하면 계산에 반영됩니다.` },
   "수량 확인 필요": { title: "수량을 확인하지 못했습니다.", action: `${REVIEW_TAB} 확인해 주세요.` },
-  "방향·분류 불일치": { title: "들어온 거래인지 나간 거래인지와 분류가 서로 맞지 않습니다.", action: `${REVIEW_TAB} 분류를 정하면 계산에 들어갑니다.` },
+  "방향·분류 불일치": { title: "들어온 거래인지 나간 거래인지와 분류가 서로 맞지 않습니다.", action: `${REVIEW_TAB} 분류를 지정하면 계산에 반영됩니다.` },
 };
 
 const MESSAGE_PLAIN: ReadonlyMap<string, Plain> = new Map<string, Plain>([
-  [EXCLUDED_ID_SUFFIX.trim(), { title: "확인이 필요해 계산에서 뺐습니다.", action: `${REVIEW_TAB} 정리하면 계산에 들어갑니다.` }],
-  [FX_RATE_SUFFIX.trim(), { title: "거래일의 환율을 찾지 못해 계산에서 뺐습니다." }],
-  [LIMITATION_MESSAGE.EXCHANGE_APPROXIMATION, { title: "코인끼리 바꾼 거래는 무엇을 받았는지 정보가 없어, 판 것으로 보고 계산했습니다." }],
+  [EXCLUDED_ID_SUFFIX.trim(), { title: "확인이 필요하여 계산에서 제외되었습니다.", action: `${REVIEW_TAB} 누락 정보를 확인하고 보완해 주세요.` }],
+  [FX_RATE_SUFFIX.trim(), { title: "거래일의 환율을 확인하지 못해 계산에서 제외되었습니다." }],
+  [LIMITATION_MESSAGE.EXCHANGE_APPROXIMATION, { title: "교환으로 받은 자산 정보가 없어, 보낸 자산을 매도한 것으로 가정하여 계산했습니다." }],
   [LIMITATION_MESSAGE.ESTIMATED_PRICE, { title: "일부 거래는 추정 가격으로 계산했습니다." }],
-  [LIMITATION_MESSAGE.INTERNAL_TRANSFER, { title: "내 지갑끼리 옮긴 거래는 판 것으로 보지 않았습니다." }],
-  [LIMITATION_MESSAGE.GAS_FEE, { title: "가스비는 돈으로 환산할 정보가 없어 계산에 넣지 않았습니다." }],
-  [LIMITATION_MESSAGE.DUPLICATE_ID, { title: "같은 거래가 두 번 들어와 첫 건만 계산했습니다." }],
+  [LIMITATION_MESSAGE.INTERNAL_TRANSFER, { title: "본인 지갑 간 이체는 매도로 처리하지 않았습니다." }],
+  [LIMITATION_MESSAGE.GAS_FEE, { title: "네트워크 수수료의 법정통화 환산값을 확인하지 못해 계산에 반영하지 않았습니다." }],
+  [LIMITATION_MESSAGE.DUPLICATE_ID, { title: "거래가 중복되어 첫 번째 거래만 계산에 반영했습니다." }],
 ]);
 
 /** 원장(ledger.ts)이 내는 모양 그대로: "원장에 없는 수량 <수량> <심볼>: 취득가액 0으로…". 수량은 십진 문자열만 받는다. */
 const ZERO_BASIS_PATTERN = /^원장에 없는 수량 (\d+(?:\.\d+)?) (\S+):/;
 
 const ZERO_BASIS_PLAIN: Plain = {
-  title: "이 지갑에 산 기록이 없는 수량을 팔았습니다.",
-  action: "그 수량은 취득가액 0원으로 계산해 이익이 실제보다 크게 잡힐 수 있습니다. 취득한 지갑을 더 연결하면 그 값으로 다시 계산합니다.",
+  title: "매도 수량에 해당하는 취득 이력을 확인하지 못했습니다.",
+  action: "해당 수량의 취득가액을 0원으로 계산하여 이익이 실제보다 크게 산출될 수 있습니다. 취득 이력이 있는 지갑을 연결하고 거래 내역을 확인해 주세요.",
 };
 
 /** 1 이상은 소수 둘째 자리, 그 아래는 여섯째 자리까지 — 17자리 수량은 사람에게 정보가 아니다. */

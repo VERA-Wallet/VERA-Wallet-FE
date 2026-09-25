@@ -22,7 +22,7 @@ function ProfileInput({
   field: ProfileField;
   /** `null`은 "아직 모른다". 모를 때 "쓰지 않음"이라 하면 화면이 거짓을 말한다. */
   used: (field: ProfileField) => boolean | null;
-  /** 룰셋 조회 자체가 실패한 상태. 진행 중이라고 말하면 거짓이다. */
+  /** 계산 기준 조회 자체가 실패한 상태. 진행 중이라고 말하면 거짓이다. */
   failed: boolean;
   label: string;
   children: React.ReactNode;
@@ -33,7 +33,7 @@ function ProfileInput({
     <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-zinc-300 px-3 py-2 text-sm text-zinc-400">
       <span>{label}</span>
       <span className="shrink-0">
-        {state !== null ? "이 국가에서 쓰지 않음" : failed ? "룰셋을 불러오지 못함" : "룰셋 확인 중"}
+        {state !== null ? "해당 국가 미적용" : failed ? "계산 기준 조회 실패" : "계산 기준 확인 중"}
       </span>
     </div>
   );
@@ -89,13 +89,13 @@ export function ReportSettings() {
     <ReportSubPage
       surface="report-settings"
       title="계산 설정"
-      lede="여기서 바꾼 값은 곧바로 계산에 들어갑니다. 리포트로 돌아가면 예상 부담과 내려받기 파일이 그 값으로 다시 계산돼 있습니다."
+      lede="설정을 변경하면 예상 세금과 내려받기 자료에 반영됩니다."
     >
       <section className="mt-6 rounded-card border border-zinc-200 bg-white p-4 shadow-card" aria-label="계산 조건">
-        <h2 className="font-bold text-zinc-900">계산 조건 바꾸기</h2>
+        <h2 className="font-bold text-zinc-900">계산 조건</h2>
         <div className="mt-3 grid grid-cols-1 gap-3">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-medium text-zinc-700">이벤트 출처</span>
+            <span className="text-sm font-medium text-zinc-700">거래 자료</span>
             {(["scenario", "wallet"] as const).map((option) =>
               // 지갑 미연결 상태에서 "내 지갑 이벤트"는 고를 수 있는 소스가 아니다.
               // 눌러도 소스가 바뀌는 척하지 않고, 실제로 되는 일(지갑 연결)로 보낸다.
@@ -105,7 +105,7 @@ export function ReportSettings() {
                   href="/connect-wallet"
                   className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm text-zinc-400"
                 >
-                  내 지갑 이벤트 · 연결 필요
+                  연결 지갑 거래 · 연결 필요
                 </Link>
               ) : (
                 <button
@@ -115,7 +115,7 @@ export function ReportSettings() {
                   className={`rounded-lg border px-3 py-1.5 text-sm ${source === option ? "border-primary-500 text-primary-600" : "border-zinc-300 text-zinc-600"}`}
                   onClick={() => setSource(option)}
                 >
-                  {option === "scenario" ? "데모 시나리오" : "내 지갑 이벤트"}
+                  {option === "scenario" ? "예제 데이터" : "연결 지갑 거래"}
                 </button>
               ),
             )}
@@ -159,7 +159,7 @@ export function ReportSettings() {
               onBlur={commitMarginalRate}
             />
             {marginalRateDraft !== marginalRatePercent ? (
-              <p className="mt-1 text-xs text-zinc-500">손을 떼면 {marginalRateDraft}%로 다시 계산합니다.</p>
+              <p className="mt-1 text-xs text-zinc-500">조절을 마치면 {marginalRateDraft}%를 적용하여 다시 계산합니다.</p>
             ) : null}
           </ProfileInput>
 
@@ -226,7 +226,7 @@ export function ReportSettings() {
 
       {result && result.requiredInputs.length > 0 ? (
         <section className="mt-4 rounded-card border border-zinc-200 bg-white p-4 shadow-card" aria-label="추가 입력">
-          <h2 className="font-bold text-zinc-900">지갑 데이터 밖에서 필요한 입력</h2>
+          <h2 className="font-bold text-zinc-900">추가 확인 정보</h2>
           <ul className="mt-3 list-disc pl-5 text-sm text-zinc-600">
             {result.requiredInputs.map((input) => <li key={input}>{input}</li>)}
           </ul>
@@ -240,7 +240,7 @@ export function ReportSettings() {
           <h2 className="font-bold text-zinc-900">연말 시가 입력 (의제취득가액)</h2>
           <p className="mt-2 text-sm text-zinc-500">
             {result.taxYear >= 2027 || previewingEffectiveYear
-              ? "2027-01-01 전 취득해 계속 보유한 자산은 2026-12-31 시가와 실제 취득가액 중 큰 값을 취득가액으로 씁니다. 자산별 시가를 입력하면 손익이 다시 계산됩니다."
+              ? "2027-01-01 전 취득해 계속 보유한 자산은 2026-12-31 시가와 실제 취득가액 중 큰 금액을 취득가액으로 적용합니다. 자산별 시가를 입력하면 손익이 다시 계산됩니다."
               : "2026-12-31 시가를 입력해 두면, 시행(2027) 후 계산에서 의제취득가액으로 반영됩니다."}
           </p>
           {yearEndAssets.length === 0 ? (

@@ -194,7 +194,7 @@ export function ReportVcIssueCard({ evidenceId, stale = false, client: override 
             VC로 받기
           </p>
           <p className="mt-1 text-xs leading-5 text-zinc-500">
-            체인에 기록된 이 계산 근거를 {CREDENTIAL_NAME}로 폰의 증명서 지갑에 받습니다. 추정치이며 공식 문서가 아닙니다.
+            체인에 기록된 이 계산 근거를 {CREDENTIAL_NAME}로 휴대전화의 증명서 지갑에 저장합니다. 예상 세금을 담은 참고 자료이며 공식 문서가 아닙니다.
           </p>
         </div>
         {provenance === "mock" ? <ProvenanceChip provenance="mock" /> : null}
@@ -221,7 +221,7 @@ export function ReportVcIssueCard({ evidenceId, stale = false, client: override 
                 증명서가 발급되었습니다
               </p>
               <p className="mt-1 text-xs leading-5 text-emerald-900">{issuedLine(phase.issuance)}</p>
-              {provenance === "mock" && <p className="mt-1 text-xs leading-5 text-emerald-900">mock 데이터입니다. 실제 발급이 아닙니다.</p>}
+              {provenance === "mock" && <p className="mt-1 text-xs leading-5 text-emerald-900">예제 데이터입니다. 실제 발급이 아닙니다.</p>}
             </div>
           )}
 
@@ -252,11 +252,11 @@ export function ReportVcIssueCard({ evidenceId, stale = false, client: override 
 
       {phase.kind === "presenting" && (
         <div className="space-y-2">
-          {phase.waiting === "issuing" && <Notice tone="info">지갑이 제출했습니다. 발급 서버가 증명서를 만들고 있습니다.</Notice>}
+          {phase.waiting === "issuing" && <Notice tone="info">지갑 승인이 완료되었습니다. 증명서를 발급하고 있습니다.</Notice>}
           <QrPanel
             text={phase.offer.qr.text}
             title="증명서 발급 QR 코드"
-            hint="폰의 증명서 지갑으로 이 QR을 스캔하면 증명서를 받을 수 있습니다. 지갑에서 받기를 승인해야 발급이 끝납니다."
+            hint="휴대전화의 증명서 지갑으로 이 QR을 스캔하면 증명서를 받을 수 있습니다. 지갑에서 받기를 승인해야 발급이 끝납니다."
             expiresAt={phase.offer.expiresAt}
             onCancel={cancel}
             cancelLabel="발급 취소"

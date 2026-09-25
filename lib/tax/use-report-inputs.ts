@@ -168,17 +168,17 @@ export function useReportInputs({
   // 그 상태를 "확인 중"이라 하면 영원히 오지 않을 것을 기다리게 만든다.
   const catalogUnusable = rulesets.data !== undefined && selected === undefined;
   const rulesetsFailed = (rulesets.isError || catalogUnusable) && selected === undefined;
-  const sourceLabel = source === "wallet" ? "지갑 이력" : "데모 시나리오";
+  const sourceLabel = source === "wallet" ? "지갑 이력" : "예제 데이터";
   const countryLabel = isHomeCountry ? "거주국" : "선택한 국가";
   // `result`가 없는 이유는 셋이다 — 룰셋을 못 찾음 / 계산 실패 / 계산 중.
   // 셋을 뭉뚱그려 "적용하는 중"이라 하면 실패한 것을 진행 중이라고 거짓말한다.
   const headerNote = rulesetsFailed
-    ? "적용할 룰셋을 확인하지 못해 아직 계산하지 않았습니다."
+    ? "적용할 계산 기준을 확인하지 못해 아직 계산하지 않았습니다."
     : freshEstimate.state === "error"
-      ? `${sourceLabel}에 ${countryLabel} 룰셋을 적용하지 못했습니다.`
+      ? `${sourceLabel}에 ${countryLabel} 계산 기준을 적용하지 못했습니다.`
       : result === undefined
-        ? `${sourceLabel}에 ${countryLabel} 룰셋을 적용하는 중입니다.`
-        : `${sourceLabel}에 ${countryLabel} 룰셋을 적용한 결과입니다. 계산 보조용이며 확정 판단이 아닙니다.`;
+        ? `${sourceLabel}에 ${countryLabel} 계산 기준을 적용하는 중입니다.`
+        : `${sourceLabel}에 ${countryLabel} 계산 기준을 적용한 결과입니다. 계산 보조용이며 확정 판단이 아닙니다.`;
   // notes에는 규칙 설명과 계산 한계가 섞여 있다. 한계는 전용 패널이 이미 보여준다.
   const limitationMessages = new Set(result?.limitations.map((row) => row.message) ?? []);
   const ruleNotes = (result?.notes ?? []).filter((note) => !limitationMessages.has(note));

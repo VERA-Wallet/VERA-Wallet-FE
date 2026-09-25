@@ -73,7 +73,7 @@ export function VerificationResultView({ result, provenance }: { result: Verific
           </p>
           <p className="mt-1 text-xs text-zinc-500">
             {formatDateTime(result.checkedAt)}
-            {provenance === "mock" && " · mock 데이터 · 실제 검증 아님"}
+            {provenance === "mock" && " · 예제 데이터 · 실제 검증 아님"}
           </p>
         </div>
         {provenance === "mock" ? <ProvenanceChip provenance="mock" /> : null}
@@ -82,7 +82,7 @@ export function VerificationResultView({ result, provenance }: { result: Verific
       <ul className="divide-y divide-zinc-100 rounded-card border border-zinc-200 bg-white px-3" aria-label="검증 항목">
         <Row
           tone={outcomeTone(checks.issuerAndPresentation)}
-          title="신뢰된 발급자 및 제출 증명"
+          title="발급자·제출자 서명 확인"
           detail={checks.issuerAndPresentation === "passed" ? "등록된 발급자의 서명과 제출 서명이 맞습니다" : checks.issuerAndPresentation === "failed" ? "발급자 또는 제출 서명을 확인하지 못했습니다" : ICON[outcomeTone(checks.issuerAndPresentation)].label}
         />
         <Row tone={REVOCATION[checks.revocation].tone} title="폐기 상태" detail={REVOCATION[checks.revocation].text} />
@@ -110,7 +110,7 @@ export function VerificationResultView({ result, provenance }: { result: Verific
           {claims.anchor?.txHash && <CopyValue label="체인 거래" value={claims.anchor.txHash} />}
           {claims.totals ? (
             <dl className="mt-2 space-y-1.5 border-t border-zinc-100 pt-2 text-sm" data-surface="report-vc-verify-amounts">
-              <div className="flex items-center justify-between gap-3"><dt className="text-zinc-500">예상 부담 추정</dt><dd className="font-semibold text-zinc-900">{formatFiat(claims.totals.estimatedCharge, "KRW")}</dd></div>
+              <div className="flex items-center justify-between gap-3"><dt className="text-zinc-500">예상 세금</dt><dd className="font-semibold text-zinc-900">{formatFiat(claims.totals.estimatedCharge, "KRW")}</dd></div>
               <div className="flex items-center justify-between gap-3"><dt className="text-zinc-500">과세 대상</dt><dd className="text-zinc-800">{formatFiat(claims.totals.taxableGains, "KRW")}</dd></div>
               <div className="flex items-center justify-between gap-3"><dt className="text-zinc-500">수령 소득</dt><dd className="text-zinc-800">{formatFiat(claims.totals.incomeTotal, "KRW")}</dd></div>
             </dl>

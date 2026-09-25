@@ -20,7 +20,7 @@ export const TOPIC_LABEL: Record<RuleTopic, string> = {
   CAPITAL_GAINS: "매매차익",
   STAKING: "스테이킹·렌딩",
   AIRDROP: "에어드랍",
-  CRYPTO_TO_CRYPTO: "크립토→크립토",
+  CRYPTO_TO_CRYPTO: "가상자산 간 교환",
   DEFI_LP: "디파이 LP",
   WRAPPING: "랩핑",
   LOSS_OFFSET: "손실 상계",
@@ -28,11 +28,11 @@ export const TOPIC_LABEL: Record<RuleTopic, string> = {
 
 // 배지는 "계산이 무엇을 했는지"만 말한다. 섹션 제목(흔들리는 지점)과 같은 말을 배지에 또 쓰면 줄마다 반복된다.
 export const LIMITATION_LABEL: Record<LimitationKind, string> = {
-  excluded: "계산에서 뺌",
+  excluded: "계산 제외",
   zero_basis: "취득가액 0원으로 계산",
   approximation: "근사 계산",
-  not_reflected: "반영 안 함",
-  other: "그 밖의 한계",
+  not_reflected: "미반영",
+  other: "기타 확인 사항",
 };
 
 export const LIMITATION_STYLE: Record<LimitationKind, string> = {

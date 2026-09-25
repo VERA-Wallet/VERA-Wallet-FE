@@ -58,7 +58,7 @@ describe("빈 지갑 리포트", () => {
       expect(ports.document).not.toHaveBeenCalled();
       expect(ports.record).not.toHaveBeenCalled();
       expect(ports.latest).not.toHaveBeenCalled();
-      expect(screen.getByText("등록할 계산 근거가 없어요")).toBeInTheDocument();
+      expect(screen.getByText("등록 대상 없음")).toBeInTheDocument();
     } finally {
       HTMLAnchorElement.prototype.click = realClick;
     }

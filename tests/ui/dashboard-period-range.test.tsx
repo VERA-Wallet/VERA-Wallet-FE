@@ -223,6 +223,6 @@ describe("요약 기간 고르기", () => {
     // 기간을 좁혔는데 손익이 그대로면 사용자는 계산이 틀렸다고 읽는다 — 무엇이 안 바뀌는지 밝힌다.
     expect(flowChange()).toContain("-₩200,000");
     fireEvent.click(periodButton());
-    expect(screen.getByText(/손익·계산 대상 건수는 과세연도 기준이라 바뀌지 않습니다/)).toBeInTheDocument();
+    expect(screen.getByText(/손익과 계산 대상 건수는 과세연도 기준으로 표시됩니다/)).toBeInTheDocument();
   });
 });

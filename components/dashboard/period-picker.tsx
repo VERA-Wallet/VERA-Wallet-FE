@@ -153,7 +153,7 @@ export function PeriodPicker({
           <div className="mt-3 flex items-center justify-between gap-2 border-t border-zinc-100 pt-3">
             {/* 이 선택이 무엇을 바꾸지 **않는지**를 고르는 자리에서 함께 말한다. */}
             <p className="text-xs leading-5 text-zinc-500">
-              그래프만 이 기간으로 좁힙니다. 손익·계산 대상 건수는 과세연도 기준이라 바뀌지 않습니다.
+              선택한 기간은 그래프에만 적용됩니다. 손익과 계산 대상 건수는 과세연도 기준으로 표시됩니다.
             </p>
             {isDefaultPeriod(selection) ? null : (
               <button type="button" className="shrink-0 text-xs font-semibold text-zinc-500 underline" onClick={reset}>

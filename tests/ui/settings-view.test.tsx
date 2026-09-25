@@ -61,7 +61,7 @@ describe("설정 화면", () => {
   it("금액 가리기 토글은 저장된 기본값을 그대로 켜고 끈다 — 대시보드와 같은 저장값을 공유한다", async () => {
     render(<SettingsView authClient={fakeAuthClient()} />);
 
-    const toggle = screen.getByRole("switch", { name: "금액 가리기로 시작" });
+    const toggle = screen.getByRole("switch", { name: "금액 숨김 설정" });
     expect(toggle).toHaveAttribute("aria-checked", "false");
 
     await userEvent.click(toggle);

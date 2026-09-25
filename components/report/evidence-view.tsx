@@ -31,7 +31,7 @@ function formatByteSize(bytes: number): string {
 
 /** 세금 화면(tax-simulator)이 totals에 붙이는 이름과 같게 둔다 — 같은 값을 두 화면이 다르게 부르지 않는다. */
 const TOTAL_LABELS: readonly { key: string; label: string }[] = [
-  { key: "estimatedCharge", label: "예상 부담 추정" },
+  { key: "estimatedCharge", label: "예상 세금" },
   { key: "taxableGains", label: "과세 대상" },
   { key: "exemptGains", label: "과세표준 제외" },
   { key: "incomeTotal", label: "수령 소득" },
@@ -136,8 +136,7 @@ export function EvidenceView({ merkleRoot: root }: { merkleRoot: string }) {
         {detail ? `${detail.taxYear}년 귀속 계산 근거` : "계산 근거"}
       </h1>
       <p className="mt-3 text-base leading-6 text-zinc-600">
-        OmniOne 체인에 봉인한 기록입니다. 체인이 실어 나른 해시, 그 해시(머클루트)를 이 문서로 다시 계산한 값, 그리고
-        해시가 덮는 판정 전체를 차례로 보입니다.
+        OmniOne 체인에 기록된 계산 근거입니다. 체인의 검증값(해시)과 이 문서에서 재계산한 검증값을 비교하고, 기록에 포함된 거래별 계산 결과를 확인할 수 있습니다.
       </p>
 
       {loaded.status === "missing" ? (
@@ -167,7 +166,7 @@ export function EvidenceView({ merkleRoot: root }: { merkleRoot: string }) {
               <p className="font-semibold">체인 대조</p>
             </div>
             {checkBusy && !check ? (
-              <p className="mt-2">체인에 묻는 중입니다…</p>
+              <p className="mt-2">체인 기록을 조회하고 있습니다…</p>
             ) : check === null ? (
               <>
                 <p className="mt-2 font-semibold">체인을 확인하지 못했습니다</p>
@@ -176,7 +175,7 @@ export function EvidenceView({ merkleRoot: root }: { merkleRoot: string }) {
             ) : check.matches ? (
               <>
                 <p className="mt-2 font-semibold text-primary-700">체인에 이 근거가 있습니다</p>
-                <p className="mt-1">블록 {check.blockNumber}의 거래가 실어 나른 해시가 아래 머클루트와 같습니다.</p>
+                <p className="mt-1">블록 {check.blockNumber}에 기록된 검증값이 아래 전체 검증값(머클루트)과 일치합니다.</p>
               </>
             ) : check.readFromChain ? (
               <>
@@ -193,7 +192,7 @@ export function EvidenceView({ merkleRoot: root }: { merkleRoot: string }) {
               </>
             )}
             {detail?.anchorStatus === "pending" && (
-              <p className="mt-2">체인에 올리는 중입니다. 거래가 실리면 여기서 대조할 수 있습니다.</p>
+              <p className="mt-2">체인에 등록하고 있습니다. 등록 완료 후 기록을 대조할 수 있습니다.</p>
             )}
             <div className="mt-3 flex items-center justify-between gap-3">
               <p className="text-xs opacity-70">{check ? `${formatDateTime(check.checkedAt)} 확인` : ""}</p>
@@ -234,7 +233,7 @@ export function EvidenceView({ merkleRoot: root }: { merkleRoot: string }) {
                       <dd className="mt-0.5 font-medium text-zinc-900">{detail.blockNumber ?? "-"}</dd>
                     </div>
                     <div>
-                      <dt className="text-xs text-zinc-500">봉인한 판정</dt>
+                      <dt className="text-xs text-zinc-500">기록된 계산 결과</dt>
                       {/* 잎에는 헤더 1개가 함께 들어간다 — 사용자에게는 판정 건수로 말한다. */}
                       <dd className="mt-0.5 font-medium text-zinc-900">{judgmentCount}건</dd>
                     </div>
@@ -259,15 +258,15 @@ export function EvidenceView({ merkleRoot: root }: { merkleRoot: string }) {
 
               {/* 3. 루트 — 브라우저가 직접 다시 센 값. 서버가 준 잎이 정말 그 루트를 내는지 여기서 드러난다. */}
               <Card data-surface="evidence-recomputed-root" className={`mt-5 ${intact ? "" : "border border-red-200"}`}>
-                <p className="font-semibold text-zinc-900">이 문서로 다시 계산한 루트</p>
+                <p className="font-semibold text-zinc-900">문서에서 재계산한 검증값</p>
                 <p className="mt-2 break-all font-mono text-xs text-zinc-900">{recomputedRoot}</p>
                 {intact ? (
                   <p className="mt-2 text-sm leading-6 text-zinc-500">
-                    기록된 루트와 같습니다. 아래 판정을 같은 규칙으로 묶으면 체인의 해시가 나옵니다. 한 건이라도 바뀌면 값이 달라집니다.
+                    기록된 검증값과 일치합니다. 아래 계산 결과가 체인 기록과 동일하며, 내용이 변경되면 검증값도 달라집니다.
                   </p>
                 ) : (
                   <p className="mt-2 text-sm leading-6 text-red-700">
-                    기록된 루트와 다릅니다. 문서가 바뀌었거나 손상됐습니다. 아래 판정은 체인의 해시가 덮는 내용이 아닙니다.
+                    기록된 검증값과 일치하지 않습니다. 문서가 변경되었거나 손상되었을 수 있어 체인 기록과 동일한 내용인지 확인할 수 없습니다.
                   </p>
                 )}
               </Card>
@@ -305,7 +304,7 @@ export function EvidenceView({ merkleRoot: root }: { merkleRoot: string }) {
                     ))}
                   </dl>
                   {header.totals.effectiveRatePercent !== undefined && (
-                    <p className="mt-2 text-sm text-zinc-500">실효 {header.totals.effectiveRatePercent}%</p>
+                    <p className="mt-2 text-sm text-zinc-500">실효세율 {header.totals.effectiveRatePercent}%</p>
                   )}
                   {header.lossCarryforward !== "0" && (
                     <p className="mt-2 text-sm text-zinc-600">다음 기간으로 넘기는 손실 {money(header.lossCarryforward)}</p>
@@ -317,12 +316,12 @@ export function EvidenceView({ merkleRoot: root }: { merkleRoot: string }) {
               {/* 5. 판정 잎 — 봉인한 것 전부. 숨기는 행이 없어야 "이 루트가 덮는 내용"이 된다. */}
               <Card className="mt-5">
                 <p className="font-semibold text-zinc-900">
-                  봉인한 판정 {judgmentCount}건
+                  기록된 계산 결과 {judgmentCount}건
                   {fileLeaves.length > 0 && ` · 파일 ${fileLeaves.length}건`}
                 </p>
                 {judgmentCount === 0 ? (
                   <p className="mt-2 text-sm leading-6 text-zinc-500">
-                    판정할 거래가 없어 계산 요약(헤더)만 봉인했습니다.
+                    계산 대상 거래가 없어 계산 요약만 기록했습니다.
                   </p>
                 ) : (
                   <ul className="mt-2 divide-y divide-zinc-100">
@@ -420,15 +419,15 @@ function JudgmentLeafRow({
         className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-zinc-500"
       >
         <ChevronDown aria-hidden className={`size-3.5 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} strokeWidth={2.5} />
-        잎 해시와 증명 경로
+        항목 검증값(해시)와 증명 경로
       </button>
       {proof && (
         <div data-surface="evidence-leaf-proof" className="mt-2 rounded-card border border-zinc-200 bg-zinc-50 p-3">
-          <p className="text-xs text-zinc-500">잎 해시</p>
+          <p className="text-xs text-zinc-500">항목 검증값(해시)</p>
           <p className="mt-0.5 break-all font-mono text-[11px] text-zinc-800">{proof.hash}</p>
           {proof.steps.length > 0 && (
             <>
-              <p className="mt-2 text-xs text-zinc-500">루트까지의 형제 해시 (아래부터 차례로 붙여 올린다)</p>
+              <p className="mt-2 text-xs text-zinc-500">전체 검증값 산출에 필요한 해시(하위 단계부터 표시)</p>
               <ol className="mt-0.5 space-y-1">
                 {proof.steps.map((step, position) => (
                   <li key={position} className="break-all font-mono text-[11px] text-zinc-800">
@@ -440,7 +439,7 @@ function JudgmentLeafRow({
             </>
           )}
           <p className="mt-2 text-xs leading-5 text-zinc-500">
-            이 잎과 형제 해시만으로 루트가 나옵니다. 나머지 거래를 보이지 않고도 이 판정 하나가 봉인됐음을 증명할 수 있습니다.
+            이 항목의 검증값과 증명 경로로 전체 검증값을 재계산합니다. 다른 거래를 공개하지 않고도 이 항목이 기록에 포함되었는지 확인할 수 있습니다.
           </p>
         </div>
       )}
@@ -470,7 +469,7 @@ function FileLeafRow({ leaf, index, leaves }: { leaf: EvidenceFileLeaf; index: n
             className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-zinc-500"
           >
             <ChevronDown aria-hidden className={`size-3 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} strokeWidth={2.5} />
-            잎 해시와 증명 경로
+            항목 검증값(해시)와 증명 경로
           </button>
         </td>
         <td className="py-2 align-top text-zinc-700">{formatByteSize(leaf.byteLength)}</td>
@@ -481,11 +480,11 @@ function FileLeafRow({ leaf, index, leaves }: { leaf: EvidenceFileLeaf; index: n
             <div data-surface="evidence-leaf-proof" className="rounded-card border border-zinc-200 bg-zinc-50 p-3">
               <p className="text-xs text-zinc-500">전체 해시</p>
               <p className="mt-0.5 break-all font-mono text-[11px] text-zinc-800">{leaf.hash}</p>
-              <p className="mt-2 text-xs text-zinc-500">잎 해시</p>
+              <p className="mt-2 text-xs text-zinc-500">항목 검증값(해시)</p>
               <p className="mt-0.5 break-all font-mono text-[11px] text-zinc-800">{proof.hash}</p>
               {proof.steps.length > 0 && (
                 <>
-                  <p className="mt-2 text-xs text-zinc-500">루트까지의 형제 해시 (아래부터 차례로 붙여 올린다)</p>
+                  <p className="mt-2 text-xs text-zinc-500">전체 검증값 산출에 필요한 해시(하위 단계부터 표시)</p>
                   <ol className="mt-0.5 space-y-1">
                     {proof.steps.map((step, position) => (
                       <li key={position} className="break-all font-mono text-[11px] text-zinc-800">
@@ -497,7 +496,7 @@ function FileLeafRow({ leaf, index, leaves }: { leaf: EvidenceFileLeaf; index: n
                 </>
               )}
               <p className="mt-2 text-xs leading-5 text-zinc-500">
-                이 잎과 형제 해시만으로 루트가 나옵니다. 나머지 잎을 보이지 않고도 이 파일 하나가 봉인됐음을 증명할 수 있습니다.
+                파일의 검증값과 증명 경로로 전체 검증값을 재계산합니다. 다른 항목을 공개하지 않고도 이 파일이 기록에 포함되었는지 확인할 수 있습니다.
               </p>
             </div>
           </td>
@@ -519,7 +518,7 @@ function RawLeaf({ leaf }: { leaf: EvidenceLeaf }) {
         className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-zinc-500"
       >
         <ChevronDown aria-hidden className={`size-3.5 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} strokeWidth={2.5} />
-        정본 JSON (해시에 들어간 그대로)
+        검증에 사용된 원본 데이터(JSON)
       </button>
       {open && (
         <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all rounded-card border border-zinc-200 bg-zinc-50 p-3 font-mono text-[11px] leading-4 text-zinc-800">

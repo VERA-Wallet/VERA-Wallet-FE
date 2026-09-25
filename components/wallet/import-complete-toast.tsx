@@ -33,7 +33,7 @@ export function ImportCompleteToast() {
       // 세는 중에는 뜨지 않는다. 먼저 0건이라 말한 뒤 수십 건으로 뒤집히면 어느 쪽이 사실인지 알 수 없다.
       open={state.status === "done" && !state.countingNew && !state.toastDismissed}
       // 0건도 결과다. "불러왔어요"라고만 하면 무엇이 들어왔는지 사용자가 원장에서 찾아 헤맨다.
-      message={count > 0 ? `거래 ${count}건을 불러왔어요` : "새로 불러온 거래가 없어요"}
+      message={count > 0 ? `거래 ${count}건 조회 완료` : "새로 조회된 거래 없음"}
       actionLabel={count > 0 ? "보러 가기" : undefined}
       onAction={count > 0 ? goToNewEvents : undefined}
       onDismiss={dismissToast}

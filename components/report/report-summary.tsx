@@ -40,7 +40,7 @@ export function ReportSummary({
             data-testid="provisional-charge"
             className="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800"
           >
-            단가·부담 잠정
+            단가·예상 세금 잠정
           </span>
         ) : null}
       </div>
@@ -54,7 +54,7 @@ export function ReportSummary({
         >
           <p className="text-sm leading-6 text-zinc-600">
             <span className="font-semibold">비교 중: {comparingLabel}</span> · 아래 금액은 거주국 기준이 아닙니다.
-            신고 근거자료는 거주국으로 돌아가야 만들 수 있습니다.
+            신고 근거자료를 만들려면 거주국 기준으로 변경해 주세요.
           </p>
           <button
             type="button"
@@ -68,7 +68,7 @@ export function ReportSummary({
       {omitsCharge(result.status) ? (
         // 부담을 산출하지 않은 국가는 totals가 전부 0이다. 그대로 카드로 깔면 "낼 게 없다"로 읽힌다 — 이유 자체를 답으로 내보인다.
         <div className="mt-3 rounded-card border border-zinc-300 bg-white p-4 shadow-card">
-          <p className="text-sm text-zinc-500">예상 부담 추정</p>
+          <p className="text-sm text-zinc-500">예상 세금</p>
           <p data-testid="estimated-charge" className="mt-1 text-2xl font-bold text-zinc-500">
             {noChargeHeadline(result.status)}
           </p>
@@ -87,10 +87,10 @@ export function ReportSummary({
         // 답이 0원인 것과 셀 것이 없는 것은 다른 사실이다.
         // "₩0"만 크게 띄우면 사용자는 "올해는 낼 게 없구나"로 읽는다.
         <div className="mt-3 rounded-card border border-zinc-300 bg-white p-4 shadow-card">
-          <p className="text-sm text-zinc-500">예상 부담 추정</p>
+          <p className="text-sm text-zinc-500">예상 세금</p>
           <p data-testid="estimated-charge" className="mt-1 text-2xl font-bold text-zinc-500">계산할 거래 없음</p>
           <p className="mt-2 text-sm leading-6 text-zinc-600">
-            이 과세기간({halfOpenPeriodLabel(result.period)})에 계산에 넣을 거래가 없습니다.
+            이 과세기간({halfOpenPeriodLabel(result.period)})에 계산 대상 거래가 없습니다.
             거래가 있는데도 비어 있다면 아래 과세연도를 확인해 주세요.
           </p>
         </div>
@@ -98,11 +98,11 @@ export function ReportSummary({
         <>
           {/* L1 — 답. 사용자가 이 화면에서 가장 먼저 알고 싶은 한 가지다. */}
           <div className="mt-3 rounded-card border border-primary-200 bg-white p-5 shadow-card">
-            <p className="text-sm text-zinc-500">예상 부담 추정</p>
+            <p className="text-sm text-zinc-500">예상 세금</p>
             <p data-testid="estimated-charge" className="mt-1 text-4xl font-bold tracking-tight text-primary-600">
               {formatFiat(result.totals.estimatedCharge, result.currency)}
             </p>
-            <p className="mt-1 text-sm text-zinc-500">실효 {result.totals.effectiveRatePercent}%</p>
+            <p className="mt-1 text-sm text-zinc-500">실효세율 {result.totals.effectiveRatePercent}%</p>
           </div>
           {/* 답을 이루는 세 덩어리. 답보다 작게 둔다. */}
           <dl className="mt-3 grid grid-cols-3 gap-2">
@@ -130,7 +130,7 @@ export function ReportSummary({
       {result.lossCarryforward !== "0" ? (
         // 룰셋의 lossCarryforward는 이번 기간에서 다 쓰지 못해 **다음 기간으로 넘길** 손실이다.
         <p className="mt-2 text-sm text-zinc-600">
-          다음 기간으로 넘길 손실: {formatFiat(result.lossCarryforward, result.currency)}
+          이월 손실: {formatFiat(result.lossCarryforward, result.currency)}
           {hasNothingToCompute ? " (이 기간에는 상계할 손익이 없었습니다)" : ""}
         </p>
       ) : null}

@@ -29,7 +29,7 @@ describe("dashboard exchange link summary", () => {
     expect(screen.getByRole("region", { name: "연동된 거래소" })).toBeVisible();
     expect(screen.getAllByText("조회 전용")).toHaveLength(2);
     // 배지만 띄우고 목록이 그대로면 화면이 "가져왔다"고 거짓말한다.
-    expect(screen.getByText(/거래소 거래가 아직 들어오지 않습니다/)).toBeVisible();
+    expect(screen.getByText(/실제 거래소 거래는 아래 목록에 반영되지 않습니다/)).toBeVisible();
   });
 
   it("ignores links whose exchange the catalog dropped", () => {

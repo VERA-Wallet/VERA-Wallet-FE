@@ -21,7 +21,7 @@ export function OtherCountries({
   return (
     <section className="mt-6 rounded-card border border-zinc-200 bg-white p-4 shadow-card" aria-label="다른 나라 비교">
       <p className="text-sm leading-6 text-zinc-500">
-        같은 원장에 다른 나라 룰셋을 적용해 봅니다. 신고 근거자료는 거주국 기준으로만 만듭니다.
+        동일한 거래 내역에 국가별 계산 기준을 적용하여 비교합니다. 신고 근거자료는 거주국 기준으로만 생성됩니다.
       </p>
       <section className="mt-3" aria-label="국가 선택">
         {/* 12개 룰셋을 세로로 쌓으면 첫 화면이 칩으로 다 찬다 — 가로 스크롤 스트립으로 접는다. */}
@@ -39,7 +39,7 @@ export function OtherCountries({
             </button>
           ))}
         </div>
-        {loading ? <p className="text-sm text-zinc-500">룰셋을 불러오는 중입니다</p> : null}
+        {loading ? <p className="text-sm text-zinc-500">계산 기준을 불러오는 중입니다</p> : null}
       </section>
     </section>
   );

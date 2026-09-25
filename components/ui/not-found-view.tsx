@@ -6,7 +6,7 @@ import Link from "next/link";
  */
 export function NotFoundView({
   title = "페이지를 찾을 수 없습니다",
-  body = "주소가 바뀌었거나 없는 페이지입니다. 거래 내역과 지갑은 그대로 있으니 아래에서 이동해 주세요.",
+  body = "주소가 변경되었거나 존재하지 않는 페이지입니다. 아래 메뉴에서 이동할 화면을 선택해 주세요.",
   code,
 }: {
   title?: string;

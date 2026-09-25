@@ -37,13 +37,13 @@ export function Limitations({ limitations }: { limitations: TaxEstimate["limitat
   const eventCount = eventCountOf(rows);
 
   return (
-    <section className="mt-6" aria-label="흔들리는 것">
+    <section className="mt-6" aria-label="계산 결과 확인 사항">
       <div className="flex items-baseline justify-between gap-3">
-        <h3 className="font-bold text-zinc-900">이 답이 흔들리는 지점</h3>
+        <h3 className="font-bold text-zinc-900">계산 결과 확인 사항</h3>
         {eventCount > 0 ? <span className="shrink-0 text-sm font-semibold text-zinc-700 tabular-nums">{eventCount}건</span> : null}
       </div>
       <p className="mt-1 text-sm text-zinc-500">
-        정리하면 계산이 더 정확해집니다. 영향이 큰 것부터 보였고, 얼마나 달라지는지는 계산하지 않아 금액으로 말하지 않습니다.
+        계산에서 제외되었거나 추가 확인이 필요한 항목입니다. 항목별 세금 변동 금액은 산출하지 않았습니다.
       </p>
       {groups.map((group) => {
         const open = expanded[group.kind] ?? false;
@@ -91,8 +91,8 @@ export function Limitations({ limitations }: { limitations: TaxEstimate["limitat
         href="/transactions?tab=review"
         className="mt-2 flex items-center justify-between gap-3 rounded-card border border-zinc-200 bg-white p-3 text-sm text-zinc-700 shadow-card"
       >
-        <span>확인 필요 거래에서 바로잡기</span>
-        <span className="shrink-0 font-semibold text-primary-600 underline">확인 필요로</span>
+        <span>확인 필요 거래 검토</span>
+        <span className="shrink-0 font-semibold text-primary-600 underline">거래 확인</span>
       </Link>
     </section>
   );

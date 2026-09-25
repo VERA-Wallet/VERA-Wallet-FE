@@ -69,7 +69,7 @@ export function OpenDidPresentation({ offer, country, onVerified, onError, onCan
     <div className="mx-auto w-fit rounded-xl bg-white p-4">
       <QRCodeSVG value={serializeOpenDidQr(offer)} size={240} marginSize={4} title="Open DID 본인 확인 QR 코드" />
     </div>
-    <p className="text-sm text-zinc-600">Open DID 지갑 앱으로 QR을 스캔하고 정보 제공을 승인하세요.</p>
+    <p className="text-sm text-zinc-600">Open DID 지갑 앱으로 QR을 스캔하고 정보 제공을 승인해 주세요.</p>
     <p role="status" className="text-sm text-zinc-500">인증 대기 중 · 남은 시간 {remaining}초</p>
     <button type="button" className="w-full py-2 text-sm font-medium text-zinc-500" onClick={onCancel}>취소하고 돌아가기</button>
   </div>;

@@ -118,10 +118,10 @@ describe("내역 화면의 지갑 이력 그래프", () => {
 
   it("목록이 갱신 중이거나 실패했으면 이 선이 마지막 상태임을 밝힌다", () => {
     const { rerender } = render(<FlowChart events={wallet} state="pending" />);
-    expect(chart().textContent).toContain("목록을 갱신하는 중입니다");
+    expect(chart().textContent).toContain("거래 내역을 갱신하고 있습니다");
 
     rerender(<FlowChart events={wallet} state="error" />);
-    expect(chart().textContent).toContain("목록을 갱신하지 못했습니다");
+    expect(chart().textContent).toContain("거래 내역을 갱신하지 못해");
 
     rerender(<FlowChart events={wallet} state="ready" />);
     expect(chart().textContent).not.toContain("마지막으로 받은 거래로 그렸습니다");

@@ -143,12 +143,12 @@ offModeOnly("G002 synthetic wallet SIWE red team", () => {
     await page.getByRole("button", { name: "제시 완료" }).click();
     // "DID"·"클레임" 문구는 화면에서 빠졌다. 확인 상태와 거주 국가 표시로 US 선택이 반영됐음을 검증한다.
     // (옛 "US FIFO" 원가법 배지는 이 화면에서 더는 렌더되지 않는다 — 구현 쪽 발견 사항으로 별도 보고.)
-    await expect(page.getByRole("status")).toContainText("본인 확인이 끝났어요");
-    await expect(page.getByRole("status")).toContainText("거주 국가 미국 기준으로 계산할게요");
+    await expect(page.getByRole("status")).toContainText("본인 확인 완료");
+    await expect(page.getByRole("status")).toContainText("거주 국가 미국 기준으로 계산합니다.");
     assertion("US DID claim confirmed with the selected country reflected in the status text", true, "role=status");
     act({ type: "screenshot", selector: "body", target: didScreenshot });
     await page.screenshot({ path: didScreenshot, fullPage: true, type: "jpeg", quality: 85 });
-    record(cases, "wallet-connect-synthetic-provider", "US country selection is confirmed after DID presentation", "role=status shows 본인 확인이 끝났어요 and 거주 국가 미국 기준으로 계산할게요", { status: await page.getByRole("status").innerText() }, true);
+    record(cases, "wallet-connect-synthetic-provider", "US country selection is confirmed after DID presentation", "role=status shows 본인 확인 완료 and 거주 국가 미국 기준으로 계산합니다.", { status: await page.getByRole("status").innerText() }, true);
 
     // 지갑 없는 세션은 로그인 직후 클릭 없이 /connect-wallet로 자동 진행한다(빈 요약을 거치지 않는다).
     act({ type: "navigate", target: "/connect-wallet", selector: "auto-advance" });

@@ -42,7 +42,7 @@ function walletConnectionError(cause: unknown): string {
   let current = cause;
   for (let depth = 0; depth < 6 && current && typeof current === "object"; depth++) {
     const error = current as { code?: number; cause?: unknown };
-    if (error.code === 4001) return "지갑 연결을 취소했습니다. 다시 연결할 수 있어요.";
+    if (error.code === 4001) return "지갑 연결을 취소했습니다. 다시 연결할 수 있습니다.";
     if (error.code === -32002) return "지갑에 진행 중인 요청이 있습니다. MetaMask 앱 또는 지갑 확장 프로그램에서 확인해 주세요.";
     current = error.cause;
   }
@@ -146,7 +146,7 @@ export function ConnectWalletFlow({
       setAddressInput(text.trim());
       setAddressTouched(true);
     } catch {
-      setError("브라우저가 클립보드 접근을 막았어요. 입력창에 직접 붙여넣어 주세요.");
+      setError("브라우저에서 클립보드 접근을 허용하지 않았습니다. 입력창에 직접 붙여넣어 주세요.");
     }
   }
 
@@ -197,7 +197,7 @@ export function ConnectWalletFlow({
     // 확장 프로그램은 이미 승인된 오리진에서 활성 계정을 그대로 돌려준다. 그대로 서명하면 같은 지갑을
     // 다시 등록하는 셈이고 서버는 upsert라 조용히 아무 일도 일어나지 않는다 — 서명을 요구하기 전에 끊는다.
     if (isSameAddress(account.address, boundAddress)) {
-      setError("이미 등록된 지갑이에요. 지갑 확장 프로그램에서 다른 계정으로 바꾼 뒤 다시 시도해 주세요.");
+      setError("이미 등록된 지갑입니다. 지갑 확장 프로그램에서 다른 계정으로 바꾼 뒤 다시 시도해 주세요.");
       return;
     }
     const run = {};
@@ -323,12 +323,12 @@ export function ConnectWalletFlow({
         />
       )}
 
-      <BottomSheet open={confirmOpen} onClose={() => setConfirmOpen(false)} title="이 지갑을 추가할까요?">
+      <BottomSheet open={confirmOpen} onClose={() => setConfirmOpen(false)} title="지갑 추가 확인">
         {assessment.kind === "valid" ? (
           <div className="flex flex-col gap-5">
             <div>
-              <h2 className="text-xl font-bold tracking-tight text-zinc-900">이 지갑을 추가할까요?</h2>
-              <p className="mt-1.5 text-sm leading-[21px] text-zinc-500">추가하면 바로 거래를 불러오기 시작해요.</p>
+              <h2 className="text-xl font-bold tracking-tight text-zinc-900">지갑 추가 확인</h2>
+              <p className="mt-1.5 text-sm leading-[21px] text-zinc-500">지갑을 추가하면 거래 조회가 시작됩니다.</p>
             </div>
             <dl className="rounded-2xl bg-zinc-50">
               <div className="border-b border-zinc-100 px-4 py-3.5">
@@ -352,8 +352,7 @@ export function ConnectWalletFlow({
             <div className="flex gap-2.5 rounded-[14px] bg-amber-50 px-3.5 py-3">
               <Info aria-hidden="true" className="mt-0.5 size-[18px] shrink-0 text-amber-600" />
               <p className="text-[13px] leading-[19px] text-amber-900">
-                서명하지 않으므로 <strong className="font-bold">미검증</strong>으로 표시돼요. 거래 조회·계산은 똑같이 되고, 증빙 자료로 쓰려면 나중에 지갑
-                화면에서 소유 증명을 할 수 있어요.
+                서명하지 않으므로 <strong className="font-bold">미검증</strong>으로 표시됩니다. 거래 조회와 계산은 이용할 수 있습니다. 지갑 소유 확인은 지갑 화면에서 진행할 수 있습니다.
               </p>
             </div>
             {error && <InlineAlert tone="error">{error}</InlineAlert>}
@@ -421,11 +420,11 @@ function MethodStep({
     <>
       <StepHeading
         eyebrow={`${flowLabel} 1/3`}
-        title={adding ? "지갑을 어떻게\n추가할까요?" : "지갑을 어떻게\n연결할까요?"}
+        title={adding ? "지갑 추가 방식 선택" : "지갑 연결 방식 선택"}
         body={
-          (adding ? "지갑을 하나 더 등록하면 그 거래도 함께 불러와요. 로그인은 유지되고 이미 등록한 지갑도 그대로 남아요. " : "") +
-          "어느 쪽이든 거래 내역은 똑같이 불러와요. 차이는 소유 증명 여부만이에요." +
-          (countryCode ? ` 거주국 ${countryCode} 클레임이 확인된 상태예요.` : "")
+          (adding ? "지갑을 추가하면 해당 지갑의 거래를 함께 조회합니다. 로그인 상태와 기존 등록 지갑은 유지됩니다. " : "") +
+          "두 방식 모두 거래 내역을 조회할 수 있습니다. 지갑 서명 방식은 지갑 소유 확인을 함께 진행합니다." +
+          (countryCode ? ` 거주국 ${countryCode} 본인 확인이 완료되었습니다.` : "")
         }
         trailing={<ProvenanceChip provenance={provenance} />}
       />
@@ -436,14 +435,14 @@ function MethodStep({
           iconClass="bg-primary-50 text-primary-500"
           title="주소로 추가"
           badge={<span className="rounded-full bg-primary-100 px-1.5 py-0.5 text-[11px] font-bold text-primary-600">추천</span>}
-          description="하드웨어·모바일·예전 지갑까지 주소만 있으면 돼요"
+          description="공개 주소로 지갑 등록"
           onClick={onAddress}
         />
         <MethodRow
           icon={<KeyRound aria-hidden="true" className="size-[22px]" />}
           iconClass="bg-zinc-100 text-zinc-700"
           title="브라우저 지갑으로 연결"
-          description="MetaMask 앱·브라우저 지갑에서 서명해 소유를 증명해요"
+          description="MetaMask 앱·브라우저 지갑 서명으로 소유 확인"
           onClick={onSiwe}
         />
         {/* 거래소 연동은 아직 파이프라인이 없다. 되는 척하는 입력을 두지 않고 준비 중임만 알린다. */}
@@ -473,7 +472,7 @@ function MethodStep({
 
       <p className="mt-5 flex items-start gap-2.5 px-5 text-xs leading-[18px] text-zinc-400">
         <ShieldCheck aria-hidden="true" className="mt-px size-4 shrink-0" />
-        공개 주소만 사용해요. 개인키를 묻거나 자산을 옮기는 일은 절대 없어요.
+        공개 주소만 사용합니다. 개인키 입력이나 자산 전송을 요청하지 않습니다.
       </p>
     </>
   );
@@ -547,7 +546,7 @@ function AddressStep({
       <StepHeading
         eyebrow={`${flowLabel} 2/3`}
         title={"지갑 주소를\n붙여넣어 주세요"}
-        body={assessment.kind === "empty" ? "0x로 시작하는 42자리 EVM 주소예요. 어느 체인에 있는 지갑이든 한 번만 붙여넣으면 돼요." : null}
+        body={assessment.kind === "empty" ? "0x로 시작하는 42자리 EVM 지갑 주소를 입력해 주세요. 등록한 주소로 지원 네트워크의 거래를 조회합니다." : null}
       />
 
       <div className="mt-6 flex flex-col gap-3 px-5">
@@ -579,14 +578,14 @@ function AddressStep({
         </div>
 
         {assessment.kind === "checksum" ? (
-          <InlineAlert tone="error">주소의 체크섬이 맞지 않아요. 한 글자라도 잘못 붙여넣지 않았는지 확인해 주세요.</InlineAlert>
+          <InlineAlert tone="error">주소의 검증값이 일치하지 않습니다. 복사한 지갑 주소가 정확한지 확인해 주세요.</InlineAlert>
         ) : showFormat ? (
           <InlineAlert tone="error">0x로 시작하는 42자리 주소를 입력해 주세요.</InlineAlert>
         ) : assessment.kind === "ens" ? (
-          <InlineAlert tone="info">ENS 이름은 아직 지원하지 않아요. 0x 주소로 붙여넣어 주세요.</InlineAlert>
+          <InlineAlert tone="info">ENS 이름은 지원하지 않습니다. 0x로 시작하는 지갑 주소를 입력해 주세요.</InlineAlert>
         ) : assessment.kind === "duplicate" ? (
           <InlineAlert tone="info">
-            이미 등록된 지갑이에요.{" "}
+            이미 등록된 지갑입니다.{" "}
             <Link href="/wallets" className="font-semibold text-primary-600 underline-offset-2 hover:underline">
               지갑 목록에서 보기
             </Link>
@@ -598,7 +597,7 @@ function AddressStep({
           <div className="flex items-center gap-2 rounded-[14px] bg-primary-50 px-3.5 py-3">
             <Check aria-hidden="true" className="size-[18px] shrink-0 text-primary-500" strokeWidth={2.5} />
             <div>
-              <p className="text-sm font-bold text-primary-600">EVM 주소를 확인했어요</p>
+              <p className="text-sm font-bold text-primary-600">EVM 주소 확인 완료</p>
               <p className="text-xs leading-[17px] text-zinc-700">체크섬 일치 · 처음 등록하는 주소</p>
             </div>
           </div>
@@ -618,7 +617,7 @@ function AddressStep({
 
       {valid ? (
         <section className="mt-6 px-5" aria-label="조회할 체인">
-          <p className="text-[13px] font-semibold text-zinc-500">이 체인들에서 거래를 찾아볼게요</p>
+          <p className="text-[13px] font-semibold text-zinc-500">거래 조회 대상 네트워크</p>
           <ul className="mt-3 flex flex-wrap gap-2">
             {EVM_CHAIN_IDS.map((chainId) => (
               <li
@@ -631,7 +630,7 @@ function AddressStep({
             ))}
           </ul>
           <p className="mt-3 text-xs leading-[18px] text-zinc-400">
-            EVM 주소는 체인이 달라도 같아서 따로 고르지 않아도 돼요. 거래가 없는 체인은 결과에서 자동으로 빠져요.
+            등록한 주소로 아래 네트워크의 거래를 조회합니다. 거래가 없는 네트워크는 결과에서 제외됩니다.
           </p>
         </section>
       ) : (
@@ -639,7 +638,7 @@ function AddressStep({
           <p className="text-[13px] font-semibold text-zinc-500">어디서 주소를 찾나요?</p>
           <ul className="mt-2.5 flex flex-col gap-1.5 text-[13px] leading-[19px] text-zinc-600">
             <li className="flex gap-2">
-              <span className="text-zinc-400">·</span>MetaMask · Rabby: 상단 계정 이름을 누르면 복사돼요
+              <span className="text-zinc-400">·</span>MetaMask · Rabby: 상단 계정 이름을 눌러 주소 복사
             </li>
             <li className="flex gap-2">
               <span className="text-zinc-400">·</span>Ledger · Trezor: 앱의 계정 화면에서 “Receive” 주소
@@ -717,7 +716,7 @@ function SiweStep({
       <StepHeading
         eyebrow={`${flowLabel} 2/3`}
         title={signingPhase === "redirecting" ? "거래 조회 화면을\n준비하고 있습니다" : signingPhase === "verifying" ? "서명을 확인하고\n있습니다" : account ? "지갑 앱에서 서명을\n승인해 주세요" : "브라우저 지갑을\n연결해 주세요"}
-        body="서명은 이 지갑이 내 것임을 확인하는 용도예요. 가스비가 들지 않고 자산이 움직이지도 않아요."
+        body="서명은 지갑 소유 확인에 사용됩니다. 네트워크 수수료가 발생하거나 자산이 전송되지 않습니다."
       />
 
       <div className="mt-7 flex flex-col gap-3 px-5">
@@ -765,7 +764,7 @@ function SiweStep({
         </ol>
 
         {duplicate ? (
-          <InlineAlert tone="info">이미 등록된 지갑이에요. 지갑 확장 프로그램에서 다른 계정으로 바꾼 뒤 다시 시도해 주세요.</InlineAlert>
+          <InlineAlert tone="info">이미 등록된 지갑입니다. 지갑 확장 프로그램에서 다른 계정으로 바꾼 뒤 다시 시도해 주세요.</InlineAlert>
         ) : null}
         {error && <InlineAlert tone="error">{error}</InlineAlert>}
 
@@ -796,7 +795,7 @@ function SiweStep({
             <button type="button" className="flex h-12 items-center justify-center rounded-[14px] border border-zinc-200 font-semibold disabled:opacity-50" disabled={isConnecting} onClick={onConnect}>
               지갑 연결하기
             </button>
-            <p className="text-xs leading-5 text-zinc-500">모바일에서는 MetaMask로 연결을 선택하세요. 앱에서 연결을 승인한 뒤 이 브라우저로 돌아와 ‘서명하고 추가’를 눌러 주세요. 앱이 열리지 않으면 연결 창의 안내를 따르세요.</p>
+            <p className="text-xs leading-5 text-zinc-500">모바일에서는 MetaMask로 연결을 선택해 주세요. 앱에서 연결을 승인한 뒤 이 브라우저로 돌아와 ‘서명하고 추가’를 눌러 주세요. 앱이 열리지 않으면 연결 창의 안내를 따르세요.</p>
           </>
         )}
         <button type="button" onClick={onFallback} className="flex h-11 items-center justify-center text-[15px] font-semibold text-primary-500">

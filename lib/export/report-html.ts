@@ -44,9 +44,9 @@ import {
 export type ReportMeta = {
   /** 작성 시각(ISO). 문서에 찍히는 유일한 "지금"이다 — 호출자가 주입해 테스트가 고정할 수 있게 한다. */
   generatedAt: string;
-  /** 시행 전 룰셋을 시행됐다고 **가정**하고 계산했는가. 가정은 답 옆에 계속 붙어 있어야 한다. */
+  /** 시행 전 계산 기준을 시행됐다고 **가정**하고 계산했는가. 가정은 답 옆에 계속 붙어 있어야 한다. */
   assumeEffective?: boolean;
-  /** 그 룰셋의 시행 연도. 가정 문구에만 쓴다. */
+  /** 그 계산 기준의 시행 연도. 가정 문구에만 쓴다. */
   effectiveYear?: number;
   /**
    * 이 계산을 OmniOne 체인에 봉인한 기록. 있으면 보고서가 "이 종이의 근거가 체인 어디에 있는지"를
@@ -332,7 +332,7 @@ function exceptionSection(estimate: TaxEstimate, rows: readonly ReportRow[]): st
 
   return `<section class="block">
   <h2>3. 예외 · 판단보류</h2>
-  <p class="lead">계산이 확정하지 못한 항목입니다. 금액영향은 관련 거래의 원화 가액 합이며, 가격을 모르는 거래가 섞이면 <span class="mono">-</span>로 둡니다.</p>
+  <p class="lead">추가 확인이 필요한 항목입니다. 금액영향은 관련 거래의 원화 금액 합계이며 세금 차이를 뜻하지 않습니다. 가격을 확인하지 못한 거래가 포함되면 <span class="mono">-</span>로 표시합니다.</p>
   <table class="exception">
     <colgroup><col class="c-kind"><col><col class="c-ids"><col class="c-amount"></colgroup>
     <thead><tr><th scope="col">구분</th><th scope="col">내용</th><th scope="col">관련 거래</th><th scope="col" class="num">금액영향</th></tr></thead>
@@ -378,16 +378,16 @@ function basisSection(estimate: TaxEstimate | null, events: readonly NormalizedE
   return `<section class="block">
   <h2>4. 계산 근거와 한계</h2>
   <dl class="meta two">
-    ${estimate ? metaRow("적용 룰셋", escapeHtml(`${estimate.countryLabel} · ${estimate.taxYear}년 귀속`)) : ""}
+    ${estimate ? metaRow("적용 계산 기준", escapeHtml(`${estimate.countryLabel} · ${estimate.taxYear}년 귀속`)) : ""}
     ${estimate ? metaRow("취득가액 산정", escapeHtml(estimate.method)) : ""}
     ${estimate ? metaRow("표시 통화", escapeHtml(estimate.currency)) : ""}
     ${metaRow("원장 행 수", `${escapeHtml(events.length.toLocaleString("ko-KR"))}건`)}
     ${bases.length > 0 ? metaRow("근거 조문", escapeHtml(bases.join(" · ")), true) : ""}
   </dl>
   ${anchorBlock(meta)}
-  ${required.length > 0 ? `<h3>지갑 밖에서 확인이 필요한 입력</h3>${list(required)}` : ""}
+  ${required.length > 0 ? `<h3>추가 확인 정보</h3>${list(required)}` : ""}
   ${notes.length > 0 ? `<h3>계산 메모</h3>${list(notes)}` : ""}
-  <p class="disclaimer"><strong>이 리포트는 계산 보조용이며 확정 판단이 아닙니다.</strong> 거주국 룰셋·의제취득가액·거래소 보유분 등에 따라 실제 신고 값은 달라질 수 있습니다. 신고 전 세무 전문가의 확인을 권합니다.</p>
+  <p class="disclaimer"><strong>이 리포트는 세금 계산을 위한 참고 자료입니다. 실제 신고 금액과 다를 수 있습니다.</strong> 거주국 계산 기준·의제취득가액·거래소 보유분 등에 따라 실제 신고 값은 달라질 수 있습니다. 신고 전 세무 전문가의 확인을 권합니다.</p>
 </section>`;
 }
 

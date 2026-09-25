@@ -392,7 +392,7 @@ export function WalletPortfolio({
           </p>
         ) : (
           <p data-surface="wallet-total-note" className="mt-1 text-xs text-zinc-400">
-            토큰 평가액: 온체인 잔액 × DexScreener 시세(USD){fx ? `, US$1 = ${formatFiat(fx.usdKrw, "KRW")}로 환산` : ""}{asOf ? ` (${formatAsOf(asOf)} 기준)` : ""}. 취득원가는 원장의 원화 그대로입니다. NFT·디파이는 아직 조회하지 않습니다.
+            토큰 평가액: 온체인 잔액 × DexScreener 시세(USD){fx ? `, US$1 = ${formatFiat(fx.usdKrw, "KRW")}로 환산` : ""}{asOf ? ` (${formatAsOf(asOf)} 기준)` : ""}. 취득원가는 거래 내역의 원화 금액을 기준으로 표시합니다. NFT·디파이는 아직 조회하지 않습니다.
             {unpriced > 0 ? ` 시세 없는 자산 ${unpriced}개는 총액에서 뺐습니다.` : ""}
           </p>
         )}
@@ -502,7 +502,7 @@ export function WalletPortfolio({
           >
             이 지갑 삭제
           </button>
-          <p className="mt-2 text-center text-xs text-zinc-400">이 지갑에서 불러온 거래가 원장과 리포트에서 빠집니다.</p>
+          <p className="mt-2 text-center text-xs text-zinc-400">이 지갑의 거래가 거래 내역과 리포트에서 제외됩니다.</p>
         </section>
       )}
     </main>

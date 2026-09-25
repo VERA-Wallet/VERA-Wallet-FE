@@ -15,7 +15,7 @@ describe("플랜 화면", () => {
     // 배지만 켜고 결제 성격을 말하지 않으면 사용자는 청구가 일어났다고 믿는다.
     expect(screen.getByTestId("mock-provenance")).toBeInTheDocument();
     expect(screen.getByText("결제는 데모입니다. 실제 청구가 발생하지 않습니다.")).toBeInTheDocument();
-    expect(screen.getByText("플랜은 계산 결과를 바꾸지 않습니다. 잠기는 것은 다운로드뿐입니다.")).toBeInTheDocument();
+    expect(screen.getByText("플랜은 자료 내려받기 범위에만 적용되며 계산 결과에는 영향을 주지 않습니다.")).toBeInTheDocument();
 
     // 무료는 고를 대상이 아니다 — 결제 버튼이 있으면 결제해야 쓸 수 있다고 읽힌다.
     const [free, plus, pro] = planCards();

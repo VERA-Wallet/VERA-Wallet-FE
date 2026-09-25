@@ -39,7 +39,7 @@ async function browserCompleteSession(page: import("@playwright/test").Page, act
   await page.getByRole("button", { name: "KR", exact: true }).click(); addAction("Select country", "role=button[name=KR]");
   await page.getByRole("button", { name: "QR/딥링크 제시" }).click(); addAction("Present DID", "role=button[name=QR/딥링크 제시]");
   await page.getByRole("button", { name: "제시 완료" }).click(); addAction("Confirm DID", "role=button[name=제시 완료]");
-  await expect(page.getByRole("status")).toContainText("본인 확인이 끝났어요");
+  await expect(page.getByRole("status")).toContainText("본인 확인 완료");
   // 지갑 없는 세션은 로그인 직후 클릭 없이 /connect-wallet로 자동 진행한다(빈 요약을 거치지 않는다).
   await page.waitForURL("**/connect-wallet"); addAction("Auto-advance to wallet connection (no wallet yet)", "url=/connect-wallet");
   // 기본 경로는 주소 입력이다. 이 흐름은 SIWE 소유 증명을 검증하므로 브라우저 지갑 행을 고른다.

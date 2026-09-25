@@ -35,7 +35,7 @@ type Phase =
 
 const DISCLOSURE_LABEL: Record<Disclosure, { title: string; body: string }> = {
   basic: { title: "기본 검증", body: "리포트 식별 정보와 무결성(발급자, 폐기 상태, 버전, 체인 기록)만 확인합니다. 금액은 공개되지 않습니다." },
-  with_amounts: { title: "금액 포함 검증", body: "기본 검증에 더해 합계 금액(예상 부담 추정, 과세 대상, 수령 소득)을 KRW로 공개합니다." },
+  with_amounts: { title: "금액 포함 검증", body: "기본 검증에 더해 합계 금액(예상 세금, 과세 대상, 수령 소득)을 KRW로 공개합니다." },
 };
 
 export function ReportVerifyView({ client: override }: { client?: ReportVcClient }) {
@@ -136,7 +136,7 @@ export function ReportVerifyView({ client: override }: { client?: ReportVcClient
         리포트 증명서 검증
       </h1>
       <p className="mt-2 text-sm leading-6 text-zinc-600">
-        리포트 보유자가 폰의 증명서 지갑으로 제출한 {CREDENTIAL_NAME}를 검증합니다. 이 증명서는 추정치이며 공식 문서가 아닙니다. 이 페이지는 로그인 없이 쓸 수 있고, 제출자의 이름이나 신분증 정보는 표시하지 않습니다.
+        리포트 보유자가 휴대전화의 증명서 지갑으로 제출한 {CREDENTIAL_NAME}를 검증합니다. 이 증명서는 추정치이며 공식 문서가 아닙니다. 이 페이지는 로그인 없이 쓸 수 있고, 제출자의 이름이나 신분증 정보는 표시하지 않습니다.
       </p>
 
       <Card className="mt-6 space-y-4">
@@ -148,7 +148,7 @@ export function ReportVerifyView({ client: override }: { client?: ReportVcClient
             {phase.notice && <Notice tone={phase.notice.tone} surface="report-vc-verify-notice">{phase.notice.message}</Notice>}
             <fieldset>
               <legend className="text-sm font-semibold text-zinc-900">공개 범위</legend>
-              <p className="mt-1 text-xs text-zinc-500">리포트 보유자는 폰에서 이 범위에 동의한 뒤 제출합니다. 지원 범위는 검증 서버가 정합니다.</p>
+              <p className="mt-1 text-xs text-zinc-500">리포트 보유자는 휴대전화에서 이 범위에 동의한 뒤 제출합니다. 아래 항목 중 공개 범위를 선택해 주세요.</p>
               <div className="mt-3 space-y-2">
                 {(["basic", "with_amounts"] as const).map((option) => {
                   const supported = disclosures.includes(option);
@@ -193,7 +193,7 @@ export function ReportVerifyView({ client: override }: { client?: ReportVcClient
             <QrPanel
               text={phase.attempt.qr.text}
               title="리포트 증명서 검증 QR 코드"
-              hint="리포트 보유자가 폰의 증명서 지갑으로 이 QR을 스캔하고 제출하면 결과가 여기에 표시됩니다."
+              hint="리포트 보유자가 휴대전화의 증명서 지갑으로 이 QR을 스캔하고 제출하면 결과가 여기에 표시됩니다."
               expiresAt={phase.attempt.expiresAt}
               onCancel={cancel}
               cancelLabel="검증 취소"

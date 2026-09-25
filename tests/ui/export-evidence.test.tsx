@@ -75,8 +75,8 @@ describe("계산 근거 체인 기록", () => {
     renderBasis();
     await screen.findByText("계산 근거 기록");
 
-    expect(screen.getByText(/금액·지갑 주소는 올라가지 않고/)).toBeInTheDocument();
-    expect(await screen.findByText(/이 리포트는 내려받을 때 체인에 등록돼요/)).toBeInTheDocument();
+    expect(screen.getByText(/금액과 지갑 주소는 체인에 저장하지 않습니다/)).toBeInTheDocument();
+    expect(await screen.findByText(/이 리포트는 파일을 내려받을 때 체인에 등록됩니다/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /내려받기로 이동/ })).toHaveAttribute("href", "/export");
     // 고른 귀속연도의 기록을 그 연도로 물어본다. 등록 버튼이 없으므로 record는 절대 부르지 않는다.
     expect(ports.latest).toHaveBeenCalledWith("KR", 2027);
@@ -90,7 +90,7 @@ describe("계산 근거 체인 기록", () => {
     expect(await screen.findByText("체인에 기록됨")).toBeInTheDocument();
     // 잎 수(헤더+판정+파일 2개)가 아니라 지금 계산의 판정 건수로 말한다.
     expect(screen.getByText("5건")).toBeInTheDocument();
-    expect(screen.queryByText(/이 리포트는 내려받을 때 체인에 등록돼요/)).toBeNull();
+    expect(screen.queryByText(/이 리포트는 파일을 내려받을 때 체인에 등록됩니다/)).toBeNull();
     expect(screen.queryByText(/기록한 뒤로|다음 내려받기 때 새로 등록/)).toBeNull();
     expect(screen.queryByRole("button")).toBeNull();
     expect(ports.record).not.toHaveBeenCalled();
@@ -119,12 +119,12 @@ describe("계산 근거 체인 기록", () => {
     ports.latest.mockResolvedValue(recordOf(OTHER_ROOT));
     renderBasis();
 
-    expect(await screen.findByText(/계산이 바뀌어 다음 내려받기 때 새로 등록돼요/)).toBeInTheDocument();
+    expect(await screen.findByText(/계산 결과가 변경되어 다음 내려받기 시 새로 등록됩니다/)).toBeInTheDocument();
     // 옛 기록을 "현재 근거"로 읽히게 하는 배지는 달지 않는다.
     expect(screen.queryByText("체인에 기록됨")).toBeNull();
     // 기록이 덮는 판정 수를 이 카드는 모른다(잎을 안 갖고 있다) — 지어내지 않는다.
     expect(screen.queryByText(/^\d+건$/)).toBeNull();
-    expect(screen.queryByText(/이 리포트는 내려받을 때 체인에 등록돼요/)).toBeNull();
+    expect(screen.queryByText(/이 리포트는 파일을 내려받을 때 체인에 등록됩니다/)).toBeNull();
     expect(ports.record).not.toHaveBeenCalled();
   });
 
@@ -141,7 +141,7 @@ describe("계산 근거 체인 기록", () => {
   it("계산이 달라진 뒤에도 링크는 체인에 실제로 올라간 루트를 가리킨다", async () => {
     ports.latest.mockResolvedValue(recordOf(OTHER_ROOT));
     renderBasis();
-    await screen.findByText(/계산이 바뀌어 다음 내려받기 때 새로 등록돼요/);
+    await screen.findByText(/계산 결과가 변경되어 다음 내려받기 시 새로 등록됩니다/);
 
     // 지금 화면의 루트가 아니라 기록된 루트다. 화면 값으로 바꾸면 체인에 없는 근거를 열게 된다.
     expect(screen.getByRole("link", { name: /체인에서 직접 확인/ })).toHaveAttribute("href", `/export/evidence/${OTHER_ROOT}`);

@@ -58,7 +58,7 @@ describe("wallet removal", () => {
     // 한 번 탭으로 지워지지 않는다 — 시트가 무엇이 사라지는지 먼저 말한다.
     await userEvent.click(screen.getByRole("button", { name: "이 지갑 삭제" }));
     expect(ports.removeWallet).not.toHaveBeenCalled();
-    expect(await screen.findByText("이 지갑을 삭제할까요?")).toBeInTheDocument();
+    expect(await screen.findByText("지갑 삭제 확인")).toBeInTheDocument();
     expect(screen.getByText(/체인에 이미 기록한 계산 근거는 지워지지 않습니다/)).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "삭제" }));
@@ -71,7 +71,7 @@ describe("wallet removal", () => {
     await renderConnected();
     await userEvent.click(screen.getByRole("button", { name: "이 지갑 삭제" }));
     await userEvent.click(screen.getByRole("button", { name: "취소" }));
-    await waitFor(() => expect(screen.queryByText("이 지갑을 삭제할까요?")).toBeNull());
+    await waitFor(() => expect(screen.queryByText("지갑 삭제 확인")).toBeNull());
     expect(ports.removeWallet).not.toHaveBeenCalled();
     expect(nav.push).not.toHaveBeenCalled();
   });
@@ -252,7 +252,7 @@ describe("wallet home (portfolio of one registered wallet)", () => {
     // 예전 BE(엔드포인트 없음)는 "지갑을 등록하라"가 아니라 배포 확인을 안내한다.
     ports.getHoldings.mockRejectedValueOnce(new HoldingsFetchError("backend_endpoint_missing", "missing"));
     renderWithQuery(<WalletHome walletAddress={WALLET} />);
-    expect(await screen.findByText(/서버 배포 버전을 확인해 주세요/)).toBeInTheDocument();
+    expect(await screen.findByText(/현재 보유 자산 조회를 이용할 수 없습니다/)).toBeInTheDocument();
   });
 
   it("keeps the last portfolio on a background refetch failure and says it is stale, instead of blanking it", async () => {
@@ -297,7 +297,7 @@ describe("wallet home (portfolio of one registered wallet)", () => {
     const note = container.querySelector('[data-surface="wallet-total-note"]')!;
     expect(note).toHaveTextContent("온체인 잔액 × DexScreener 시세");
     expect(note).toHaveTextContent("US$1 = ₩1,390");
-    expect(note).toHaveTextContent("취득원가는 원장의 원화 그대로입니다");
+    expect(note).toHaveTextContent("취득원가는 거래 내역의 원화 금액을 기준으로 표시합니다");
     expect(note).toHaveTextContent("NFT·디파이는 아직 조회하지 않습니다");
     expect(note).toHaveTextContent("시세 없는 자산 1개는 총액에서 뺐습니다");
     const coverage = container.querySelector('[data-surface="wallet-coverage"]')!;

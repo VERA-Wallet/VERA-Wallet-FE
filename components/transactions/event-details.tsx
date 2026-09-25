@@ -143,7 +143,7 @@ export function EventDetails({
         <h2 className="text-lg font-bold text-zinc-900">거래 상세</h2>
         <button type="button" className="-mr-2 px-2 py-1 text-sm font-medium text-zinc-500" onClick={onClose}>닫기</button>
       </div>
-      {conflictMessage ? <p role="alert" className="mt-3 rounded-lg bg-orange-50 px-3 py-2 text-sm text-orange-700">다른 곳에서 변경됨, 다시 확인</p> : null}
+      {conflictMessage ? <p role="alert" className="mt-3 rounded-lg bg-orange-50 px-3 py-2 text-sm text-orange-700">금액이 변경되었습니다. 최신 내용을 확인해 주세요.</p> : null}
       {saved && !conflictMessage ? <p role="status" className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">분류를 저장했습니다.</p> : null}
 
       <div className="mt-4 flex items-baseline justify-between gap-3">
@@ -193,7 +193,7 @@ export function EventDetails({
           <div className="mt-2 space-y-2 text-sm">
             <p className="text-zinc-700">
               <span className="font-semibold text-rose-700">내보낸 자산</span> {formatSignedTokenAmount(event)} {assetTicker(event)}
-              <span className="text-zinc-500"> · 손익은 아래 근거표가 말합니다.</span>
+              <span className="text-zinc-500"> · 손익 계산은 아래 근거표에서 확인할 수 있습니다.</span>
             </p>
             <div className="rounded-lg bg-white p-3">
               <p className="font-semibold text-emerald-700">받은 자산 {formatSignedTokenAmount(swapInLeg)} {assetTicker(swapInLeg)}</p>
@@ -267,7 +267,7 @@ export function EventDetails({
       </dl>
       {gainRows.length > 0 ? (
         <section className="mt-4 rounded-lg bg-zinc-50 p-3">
-          <h3 className="text-sm font-semibold text-zinc-700">손익은 이렇게 나왔습니다</h3>
+          <h3 className="text-sm font-semibold text-zinc-700">손익 산출 내역</h3>
           <div className="mt-3 space-y-4">
             {gainRows.map((row, index) => (
               <div key={`${row.eventId}-${row.leg}-${index}`}>
@@ -316,7 +316,7 @@ export function EventDetails({
                       {row.acquiredAt ? formatDate(row.acquiredAt) : row.lots > 1 ? "취득분마다 다름" : "-"}
                     </dd>
                   </div>
-                  <div><dt className="text-zinc-500">소비한 취득분</dt><dd className="mt-1 font-medium text-zinc-900">{row.lots}개</dd></div>
+                  <div><dt className="text-zinc-500">원가에 반영한 취득 건수</dt><dd className="mt-1 font-medium text-zinc-900">{row.lots}개</dd></div>
                 </dl>
               </div>
             ))}
@@ -325,7 +325,7 @@ export function EventDetails({
       ) : null}
       {isDuplicate ? (
         <section className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
-          같은 이벤트 id가 두 번 이상 들어와, 첫 건의 판정을 이 거래에 붙이지 않았습니다. 확인이 필요합니다.
+          동일한 거래 식별자가 중복되어 과세 판정을 적용하지 못했습니다. 거래 내역을 확인해 주세요.
           {needsReview(event) ? ` · ${reviewReason(event)}` : ""}
         </section>
       ) : isExcluded ? (
@@ -336,12 +336,12 @@ export function EventDetails({
       ) : inPeriod !== null && effectiveClassification(event) === "INTERNAL_TRANSFER" ? (
         <section className="mt-4 rounded-lg bg-zinc-50 p-3 text-sm text-zinc-600">
           {needsReview(event)
-            ? `자기 지갑 간 이체라 처분으로 보지 않았습니다. 다만 ${reviewReason(event)} 상태라 확인이 필요합니다.`
-            : "자기 지갑 간 이체라 처분으로 보지 않았습니다. 확인이 필요한 건이 아니라 과세 대상이 아닌 것입니다."}
+            ? `본인 지갑 간 이체로 분류되어 과세 대상 처분에서 제외되었습니다. 추가 확인 사항: ${reviewReason(event)}.`
+            : "본인 지갑 간 이체로 분류되어 과세 대상 처분에서 제외되었습니다."}
         </section>
       ) : judgmentRows && judgmentRows.length > 0 ? (
         <section className="mt-4 rounded-lg bg-zinc-50 p-3">
-          <h3 className="text-sm font-semibold text-zinc-700">이 손익이 계산에서 어떻게 쓰였나</h3>
+          <h3 className="text-sm font-semibold text-zinc-700">손익 반영 내역</h3>
           <div className="mt-2 space-y-2 text-sm">
             {judgmentRows.map((row, index) => (
               <div key={`${row.eventId}-${row.leg}-${index}`} className="text-zinc-700">
@@ -374,15 +374,15 @@ export function EventDetails({
       )}
       {marginalContribution !== undefined ? (
         <details className="mt-4 rounded-lg bg-zinc-50 p-3">
-          <summary className="cursor-pointer text-sm font-semibold text-zinc-700 marker:text-zinc-400">이 거래가 없었다면</summary>
+          <summary className="cursor-pointer text-sm font-semibold text-zinc-700 marker:text-zinc-400">거래 제외 시 예상 세금 변화</summary>
           <p className="mt-2 text-sm text-zinc-700">
             {isZero(marginalContribution)
-              ? "총액이 그대로입니다. 부담에 영향 없음"
+              ? "이 거래를 제외해도 예상 세금은 같습니다."
               : isNegative(marginalContribution)
-                ? <>이 거래를 지우면 부담이 늘어납니다. 취득원가가 사라지기 때문입니다 · {formatFiat(marginalContribution, currency)}</>
+                ? <>이 거래를 제외하면 취득원가가 감소하여 예상 세금이 증가합니다. · {formatFiat(marginalContribution, currency)}</>
                 : formatFiat(marginalContribution, currency)}
           </p>
-          <p className="mt-1 text-sm text-zinc-500">부담을 건별로 나눠 넣을 수 없어, 이 거래를 뺀 경우의 차이를 보입니다.</p>
+          <p className="mt-1 text-sm text-zinc-500">거래별 납부 금액이 아니라, 이 거래를 제외했을 때의 예상 세금 차이입니다.</p>
         </details>
       ) : null}
       {/* 중복 레코드는 자기 판정이 없다. 나라별 비교도 id로 잡히므로 첫 건의 결과를 물려받으면 안 된다. */}

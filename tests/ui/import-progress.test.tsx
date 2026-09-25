@@ -260,7 +260,7 @@ describe("불러오기 모달", () => {
     // "취소"라고 쓰면 동기화가 멈춘다는 뜻이 되는데, 실제로 멈출 수단이 없다.
     expect(screen.queryByRole("button", { name: /취소/ })).toBeNull();
     // 닫은 뒤 결과를 어디서 보는지까지 말한다 — "계속된다"만으로는 사용자가 다시 찾아올 길을 모른다.
-    expect(screen.getByText("창을 닫아도 불러오기는 계속돼요. 끝나면 화면 위에 알려드릴게요.")).toBeTruthy();
+    expect(screen.getByText("창을 닫아도 거래 조회는 계속됩니다. 완료되면 화면 상단에 알림이 표시됩니다.")).toBeTruthy();
   });
 
   it("Esc는 모달을 닫되 취소가 아니라 백그라운드로 보낸다", () => {

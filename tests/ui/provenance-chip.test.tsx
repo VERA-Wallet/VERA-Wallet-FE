@@ -5,7 +5,7 @@ import { MockProvenanceChip, ProvenanceChip } from "@/components/ui/provenance-c
 describe("출처 배지", () => {
   it("mock이면 예전 그대로 'mock 데이터'를 같은 testid로 그린다 — AC6 e2e 계약이 이 글자를 본다", () => {
     render(<ProvenanceChip provenance="mock" />);
-    expect(screen.getByTestId("mock-provenance")).toHaveTextContent("mock 데이터");
+    expect(screen.getByTestId("mock-provenance")).toHaveTextContent("예제 데이터");
   });
 
   it("live면 '실데이터'라고 말한다 — 실모드에서 화면이 mock이라고 거짓말하지 않게", () => {

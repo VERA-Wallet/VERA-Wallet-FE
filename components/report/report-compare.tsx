@@ -19,7 +19,7 @@ export function ReportCompare() {
   const { result, rulesets, country, setCountry, comparingLabel, hasNothingToCompute, returnHome } = useReportContext();
 
   return (
-    <ReportSubPage surface="report-compare" title="다른 나라였다면">
+    <ReportSubPage surface="report-compare" title="국가별 계산 비교">
       <OtherCountries
         rulesets={rulesets.data ?? []}
         country={country}
@@ -36,7 +36,7 @@ export function ReportCompare() {
             <StatusBadge status={result.status} />
           </div>
           <div className="mt-3 rounded-card border border-zinc-200 bg-white p-4 shadow-card">
-            <p className="text-sm text-zinc-500">예상 부담 추정</p>
+            <p className="text-sm text-zinc-500">예상 세금</p>
             {/* 답을 내지 않은 상태(시행 전·규칙 미확정·셀 것 없음)를 0원으로 적으면 "낼 게 없다"로 읽힌다.
                 메인과 같은 규칙으로 이유를 그대로 말한다. */}
             <p data-testid="compare-charge" className="mt-1 text-3xl font-bold tracking-tight text-zinc-900">
@@ -47,7 +47,7 @@ export function ReportCompare() {
                   : formatFiat(result.totals.estimatedCharge, result.currency)}
             </p>
             {!omitsCharge(result.status) && !hasNothingToCompute ? (
-              <p className="mt-1 text-sm text-zinc-500">실효 {result.totals.effectiveRatePercent}%</p>
+              <p className="mt-1 text-sm text-zinc-500">실효세율 {result.totals.effectiveRatePercent}%</p>
             ) : null}
           </div>
           <dl className="mt-3 grid grid-cols-1 gap-2">

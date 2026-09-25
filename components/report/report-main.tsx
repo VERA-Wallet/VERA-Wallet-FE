@@ -94,7 +94,7 @@ export function ReportMain() {
             <div className="mt-2 flex flex-wrap gap-2">
               {openedOnPastYear ? (
                 <span className="inline-flex rounded-full bg-zinc-200 px-2.5 py-1 text-xs font-semibold text-zinc-700">
-                  {latestActivityYear}년으로 열림
+                  {latestActivityYear}년 거래 기준
                 </span>
               ) : null}
               {previewingEffectiveYear ? (
@@ -106,7 +106,7 @@ export function ReportMain() {
           ) : null}
           {openedOnPastYear || previewingEffectiveYear ? (
             <details className="mt-1">
-              <summary className="cursor-pointer text-xs font-medium text-zinc-400">이 연도로 연 이유</summary>
+              <summary className="cursor-pointer text-xs font-medium text-zinc-400">귀속연도 선택 기준</summary>
               {openedOnPastYear ? (
                 <p className="mt-1 text-sm text-zinc-500">
                   {currentYear}년에는 계산할 거래가 없어 마지막 거래가 있는 {latestActivityYear}년으로 열었습니다.
@@ -114,7 +114,7 @@ export function ReportMain() {
               ) : null}
               {previewingEffectiveYear ? (
                 <p className="mt-1 text-sm text-zinc-500">
-                  아직 시행 전인 {effectiveTaxYear}년 기준으로 미리 계산했습니다. 시행일이 지나야 확정된 답이 됩니다.
+                  아직 시행 전인 {effectiveTaxYear}년 시행 예정 기준으로 계산한 참고 금액입니다. 실제 신고 금액과 다를 수 있습니다.
                 </p>
               ) : null}
             </details>
@@ -129,7 +129,7 @@ export function ReportMain() {
       {!walletConnected ? (
         <div className="mt-3 flex items-start justify-between gap-3 rounded-card border border-zinc-200 bg-zinc-50 p-3">
           <p className="text-sm leading-6 text-zinc-600">
-            데모 시나리오로 보는 중입니다. 지갑을 연결하면 이 화면이 내 거래로 다시 계산됩니다.
+            예제 데이터 기준입니다. 지갑을 연결하면 이 화면이 내 거래로 다시 계산됩니다.
           </p>
           <Link
             href="/connect-wallet"
@@ -145,9 +145,9 @@ export function ReportMain() {
         <div role="alert" className="mt-4 flex flex-wrap items-center gap-3 text-sm text-red-600">
           <span>
             {rulesets.isError
-              ? "룰셋 목록을 불러오지 못했습니다."
-              : `이 목록에 ${country} 룰셋이 없습니다.`}{" "}
-            룰셋을 알기 전에는 계산하지 않습니다.
+              ? "계산 기준 목록을 불러오지 못했습니다."
+              : `이 목록에 ${country} 계산 기준이 없습니다.`}{" "}
+            계산 기준 확인 후 계산할 수 있습니다.
           </span>
           <button
             type="button"
@@ -167,7 +167,7 @@ export function ReportMain() {
       ) : null}
       {freshEstimate.state === "disabled" && !rulesetsFailed ? (
         // 요청을 보낸 적이 없다. "불러오는 중"이라 하면 하지 않은 일을 하고 있다고 말하는 것이다.
-        <p className="mt-6 text-sm text-zinc-500">적용할 룰셋을 확인하는 중입니다. 아직 계산하지 않았습니다.</p>
+        <p className="mt-6 text-sm text-zinc-500">적용할 계산 기준을 확인하는 중입니다. 아직 계산하지 않았습니다.</p>
       ) : null}
 
       {/* 2. 시행 가정 안내 — 고른 연도가 시행 전일 때만. 시행 예정 룰셋이면 가정을 켜고 열되(사용자 결정),
@@ -177,7 +177,7 @@ export function ReportMain() {
           <div data-surface="assume-effective" className="mt-5 rounded-card border border-amber-200 bg-amber-50 p-4">
             <div className="flex items-start justify-between gap-3">
               <p className="text-sm leading-6 text-amber-900">
-                <span className="font-semibold">시행 가정으로 보는 중입니다</span> · 아래 금액은 {taxYear}년 거래에{" "}
+                <span className="font-semibold">시행 예정 기준 적용</span> · 아래 금액은 {taxYear}년 거래에{" "}
                 {effectiveTaxYear}년 시행 규칙을 적용했다고 가정한 값이며, 실제 부담이 아닙니다.
               </p>
               <button
@@ -190,7 +190,7 @@ export function ReportMain() {
               </button>
             </div>
             <details className="mt-2">
-              <summary className="cursor-pointer text-xs font-medium text-amber-800">시행 전인 지금 실제 부담은</summary>
+              <summary className="cursor-pointer text-xs font-medium text-amber-800">시행 전 과세 여부</summary>
               <p className="mt-1 text-sm leading-6 text-amber-900">
                 {taxYear}년은 아직 시행 전({effectiveTaxYear}년 시행)이라 실제 부담은 0원입니다.
               </p>
@@ -294,7 +294,7 @@ export function ReportMain() {
       <BottomSheet open={yearPickerOpen} onClose={() => setYearPickerOpen(false)} title="귀속연도 선택">
         <h2 className="text-lg font-bold text-zinc-900">귀속연도 선택</h2>
         <p className="mt-1 text-sm leading-6 text-zinc-500">
-          고른 연도로 리포트를 다시 계산합니다. 시행 전 연도는 정직하게 &ldquo;시행 전&rdquo;으로 표시됩니다.
+          선택한 귀속연도로 리포트를 다시 계산합니다. 과세 시행 전 연도에는 &ldquo;시행 전&rdquo;이 표시됩니다.
         </p>
         <ul className="mt-4 grid grid-cols-1 gap-2">
           {[...yearOptions].reverse().map((year) => {

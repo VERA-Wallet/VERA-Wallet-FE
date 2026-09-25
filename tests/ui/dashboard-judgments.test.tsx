@@ -275,7 +275,7 @@ describe("거래 탭이 세금 대신 판정 도장을 찍는다", () => {
     // 목록 재설계로 도장은 목록이 아니라 상세에서 말한다: 매수(취득) 행을 열어 확인한다.
     const acquired = events.find((event) => derived.events.some((tax) => tax.id === event.id && tax.kind === "ACQUIRE"))!;
     const sheet = await openDetail(acquired.id);
-    await waitFor(() => expect(sheet.textContent).toMatch(/이 손익이 계산에서 어떻게 쓰였나/), { timeout: SETTLE_TIMEOUT });
+    await waitFor(() => expect(sheet.textContent).toMatch(/손익 반영 내역/), { timeout: SETTLE_TIMEOUT });
   });
 
   it("시행 전 국가에서도 내역은 부담을 말하지 않고 행 도장만 남긴다", async () => {
@@ -420,7 +420,7 @@ describe("거래 탭이 세금 대신 판정 도장을 찍는다", () => {
     expect(outside.textContent ?? "", "취득 행의 손익 셀 밖에는 통화 금액이 새면 안 된다").not.toMatch(/[€₩$]/);
     // 도장(취득)과 그 금액이 세금이 아니라 **취득가액**임은 이제 상세에서 밝힌다.
     fireEvent.click(row);
-    const section = (await screen.findByText("이 손익이 계산에서 어떻게 쓰였나")).parentElement!;
+    const section = (await screen.findByText("손익 반영 내역")).parentElement!;
     await waitFor(() => expect(section.textContent).toContain("취득가액"), { timeout: SETTLE_TIMEOUT });
     await waitFor(() => expect(section.textContent).toMatch(/취득/), { timeout: SETTLE_TIMEOUT });
   });
@@ -470,7 +470,7 @@ describe("판정도 제외도 아닌 거래가 침묵하지 않는다", () => {
     await settled();
     // "이동 · 처분 아님" 도장은 목록에서 빠지고, 그 이유는 이제 상세가 문장으로 밝힌다.
     const sheet = await openDetail(internal!.id);
-    expect(sheet.textContent).toMatch(/자기 지갑 간 이체라 처분으로 보지 않았습니다/);
+    expect(sheet.textContent).toMatch(/본인 지갑 간 이체로 분류되어 과세 대상 처분에서 제외되었습니다/);
   });
 });
 
@@ -492,12 +492,12 @@ describe("아키텍트가 지적한 P1 경계", () => {
     const rows = [...container.querySelectorAll("section .mt-3.grid.gap-3 > button")] as HTMLElement[];
     expect(rows.length).toBeGreaterThan(0);
     // 판정 유무는 편집 폼의 "취득가액" 같은 라벨이 아니라, 판정을 말하는 섹션·상태 문장으로 가른다.
-    const stated = /이 손익이 계산에서 어떻게 쓰였나|손익은 이렇게 나왔습니다|계산에 들어가지 않았습니다|처분으로 보지 않았습니다|같은 이벤트 id가 두 번 이상|판정 결과를 아직 불러오는 중입니다|판정 결과를 불러오지 못했습니다|과세기간 계산에서 판정을 찾지 못했습니다|밖이라 이 계산에|기준 기간을 확인하지 못해/;
+    const stated = /손익 반영 내역|손익 산출 내역|계산에 들어가지 않았습니다|과세 대상 처분에서 제외되었습니다|동일한 거래 식별자가 중복되어|판정 결과를 아직 불러오는 중입니다|판정 결과를 불러오지 못했습니다|과세기간 계산에서 판정을 찾지 못했습니다|밖이라 이 계산에|기준 기간을 확인하지 못해/;
     for (const row of rows) {
       fireEvent.click(row);
       const sheet = (await screen.findByText("거래 상세")).closest("div")!.parentElement!;
       await waitFor(
-        () => expect(stated.test(sheet.textContent ?? ""), `상세가 침묵한 거래: ${row.getAttribute("data-event-id")}`).toBe(true),
+        () => expect(stated.test(sheet.textContent ?? ""), `상세가 침묵한 거래: ${row.getAttribute("data-event-id")} / ${sheet.textContent}`).toBe(true),
         { timeout: SETTLE_TIMEOUT },
       );
     }
@@ -561,7 +561,7 @@ describe("2차 리뷰 P1 경계", () => {
     // 두 번째 레코드는 첫 건의 판정을 물려받지 않는다 — "중복 · 확인 필요"는 이제 상세가 밝힌다.
     fireEvent.click(cards[1]);
     const sheet = (await screen.findByText("거래 상세")).closest("div")!.parentElement!;
-    expect(sheet.textContent).toMatch(/같은 이벤트 id가 두 번 이상 들어와/);
+    expect(sheet.textContent).toMatch(/동일한 거래 식별자가 중복되어/);
     // 확인 필요 탭에도 반드시 잡혀야 한다 — 아니면 사용자가 고칠 곳이 없다.
     fireEvent.click(screen.getByRole("tab", { name: "확인 필요" }));
     expect(screen.getAllByText(rowLabel(base)).length).toBeGreaterThan(0);
@@ -632,9 +632,9 @@ describe("중복 판정이 필터에 따라 뒤집히지 않는다", () => {
     // '중복'은 이제 상세가 밝히고, 첫 건의 '취득' 판정을 물려받지 않는다.
     fireEvent.click(cards[0]);
     const sheet = (await screen.findByText("거래 상세")).closest("div")!.parentElement!;
-    expect(sheet.textContent).toMatch(/같은 이벤트 id가 두 번 이상 들어와/);
+    expect(sheet.textContent).toMatch(/동일한 거래 식별자가 중복되어/);
     // 중복은 판정 섹션(취득 도장)을 물려받지 않는다 — 폼 라벨이 아니라 판정 섹션 유무로 본다.
-    expect(sheet.textContent).not.toMatch(/이 손익이 계산에서 어떻게 쓰였나/);
+    expect(sheet.textContent).not.toMatch(/손익 반영 내역/);
   });
 });
 
@@ -662,7 +662,7 @@ describe("3차 리뷰 P1 경계", () => {
     const cards = screen.getAllByText(rowLabel(highConfidenceInternal)).map((n) => n.closest("button")!);
     fireEvent.click(cards[1]);
     // "중복 · 확인 필요"는 이제 상세가 밝힌다. 상세가 "확인이 필요한 건이 아니라"고 하면 정면 모순이다.
-    expect(await screen.findByText(/같은 이벤트 id가 두 번 이상 들어와/)).toBeInTheDocument();
+    expect(await screen.findByText(/동일한 거래 식별자가 중복되어/)).toBeInTheDocument();
     expect(screen.queryByText(/확인이 필요한 건이 아니라/)).not.toBeInTheDocument();
   });
 
@@ -690,7 +690,7 @@ describe("3차 리뷰 P1 경계", () => {
     // 재시도까지 전부 실패시켜야 isError가 뜬다.
     ports.estimate.mockRejectedValue(new Error("boom"));
     const { container } = renderTransactions("DE");
-    await screen.findByText(/세금 판정을 불러오지 못해/, undefined, { timeout: 3000 });
+    await screen.findByText(/과세 판정 결과를 불러오지 못했습니다/, undefined, { timeout: 3000 });
     const cards = [...container.querySelectorAll("section .mt-3.grid.gap-3 > button")];
     // 오류에도 목록은 값을 지어내지 않는다 — 판정 손익 블록을 렌더하지 않는다(보류와 같은 '부재').
     expect(cards.length).toBeGreaterThan(0);
@@ -767,7 +767,7 @@ describe("필터 시트의 건수가 실제 카드 수와 같은가", () => {
 
     ports.estimate.mockRejectedValue(new Error("boom"));
     await client0.invalidateQueries({ queryKey: ["tax", "estimate"] });
-    await screen.findByText(/세금 판정을 불러오지 못해/, undefined, { timeout: 3000 });
+    await screen.findByText(/과세 판정 결과를 불러오지 못했습니다/, undefined, { timeout: 3000 });
     // 필터를 유지하면 빈 목록만 남아 원인을 알 수 없다.
     expect(container.querySelectorAll("section .mt-3.grid.gap-3 > button").length).toBeGreaterThan(0);
     ports.estimate.mockImplementation(async (input: Parameters<TaxEngineService["estimate"]>[0]) => engine.estimate(input));
@@ -786,7 +786,7 @@ describe("4차 리뷰 P1 경계 — 오래된 상태가 최신인 척하지 않�
     // 먼저 성공시켜 도장을 받는다 — 판정(취득) 섹션은 이제 상세에 있다.
     await settled();
     const sheet = await openDetail(target.id);
-    expect(sheet.textContent).toMatch(/이 손익이 계산에서 어떻게 쓰였나/);
+    expect(sheet.textContent).toMatch(/손익 반영 내역/);
 
     // 이후 재조회를 실패시키면 옛 도장이 최신 진실인 척하면 안 된다.
     ports.estimate.mockRejectedValue(new Error("boom"));
@@ -796,10 +796,10 @@ describe("4차 리뷰 P1 경계 — 오래된 상태가 최신인 척하지 않�
         <TransactionsView countryCode="DE" />
       </QueryClientProvider>,
     );
-    await screen.findByText(/세금 판정을 불러오지 못해/, undefined, { timeout: 3000 });
+    await screen.findByText(/과세 판정 결과를 불러오지 못했습니다/, undefined, { timeout: 3000 });
     // 열린 상세가 옛 판정(취득) 섹션을 남기지 않고 오류를 밝힌다(로딩으로도 위장하지 않는다).
     await waitFor(() => expect(sheet.textContent).toMatch(/판정 결과를 불러오지 못했습니다/), { timeout: SETTLE_TIMEOUT });
-    expect(sheet.textContent).not.toMatch(/이 손익이 계산에서 어떻게 쓰였나/);
+    expect(sheet.textContent).not.toMatch(/손익 반영 내역/);
     ports.estimate.mockImplementation(async (input: Parameters<TaxEngineService["estimate"]>[0]) => engine.estimate(input));
   });
 
@@ -879,7 +879,7 @@ describe("5차 리뷰 P1 경계 — 열린 시트가 외부 변경을 반영한�
     await waitFor(() =>
       expect((screen.getByLabelText("분류") as HTMLSelectElement).value).toBe("SEND"),
     );
-    expect(screen.getByRole("alert")).toHaveTextContent("다른 곳에서 변경됨, 다시 확인");
+    expect(screen.getByRole("alert")).toHaveTextContent("금액이 변경되었습니다. 최신 내용을 확인해 주세요.");
     ports.list.mockResolvedValue({ items: events.map((event) => ({ event, version: 1 })), nextCursor: null });
   });
 
@@ -915,7 +915,7 @@ describe("자기 변경을 외부 변경으로 오인하지 않는다", () => {
 
     // 내가 만든 변경이므로 "다른 곳에서 변경됨"은 거짓이다.
     await waitFor(() => expect(screen.getByText("분류를 저장했습니다.")).toBeInTheDocument());
-    expect(screen.queryByText("다른 곳에서 변경됨, 다시 확인")).not.toBeInTheDocument();
+    expect(screen.queryByText("금액이 변경되었습니다. 최신 내용을 확인해 주세요.")).not.toBeInTheDocument();
 
     // 이후 목록이 새 version으로 갱신돼도 마찬가지다.
     ports.list.mockResolvedValue({
@@ -928,7 +928,7 @@ describe("자기 변경을 외부 변경으로 오인하지 않는다", () => {
     });
     await client.invalidateQueries({ queryKey: ["events", "list"] });
     await waitFor(() => expect(screen.getByText(rowLabel(target))).toBeInTheDocument());
-    expect(screen.queryByText("다른 곳에서 변경됨, 다시 확인")).not.toBeInTheDocument();
+    expect(screen.queryByText("금액이 변경되었습니다. 최신 내용을 확인해 주세요.")).not.toBeInTheDocument();
     ports.list.mockResolvedValue({ items: events.map((event) => ({ event, version: 1 })), nextCursor: null });
   });
 });
@@ -997,7 +997,7 @@ describe("목록을 다 못 받았으면 그 사실을 말한다", () => {
       nextCursor: "same",
     }));
     renderTransactions("DE");
-    expect(await screen.findByText(/일부만 불러옴/)).toBeInTheDocument();
+    expect(await screen.findByText(/일부 거래 조회/)).toBeInTheDocument();
     ports.list.mockResolvedValue({ items: events.map((event) => ({ event, version: 1 })), nextCursor: null });
   });
 });
@@ -1036,7 +1036,7 @@ describe("7차 리뷰 P1 경계 — 보류 중에 옛 사실을 단정하지 않
     await waitFor(
       () => {
         // 정착 후, 열린 상세가 옛 '계산 제외'를 남기지 않고 판정(취득) 섹션으로 바뀐다(옛 도장을 최신인 척 달지 않는다).
-        expect(sheet.textContent).toMatch(/이 손익이 계산에서 어떻게 쓰였나/);
+        expect(sheet.textContent).toMatch(/손익 반영 내역/);
         expect(sheet.textContent).not.toMatch(/계산에 들어가지 않았습니다/);
       },
       { timeout: SETTLE_TIMEOUT },
@@ -1117,7 +1117,7 @@ describe("남은 WATCH 항목 회귀", () => {
     await client.invalidateQueries({ queryKey: ["events", "list"] });
 
     // 경고는 뜨되 작업하던 입력은 살아있어야 한다.
-    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("다른 곳에서 변경됨"));
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("금액이 변경되었습니다"));
     expect((screen.getByLabelText("분류") as HTMLSelectElement).value).toBe("EXCHANGE");
     expect((screen.getByLabelText(/사유/) as HTMLInputElement).value).toBe("작업중");
     ports.list.mockResolvedValue({ items: events.map((event) => ({ event, version: 1 })), nextCursor: null });
@@ -1130,7 +1130,7 @@ describe("남은 WATCH 항목 회귀", () => {
       return { items: events.slice(0, 2).map((event) => ({ event, version: 1 })), nextCursor: `c${calls}` };
     });
     renderTransactions("DE");
-    await screen.findByText(/일부만 불러옴/);
+    await screen.findByText(/일부 거래 조회/);
     const before = calls;
     fireEvent.click(screen.getByRole("button", { name: "더 불러오기" }));
     // 경고만 띄우고 막으면 "전체 거래"가 거짓이다. 계속 받을 수 있어야 한다.
@@ -1169,16 +1169,16 @@ describe("파생 표면 전체가 '지금 것인가'를 지킨다", () => {
     await settled();
     fireEvent.click(screen.getByText(rowLabel(events[0])));
     await screen.findByText("거래 상세");
-    await screen.findByText("다른 나라였다면");
+    await screen.findByText("국가별 계산 비교");
     // 비교 국가 결과가 정착할 때까지 기다린다.
     await waitFor(() =>
-      expect(screen.getByText("다른 나라였다면").parentElement!.textContent).not.toMatch(/확인하는 중입니다/),
+      expect(screen.getByText("국가별 계산 비교").parentElement!.textContent).not.toMatch(/확인하는 중입니다/),
     );
 
     ports.estimate.mockImplementation(() => new Promise(() => {}));
     void client.invalidateQueries({ queryKey: ["tax", "estimate"] });
     await waitFor(() => {
-      const sheet = screen.getByText("다른 나라였다면").parentElement!;
+      const sheet = screen.getByText("국가별 계산 비교").parentElement!;
       expect(sheet.textContent).toMatch(/확인하는 중입니다/);
     });
   });
@@ -1221,7 +1221,7 @@ describe("믿을 수 있는 기간이 없으면 과세연도를 단정하지 않
     // 요청조차 하지 않았으므로 "불러오는 중"이라 말하면 없는 진행을 지어내는 것이다.
     // 같은 사실을 거래 화면이 말하는 자리는 판정 보류 배너다.
     expect(screen.getByText("기준 기간을 확인하지 못해 판정을 계산하지 않았습니다.")).toBeInTheDocument();
-    expect(screen.queryByText(/세금 판정을 불러오지 못해/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/과세 판정 결과를 불러오지 못했습니다/)).not.toBeInTheDocument();
 
     // 목록도 같은 말을 해야 한다. 기준 기간을 모르면 판정을 계산하지 않으므로,
     // 모든 행이 손익 블록을 갖지 않는다(값을 단정하지 않음 — 보류를 진행 중이라 말하지 않는다).
@@ -1255,7 +1255,7 @@ describe("부담이 0이어도 내역 화면은 부담을 말하지 않는다", 
     for (const row of rows) {
       fireEvent.click(row);
       const sheet = (await screen.findByText("거래 상세")).closest("div")!.parentElement!;
-      await waitFor(() => expect(sheet.textContent).toMatch(/이 손익이 계산에서 어떻게 쓰였나/), { timeout: SETTLE_TIMEOUT });
+      await waitFor(() => expect(sheet.textContent).toMatch(/손익 반영 내역/), { timeout: SETTLE_TIMEOUT });
     }
   });
 });
@@ -1271,12 +1271,12 @@ describe("한계 기여도도 재조회 중 옛 값을 보이지 않는다", () 
     await settled();
     fireEvent.click(screen.getByText(rowLabel(events[0])));
     await screen.findByText("거래 상세");
-    await waitFor(() => expect(screen.getByText("이 거래가 없었다면")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("거래 제외 시 예상 세금 변화")).toBeInTheDocument());
 
     ports.estimate.mockImplementation(() => new Promise(() => {}));
     void client.invalidateQueries({ queryKey: ["tax", "estimate"] });
     // 옛 델타가 최신인 척 남으면 안 된다.
-    await waitFor(() => expect(screen.queryByText("이 거래가 없었다면")).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText("거래 제외 시 예상 세금 변화")).not.toBeInTheDocument());
   });
 });
 
@@ -1296,7 +1296,7 @@ describe("3세대 P1 경계", () => {
     // 재조회가 실패하면 캐시된 행이 남는다. 그걸 현재 사실로 단정하면 거짓이다.
     ports.list.mockRejectedValue(new Error("boom"));
     void client.invalidateQueries({ queryKey: ["events", "list"] });
-    await screen.findByText(/갱신하지 못했습니다\. 마지막으로 받은 상태 표시/, undefined, {
+    await screen.findByText(/갱신에 실패하여 이전 조회 결과를 표시합니다/, undefined, {
       timeout: 3000,
     });
     // 내부 이체 행도 예외가 아니다 — 목록이 stale이면 판정을 보류해 손익 블록을 거둔다.
@@ -1310,7 +1310,7 @@ describe("3세대 P1 경계", () => {
     const withMarginal = events.find((event) => derived.events.some((tax) => tax.id === event.id))!;
     fireEvent.click(screen.getByText(rowLabel(withMarginal)));
     await screen.findByText("거래 상세");
-    expect(screen.queryByText("이 거래가 없었다면")).not.toBeInTheDocument();
+    expect(screen.queryByText("거래 제외 시 예상 세금 변화")).not.toBeInTheDocument();
     // 두 비교 국가 각각을 확인한다. 한 곳만 비활성이어도 통과하면 안 된다.
     expect(screen.getByText("기준 기간을 확인하지 못해 IN 판정 정보를 계산하지 않았습니다.")).toBeInTheDocument();
     expect(screen.getByText("기준 기간을 확인하지 못해 PT 판정 정보를 계산하지 않았습니다.")).toBeInTheDocument();
@@ -1328,9 +1328,9 @@ describe("3세대 P1 경계", () => {
     fireEvent.click(screen.getByText(rowLabel(events[0])));
     await screen.findByText("거래 상세");
     // 근거 없는 연도로 한계 기여도·나라별 비교를 계산하면 안 된다.
-    await waitFor(() => expect(screen.getByText("다른 나라였다면")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("국가별 계산 비교")).toBeInTheDocument());
     expect(ports.estimate.mock.calls.length, "근거 없는 연도로 추가 계산을 돌리면 안 된다").toBe(before);
-    expect(screen.queryByText("이 거래가 없었다면")).not.toBeInTheDocument();
+    expect(screen.queryByText("거래 제외 시 예상 세금 변화")).not.toBeInTheDocument();
   });
 });
 
@@ -1346,9 +1346,9 @@ describe("4세대 P1 — 비활성 쿼리의 캐시가 답을 말하지 않는�
     await settled();
     fireEvent.click(screen.getByText(rowLabel(events[0])));
     await screen.findByText("거래 상세");
-    await waitFor(() => expect(screen.getByText("이 거래가 없었다면")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("거래 제외 시 예상 세금 변화")).toBeInTheDocument());
     await waitFor(() =>
-      expect(screen.getByText("다른 나라였다면").parentElement!.textContent).not.toMatch(/확인하는 중입니다/),
+      expect(screen.getByText("국가별 계산 비교").parentElement!.textContent).not.toMatch(/확인하는 중입니다/),
     );
     fireEvent.click(screen.getByRole("button", { name: "닫기" }));
 
@@ -1384,13 +1384,13 @@ describe("4세대 P1 — 비활성 쿼리의 캐시가 답을 말하지 않는�
     fireEvent.click(screen.getByText(rowLabel(events[0])));
     await screen.findByText("거래 상세");
     // 옛 캐시로 "이 거래가 없었다면"을 답하면 거짓이다.
-    expect(screen.queryByText("이 거래가 없었다면")).not.toBeInTheDocument();
+    expect(screen.queryByText("거래 제외 시 예상 세금 변화")).not.toBeInTheDocument();
     // 계산하지 않은 것을 "불러오는 중"이라 말해서도 안 된다.
     // raw 값이 아니라 **실제로 렌더링될 문자열**로 검사해야 유입을 잡는다.
     const leakText = formatFiat(LEAK_SENTINEL_AMOUNT, "EUR");
     expect(document.body.textContent ?? "").not.toContain(leakText);
-    expect(screen.queryByText("이 거래가 없었다면")).not.toBeInTheDocument();
-    const comparison = screen.getByText("다른 나라였다면").parentElement!;
+    expect(screen.queryByText("거래 제외 시 예상 세금 변화")).not.toBeInTheDocument();
+    const comparison = screen.getByText("국가별 계산 비교").parentElement!;
     expect(comparison.textContent).not.toMatch(/확인하는 중입니다/);
     // 비교 두 나라 모두 "계산하지 않았다"고 정확히 밝혀야 한다.
     expect(screen.getByText(/^기준 기간을 확인하지 못해 IN 판정 정보를 계산하지 않았습니다\.$/)).toBeInTheDocument();
@@ -1413,13 +1413,13 @@ describe("5세대 P2 — 비활성·보류를 진행 중이라 말하지 않는�
     );
     await settled();
     fireEvent.click(rowById(internal.id));
-    await screen.findByText(/자기 지갑 간 이체라 처분으로 보지 않았습니다/);
+    await screen.findByText(/본인 지갑 간 이체로 분류되어 과세 대상 처분에서 제외되었습니다/);
 
     // 판정 재조회가 멈춰 서면 그 설명도 근거를 잃는다.
     ports.estimate.mockImplementation(() => new Promise(() => {}));
     void client.invalidateQueries({ queryKey: ["tax", "estimate"] });
     await waitFor(() =>
-      expect(screen.queryByText(/자기 지갑 간 이체라 처분으로 보지 않았습니다/)).not.toBeInTheDocument(),
+      expect(screen.queryByText(/본인 지갑 간 이체로 분류되어 과세 대상 처분에서 제외되었습니다/)).not.toBeInTheDocument(),
     );
   });
 });
@@ -1440,14 +1440,14 @@ describe("7세대 — 복합 장애에서도 모든 표면이 같은 말을 한�
     // 판정 조회를 실패시키고, 이어서 기준 기간까지 잃는다.
     ports.estimate.mockRejectedValue(new Error("boom"));
     void client.invalidateQueries({ queryKey: ["tax", "estimate"] });
-    await screen.findByText(/세금 판정을 불러오지 못해/, undefined, { timeout: 3000 });
+    await screen.findByText(/과세 판정 결과를 불러오지 못했습니다/, undefined, { timeout: 3000 });
 
     ports.getSummary.mockRejectedValue(new Error("boom"));
     void client.invalidateQueries({ queryKey: ["events", "summary"] });
     // 기준 기간이 없으면 애초에 요청하지 않았다. 옛 오류를 현재 상태로 말하면 안 된다.
     // (요약 실패 문구는 요약 화면의 것이고, 거래 화면은 이 배너로 같은 사실을 말한다.)
     await screen.findByText("기준 기간을 확인하지 못해 판정을 계산하지 않았습니다.", undefined, { timeout: 3000 });
-    expect(screen.queryByText(/세금 판정을 불러오지 못해/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/과세 판정 결과를 불러오지 못했습니다/)).not.toBeInTheDocument();
 
     // 행도 같은 말을 해야 한다 — 기준 기간을 모르면 판정을 계산하지 않으므로,
     // 어느 행도 손익 블록을 갖지 않는다(옛 판정 오류를 현재 상태로 말하지 않는다). 전수로 본다.
@@ -1502,14 +1502,14 @@ describe("부담을 산출하지 않는 룰셋은 한계 기여도를 답하지 
 
     fireEvent.click(screen.getByText(rowLabel(events[0])));
     await screen.findByText("거래 상세");
-    await screen.findByText("다른 나라였다면");
+    await screen.findByText("국가별 계산 비교");
 
     // 결정적 검증: 애초에 한계 기여도를 **요청하지 않아야** 한다.
     // 부재만 보면 비동기 응답이 늦게 도착하는 구현에서도 통과해버린다.
     const marginalCalls = ports.estimate.mock.calls.filter(([input]) => input?.includeMarginal === true);
-    expect(marginalCalls, "부담을 산출하지 않는 룰셋에 한계 기여도를 요청하면 안 된다").toEqual([]);
+    expect(marginalCalls, "부담을 산출하지 않는 계산 기준에 한계 기여도를 요청하면 안 된다").toEqual([]);
     // 헤더가 "과세 대상 아님"인데 상세가 "영향 없음"이라 하면 정면 모순이다.
-    expect(screen.queryByText("이 거래가 없었다면")).not.toBeInTheDocument();
+    expect(screen.queryByText("거래 제외 시 예상 세금 변화")).not.toBeInTheDocument();
     expect(screen.queryByText(/부담에 영향 없음/)).not.toBeInTheDocument();
   });
 
@@ -1522,7 +1522,7 @@ describe("부담을 산출하지 않는 룰셋은 한계 기여도를 답하지 
     expect(screen.getByText("계산 대상 이벤트")).toBeInTheDocument();
     expect(screen.queryByText("과세 대상 이벤트")).not.toBeInTheDocument();
     // 목록이 거래 탭으로 떠나면서 "아래 판정"이 가리킬 곳이 없어졌다 — 카드는 그 문을 이름으로 말한다.
-    expect(document.body.textContent ?? "").toContain("과세 여부는 거래 탭의 판정에서 갈립니다");
+    expect(document.body.textContent ?? "").toContain("과세 여부는 거래 탭에서 거래별로 확인할 수 있습니다.");
   });
 
   it("중복 레코드는 첫 건의 한계 기여도·나라별 비교를 물려받지 않는다", async () => {
@@ -1541,13 +1541,13 @@ describe("부담을 산출하지 않는 룰셋은 한계 기여도를 답하지 
     const cards = screen.getAllByText(rowLabel(target)).map((node) => node.closest("button")!);
     expect(cards).toHaveLength(2);
     fireEvent.click(cards[1]);
-    await screen.findByText(/같은 이벤트 id가 두 번 이상 들어와/);
+    await screen.findByText(/동일한 거래 식별자가 중복되어/);
     // 결정적 검증: 중복 레코드는 한계 기여도를 요청조차 하지 않는다.
     const marginalCalls = ports.estimate.mock.calls.filter(([input]) => input?.includeMarginal === true);
     expect(marginalCalls, "중복 레코드에 한계 기여도를 요청하면 안 된다").toEqual([]);
     // id로 키가 잡히는 결과를 물려받으면 두 번째 레코드가 남의 계산을 자기 것처럼 보인다.
-    expect(screen.queryByText("이 거래가 없었다면")).not.toBeInTheDocument();
-    expect(screen.queryByText("다른 나라였다면")).not.toBeInTheDocument();
+    expect(screen.queryByText("거래 제외 시 예상 세금 변화")).not.toBeInTheDocument();
+    expect(screen.queryByText("국가별 계산 비교")).not.toBeInTheDocument();
   });
 });
 
@@ -1678,13 +1678,13 @@ describe("여러 취득분을 소비한 처분을 화면이 어떻게 말하는�
     const card = await screen.findByText(rowLabel(target));
     // 목록은 도장만 찍는다. 보유일이 섞였다는 사실은 상세의 손익 근거표가 말해야 한다.
     fireEvent.click(card.closest("button")!);
-    const section = (await screen.findByText("손익은 이렇게 나왔습니다")).parentElement!;
+    const section = (await screen.findByText("손익 산출 내역")).parentElement!;
     await waitFor(
       () => expect(section.textContent).toMatch(/취득분마다 다름/),
       { timeout: SETTLE_TIMEOUT },
     );
     // 보유일·취득일이 하나로 정해지지 않은 이유는 소비한 취득분이 여럿이기 때문이다.
-    expect(section.textContent).toMatch(/소비한 취득분/);
+    expect(section.textContent).toMatch(/원가에 반영한 취득 건수/);
     expect(section.textContent).toMatch(/3개/);
   });
 });
@@ -1706,7 +1706,7 @@ describe("금액을 말하지 않는 화면은 그 금액의 한계도 옮겨오
     // 내역은 두 화면(거래·요약)이 되었고, 금지 문구는 **둘 다**에 없어야 한다.
     const noLimitationLeak = () => {
       const body = document.body.textContent ?? "";
-      expect(body).not.toMatch(/흔들리는 지점/);
+      expect(body).not.toMatch(/계산 확인/);
       expect(body).not.toContain("부인된 손실을 대체 취득분 원가에 더하지 않았습니다.");
       // 세금 탭은 리포트(/export)로 합쳐졌다 — 한계를 볼 문은 이제 리포트다.
       // /tax는 리다이렉트만 남는 옛 주소라 어느 화면도 더 이상 직접 링크해선 안 된다.
@@ -1763,7 +1763,7 @@ describe("상세 시트가 손익 계산 4줄을 보인다", () => {
     fireEvent.click(screen.getByText(rowLabel(target)).closest("button")!);
     await screen.findByText("거래 상세");
 
-    const sheet = (await screen.findByText("손익은 이렇게 나왔습니다")).closest("section")!;
+    const sheet = (await screen.findByText("손익 산출 내역")).closest("section")!;
     // 시트 전체 문자열이 아니라 breakdown dl 안에서 각 줄의 값을 짝지어 확인한다.
     const grid = within(sheet).getByText("양도가액").closest("dl")!;
     const rowValue = (label: string) =>
@@ -1977,7 +1977,7 @@ describe("목록이 실현 손익(₩)을 상세와 같은 소스에서 뽑아 �
 
     // 목록의 손익이 상세의 손익 근거표와 같은 값인지 대조한다(같은 판정 행이 소스).
     fireEvent.click(gainCard);
-    const evidence = (await screen.findByText("손익은 이렇게 나왔습니다")).parentElement!;
+    const evidence = (await screen.findByText("손익 산출 내역")).parentElement!;
     await waitFor(() => expect(evidence.textContent).toContain(`= 손익${gainText}`), { timeout: SETTLE_TIMEOUT });
 
     // 실현 손익이 없어도 가격을 잃지 않는다 — 가격이 확인된 무손익 행(이동 등)은 거래 평가액(₩)을 보인다.

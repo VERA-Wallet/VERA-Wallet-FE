@@ -282,8 +282,8 @@ export function TransactionsView({
             <p>계산에서 빠졌거나 확인이 필요한 거래만 모았습니다.</p>
             {/* 정직성 문장은 삭제가 아니라 강등이다 — 왜 가격·신뢰도가 다르게 취급되는지는 접어서 보존한다. */}
             <details className="mt-1">
-              <summary className="cursor-pointer font-medium text-zinc-600 marker:text-zinc-400">어떤 기준인가</summary>
-              <p className="mt-1">가격·분류·수량을 확정하지 못한 건은 계산에서 빠집니다. 신뢰도만 낮은 건은 계산 대상 분류라면 그대로 들어갑니다(자기 지갑 간 이체는 애초에 처분이 아닙니다).</p>
+              <summary className="cursor-pointer font-medium text-zinc-600 marker:text-zinc-400">분류 기준</summary>
+              <p className="mt-1">가격·분류·수량을 확인하지 못한 거래는 계산에서 제외됩니다. 신뢰도가 낮아도 계산 대상에 해당하면 반영됩니다. 본인 지갑 간 이체는 처분에 해당하지 않습니다.</p>
             </details>
           </div>
         ) : null}
@@ -294,11 +294,11 @@ export function TransactionsView({
         ) : null}
         {/* 두 배지 체계의 구분은 앱 안에서 한 곳이 말해야 한다 — 여기가 그 한 곳이다. */}
         <details className="mt-3">
-          <summary className="cursor-pointer text-xs font-medium text-zinc-400">배지 뜻</summary>
+          <summary className="cursor-pointer text-xs font-medium text-zinc-400">표시 항목 안내</summary>
           <div className="mt-2 space-y-1 text-sm text-zinc-600">
-            <p>분류: 온체인에서 일어난 일(수신·송금·교환·내부 이동·미분류). 상세에서 직접 바꿀 수 있습니다.</p>
-            <p>판정: 이 거래가 세금 계산에서 어떻게 쓰였는지(과세·취득·비과세·이연 등). 거주국 룰셋이 정하며 나라마다 다릅니다.</p>
-            <p>앰버 배지: 확인이 필요한 문제. 정상 상태는 배지를 달지 않습니다.</p>
+            <p>분류는 거래 유형(수신·송금·교환·내부 이동·미분류)을 뜻합니다. 거래 상세에서 변경할 수 있습니다.</p>
+            <p>판정은 거래의 세금 계산상 처리(과세·취득·비과세·이연 등)를 뜻합니다. 거주국의 계산 기준에 따라 달라집니다.</p>
+            <p>주황색 표시: 추가 확인이 필요한 항목입니다. 확인 사항이 없으면 표시하지 않습니다.</p>
           </div>
         </details>
         {/* 원장에서 빠진 것들을 반드시 말한다. 조용히 빼면 목록이 완전한 것처럼 보이면서 거래가 사라진다.
@@ -332,13 +332,13 @@ export function TransactionsView({
           <p role="status" className="mt-3 border-l-2 border-zinc-200 pl-2 text-xs text-zinc-400">
             {eventsStale && events.data
               ? (eventsFresh.state === "error"
-                  ? "갱신하지 못했습니다. 마지막으로 받은 상태 표시"
-                  : "갱신 중. 마지막으로 받은 상태 표시")
+                  ? "갱신에 실패하여 이전 조회 결과를 표시합니다."
+                  : "갱신 중입니다. 이전 조회 결과를 표시합니다.")
               : null}
             {eventsStale && events.data && events.data?.truncated ? " · " : null}
             {events.data?.truncated ? (
               <>
-                일부만 불러옴{" "}
+                일부 거래 조회{" "}
                 <button type="button" className="underline" onClick={() => setMaxPages((pages) => pages + 50)}>더 불러오기</button>
               </>
             ) : null}
@@ -352,7 +352,7 @@ export function TransactionsView({
           </p>
         ) : judgments.isError ? (
           <p role="status" className="mt-3 rounded-card border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-            세금 판정을 불러오지 못해 각 거래의 도장을 확정하지 못했습니다. 아래 목록의 확인 필요 항목은 거래 자체의 문제만 반영합니다.{" "}
+            과세 판정 결과를 불러오지 못했습니다. 아래 확인 필요 항목에는 거래 자료에서 확인된 문제만 표시됩니다.{" "}
             <button type="button" className="font-semibold underline" onClick={() => void judgments.refetch()}>다시 시도</button>
           </p>
         ) : null}

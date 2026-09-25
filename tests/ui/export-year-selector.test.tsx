@@ -176,10 +176,10 @@ describe("리포트 귀속연도 선택기", () => {
       ),
     );
     // 가정임을 배너로 계속 말하고, 총평균 실제 부담(=시행 후 계산값)이 리포트에 실린다.
-    expect(await screen.findByText(/시행 가정으로 보는 중입니다/)).toBeInTheDocument();
+    expect(await screen.findByText(/시행 예정 기준 적용/)).toBeInTheDocument();
     await waitFor(() => expect(screen.getByTestId("estimated-charge").textContent).toContain("₩183,333"));
     // 시행 전이라는 사실은 지워지지 않고 접힘 안에 남는다.
-    expect(screen.getByText("시행 전인 지금 실제 부담은")).toBeInTheDocument();
+    expect(screen.getByText("시행 전 과세 여부")).toBeInTheDocument();
 
     // 끄면 사실(시행 전)로 돌아간다 — 같은 연도를 가정 없이 재요청한다.
     fireEvent.click(screen.getByRole("button", { name: "가정 끄기" }));

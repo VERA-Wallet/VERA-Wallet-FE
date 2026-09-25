@@ -35,7 +35,7 @@ offModeOnly("G001 session gate OFF-mode browser red team", () => {
     await page.getByRole("button", { name: "QR/딥링크 제시" }).click();
     await page.getByRole("button", { name: "제시 완료" }).click();
     // 성공 뒤 클릭 없이 자동 진행한다 — "본인 확인이 끝났어요"를 약 1초 보인 뒤 목적지로 이동한다.
-    await expect(page.getByRole("status")).toContainText("본인 확인이 끝났어요");
+    await expect(page.getByRole("status")).toContainText("본인 확인 완료");
     // DID-only 세션(지갑 없음)은 로그인 직후 빈 요약을 건너뛰고 곧장 /connect-wallet에 도착한다.
     await page.waitForURL("**/connect-wallet");
     entries.push({ action: "complete DID presentation through browser UI (auto-advance, no wallet)", expected: "/connect-wallet", actual: new URL(page.url()).pathname, verdict: new URL(page.url()).pathname === "/connect-wallet" ? "passed" : "failed", timestamp: new Date().toISOString() });

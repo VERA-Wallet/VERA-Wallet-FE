@@ -64,7 +64,7 @@ export function WalletsList(): React.JSX.Element {
                 {wallets.data && wallets.data.wallets.length > 1 ? ` · 지갑 ${wallets.data.wallets.length}개 합산` : ""}
                 {data.unpricedCount > 0 ? ` · 시세 없는 자산 ${data.unpricedCount}개 제외` : ""}
               </span>
-              {holdings.isError ? <span data-surface="wallets-total-stale" className="text-amber-700">최근 조회에 실패해 이전 결과입니다.</span> : holdings.isFetching ? <span className="text-zinc-500">다시 확인하는 중</span> : null}
+              {holdings.isError ? <span data-surface="wallets-total-stale" className="text-amber-700">최근 조회에 실패하여 이전 결과를 표시합니다.</span> : holdings.isFetching ? <span className="text-zinc-500">다시 확인하는 중</span> : null}
             </p>
           ) : balanceState === "error" ? (
             <p role="alert" data-surface="wallets-total-error" className="mt-1 flex flex-wrap items-center gap-2 text-xs text-dispose">

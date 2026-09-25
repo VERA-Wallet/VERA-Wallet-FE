@@ -69,14 +69,14 @@ export function SettingsView({ authClient = compositionAuthClient, reportVcClien
         <p className="mb-2 text-sm font-semibold text-zinc-500">화면</p>
         <div className="divide-y divide-zinc-200 rounded-card border border-zinc-200 bg-zinc-50">
           <div className="flex min-h-11 items-center justify-between gap-3 px-4">
-            <span className="text-sm font-medium text-zinc-900">금액 가리기로 시작</span>
+            <span className="text-sm font-medium text-zinc-900">금액 숨김 설정</span>
             {/* 이 토글은 대시보드의 "금액 가리기"와 같은 저장값을 공유한다(lib/privacy/use-hide-balances.ts) —
                 이미 저장소에 영속되는 값이라 여기서 따로 "기본값"을 복제해 들고 있을 필요가 없다. */}
             <button
               type="button"
               role="switch"
               aria-checked={hideBalances}
-              aria-label="금액 가리기로 시작"
+              aria-label="금액 숨김 설정"
               className={`rounded-full px-3 py-1 text-xs font-semibold ${hideBalances ? "bg-zinc-900 text-white" : "bg-zinc-200 text-zinc-600"}`}
               onClick={() => setHideBalances(!hideBalances)}
             >

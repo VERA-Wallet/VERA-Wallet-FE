@@ -144,7 +144,7 @@ describe("리포트 메인은 세금 보고서와 내보내기만 말한다", ()
     expect(screen.getByRole("button", { name: /세무사 전달용 내려받기/ })).toBeInTheDocument();
 
     // 옮겨간 다섯 표면은 데이터가 있는데도 메인에 없다 — 있으면 첫 화면이 다시 13화면이 된다.
-    for (const label of ["판정 그룹", "흔들리는 것", "판단 필요 항목", "계산 조건", "국가 선택"]) {
+    for (const label of ["판정 그룹", "계산 결과 확인 사항", "판단 필요 항목", "계산 조건", "국가 선택"]) {
       expect(screen.queryByLabelText(label), label).toBeNull();
     }
     // 각 화면으로 가는 문은 정확히 넷이고, 순서와 목적지가 정해져 있다.
@@ -168,7 +168,7 @@ describe("리포트 메인은 세금 보고서와 내보내기만 말한다", ()
     expect(row("basis").textContent).toContain("양도 1건 · 취득 1건");
     // 흔들리는 지점 9 = excluded 7 + approximation 2, 판단 필요 1 = openQuestions 1.
     expect(row("issues").textContent).toContain(
-      `흔들리는 지점 ${estimate.limitations.length} · 판단 필요 ${estimate.openQuestions.length}`,
+      `계산 확인 ${estimate.limitations.length} · 판단 필요 ${estimate.openQuestions.length}`,
     );
     // 확인할 것이 있으면 앰버 점이 붙는다 — 색만이 아니라 위 문구가 건수를 글자로도 말한다.
     expect(row("issues").querySelector(".bg-amber-500")).not.toBeNull();
@@ -184,7 +184,7 @@ describe("리포트 메인은 세금 보고서와 내보내기만 말한다", ()
 
     const menu = await screen.findByLabelText("리포트 메뉴");
     const issues = menu.querySelector('a[data-menu="issues"]')!;
-    await waitFor(() => expect(issues.textContent).toContain("확인할 것이 없어요"));
+    await waitFor(() => expect(issues.textContent).toContain("확인 사항 없음"));
     expect(issues.querySelector(".bg-amber-500")).toBeNull();
   });
 });
@@ -193,16 +193,16 @@ describe("확인할 것 — 종류별 묶음과 접기", () => {
   it("종류로 묶어 거래 건수를 달고, 같은 문구는 한 줄로 합치며 id는 떼고 사람 말로 바꾼다", async () => {
     renderReportPages({ pages: ["issues"], countryCode: "KR", currentYear: 2027, latestActivityYear: 2027 });
 
-    const section = await screen.findByLabelText("흔들리는 것");
+    const section = await screen.findByLabelText("계산 결과 확인 사항");
     const group = section.querySelector('[data-limitation-group="excluded"]')! as HTMLElement;
     // 묶음 제목이 kind 라벨과 거래 건수를 함께 말한다.
-    expect(group.textContent).toContain("계산에서 뺌");
+    expect(group.textContent).toContain("계산 제외");
     expect(within(group).getByText("7건")).toBeInTheDocument();
     // 같은 문장 7장이 아니라 한 줄이다. 건마다 한 줄이면 페이지를 나눠도 길이가 그대로다.
     expect(group.querySelectorAll("li")).toHaveLength(1);
     // 엔진 원문("<id>: 확인이 필요해 계산에서 제외했습니다.")이 아니라 사람 말 + 그래서 무엇을 하면 되는지.
-    expect(group.textContent).toContain("확인이 필요해 계산에서 뺐습니다.");
-    expect(group.textContent).toContain("확인 필요 탭에서 정리하면 계산에 들어갑니다.");
+    expect(group.textContent).toContain("확인이 필요하여 계산에서 제외되었습니다.");
+    expect(group.textContent).toContain("확인 필요 탭에서 누락 정보를 확인하고 보완해 주세요.");
     expect(group.textContent).not.toContain("0x0000");
     // 한 줄뿐이면 접을 것도 없다.
     expect(within(group).queryByRole("button")).toBeNull();
@@ -213,11 +213,11 @@ describe("확인할 것 — 종류별 묶음과 접기", () => {
   });
 
   it("문구가 다른 줄이 5개를 넘으면 처음 5줄만 보이고 나머지는 버튼으로 편다", async () => {
-    const other = Array.from({ length: 7 }, (_, index) => ({ kind: "other" as const, message: `그 밖의 한계 ${index}`, eventIds: [] }));
+    const other = Array.from({ length: 7 }, (_, index) => ({ kind: "other" as const, message: `기타 확인 사항 ${index}`, eventIds: [] }));
     ports.estimate.mockResolvedValue({ ...estimate, limitations: other });
     renderReportPages({ pages: ["issues"], countryCode: "KR", currentYear: 2027, latestActivityYear: 2027 });
 
-    const section = await screen.findByLabelText("흔들리는 것");
+    const section = await screen.findByLabelText("계산 결과 확인 사항");
     const group = section.querySelector('[data-limitation-group="other"]')! as HTMLElement;
     // 7줄 중 5줄만 서 있다. 나머지가 펼쳐져 있으면 페이지를 나눠도 길이가 그대로다.
     expect(group.querySelectorAll("li")).toHaveLength(5);

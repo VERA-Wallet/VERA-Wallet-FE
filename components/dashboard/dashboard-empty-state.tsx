@@ -20,7 +20,7 @@ export function DashboardEmptyState({ countryCode, provenance = "mock" }: { coun
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-zinc-900">요약</h1>
           {/* "클레임"은 내부 인증 용어다. 사용자에게는 자신이 고른 거주 국가만 말하면 된다 —
-              증명 방식(DID·클레임)을 설명할 자리가 아니다. 코드가 룰셋에 없으면(알 수 없는 국가)
+              증명 방식(DID·클레임)을 설명할 자리가 아니다. 코드가 계산 기준에 없으면(알 수 없는 국가)
               지어낸 이름 대신 코드를 그대로 보인다. */}
           <p className="mt-1 text-sm text-zinc-500">
             {countryCode ? `거주 국가: ${getRuleSet(countryCode)?.label ?? countryCode}` : "거주 국가를 확인하지 못했습니다."}
@@ -59,7 +59,7 @@ export function DashboardEmptyState({ countryCode, provenance = "mock" }: { coun
         >
           데모 데이터로 둘러보기
         </Link>
-        <p className="mt-2 text-xs text-zinc-400">리포트의 데모 계산은 지갑 없이도 쓸 수 있습니다.</p>
+        <p className="mt-2 text-xs text-zinc-400">리포트를 이용하려면 암호화폐 지갑을 연결해 주세요.</p>
       </section>
 
       {/* 채워질 자리를 보여주는 플레이스홀더. 값은 대시보드 빈 상태와 같은 "-".
@@ -67,7 +67,7 @@ export function DashboardEmptyState({ countryCode, provenance = "mock" }: { coun
           448px 껍데기를 밀어낸다(거래 탭 목록과 같은 이유, transactions-view.tsx 주석 참고). */}
       <section className="mt-6 grid grid-cols-1 gap-3" aria-hidden="true">
         <SummaryCard label="예상 손익" value="-" supportingText="지갑을 연결하면 계산됩니다." />
-        <SummaryCard label="계산 대상 이벤트" value="-" supportingText="지갑을 연결하면 채워집니다." />
+        <SummaryCard label="계산 대상 이벤트" value="-" supportingText="지갑 연결 후 거래 정보가 표시됩니다." />
       </section>
 
       <section className="mt-8">

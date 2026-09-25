@@ -60,8 +60,8 @@ export function ImportStatusChip() {
             : (scan.note ?? `체인 ${scan.totalChainCount}곳 중 ${scan.scannedChainCount}곳 완료`)
         : // 진척을 모를 때: 오래 걸린다는 사실이 침묵보다 낫다. 침묵하면 사용자는 멈췄다고 읽는다.
           elapsedMs >= SLOW_IMPORT_CHIP_MS
-          ? "거래가 많아 시간이 걸려요"
-          : `체인 ${chains.length}곳을 조회하고 있어요`;
+          ? "거래가 많아 조회가 지연되고 있습니다."
+          : `체인 ${chains.length}개 네트워크 조회 중`;
 
     return (
       <>
@@ -96,9 +96,9 @@ export function ImportStatusChip() {
       <ChipShell role="alert">
         <AlertChip
           tone="amber"
-          title="불러오기 상태를 확인할 수 없어요"
+          title="거래 조회 상태 확인 불가"
           // 무엇이 됐는지 모른다는 사실을 그대로 말한다. "실패했어요"는 하지 않은 단정이다.
-          detail="서버가 재시작됐을 수 있어요"
+          detail="잠시 후 다시 확인해 주세요."
           actionLabel="다시 불러오기"
           onAction={retry}
         />
@@ -118,9 +118,9 @@ export function ImportStatusChip() {
     <ChipShell role="alert">
       <AlertChip
         tone="red"
-        title={partial ? `${skippedLabel} 거래를 못 불러왔어요` : "거래를 불러오지 못했어요"}
+        title={partial ? `${skippedLabel} 거래 조회 실패` : "거래 조회 실패"}
         // 부분 실패에서 들어온 만큼은 진짜 원장에 남았다. 그 사실을 빼면 사용자는 전부 실패했다고 읽는다.
-        detail={partial ? `나머지 ${chains.length - skipped.length}곳 ${reportedEventCount(state.result)}건은 반영됐어요` : null}
+        detail={partial ? `나머지 ${chains.length - skipped.length}곳 ${reportedEventCount(state.result)}건 반영 완료` : null}
         actionLabel="다시 시도"
         onAction={retry}
       />
@@ -256,7 +256,7 @@ function ImportProgressSheet({
         <ImportChainList chains={chains} progress={progress} />
       </div>
       <p className="mt-4 text-xs leading-5 text-zinc-400">
-        이 창은 상태만 보여줘요. 닫아도 불러오기는 계속되고, 끝나면 알려드려요.
+        창을 닫아도 거래 조회는 계속됩니다. 완료되면 알림이 표시됩니다.
       </p>
       <button type="button" className="mt-4 w-full rounded-xl bg-zinc-100 py-3.5 font-semibold text-zinc-700" onClick={onClose}>
         닫기

@@ -182,7 +182,7 @@ describe("내보내기 묶음 등록 게이트", () => {
     expect(ports.record).not.toHaveBeenCalled();
     expect(ports.document).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(surface("anchor-done")?.textContent).toContain("체인에 등록됐어요");
+    expect(surface("anchor-done")?.textContent).toContain("체인 등록 완료");
   });
 
   it("진행 중인 시도가 이미 있으면 다시 등록하지 않고 그 시도에 올라탄다", async () => {
@@ -195,7 +195,7 @@ describe("내보내기 묶음 등록 게이트", () => {
     await act(async () => {});
 
     expect(ports.record).not.toHaveBeenCalled();
-    expect(surface("anchor-progress")?.textContent).toContain("이미 등록을 요청했어요");
+    expect(surface("anchor-progress")?.textContent).toContain("등록 요청이 접수되었습니다");
 
     await act(async () => { await vi.advanceTimersByTimeAsync(1_600); });
     expect(ports.record).not.toHaveBeenCalled();
@@ -267,7 +267,7 @@ describe("내보내기 묶음 등록 게이트", () => {
 
     // 세 번째 폴링은 9.5초다. 유예가 지났으므로 이제 `failed`는 실패다.
     await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
-    expect(surface("anchor-failed")?.textContent).toContain("체인에 등록하지 못했어요");
+    expect(surface("anchor-failed")?.textContent).toContain("체인 등록에 실패했습니다");
     expect(saved).toHaveLength(0);
   });
 
@@ -309,7 +309,7 @@ describe("내보내기 묶음 등록 게이트", () => {
 
     expect(saved).toHaveLength(0);
     // 타임아웃도 같은 고정 문구다 — BE가 사유를 주지 않으므로 지어내지 않는다(F1).
-    expect(surface("anchor-failed")?.textContent).toContain("체인에 등록하지 못했어요. 다시 시도하면 새로 등록해요.");
+    expect(surface("anchor-failed")?.textContent).toContain("체인 등록에 실패했습니다. 다시 시도해 주세요.");
   });
 
   it("실패한 뒤에도 빠져나갈 길이 있다. 다시 시도가 새 등록을 연다", async () => {
@@ -370,7 +370,7 @@ describe("내보내기 묶음 등록 게이트", () => {
       expect(ports.record).not.toHaveBeenCalled();
       expect(spies.buildBundle).not.toHaveBeenCalled();
       expect(saved).toHaveLength(0);
-      expect(surface("anchor-restored")?.textContent).toContain("이 리포트는 체인에 등록됐어요");
+      expect(surface("anchor-restored")?.textContent).toContain("리포트 등록 완료");
       expect(surface("anchor-idle")).toBeNull();
       // 시트는 탭했을 때만 열린다 — 복원 경로가 대화상자로 포커스를 끌고 가면 안 된다.
       expect(screen.queryByRole("dialog")).toBeNull();
@@ -392,7 +392,7 @@ describe("내보내기 묶음 등록 게이트", () => {
       fireEvent.pointerOver(card());
       await waitFor(() => expect(surface("anchor-stale")).not.toBeNull());
 
-      expect(surface("anchor-stale")?.textContent).toContain("계산이 바뀌어 다시 등록이 필요해요");
+      expect(surface("anchor-stale")?.textContent).toContain("계산 변경에 따른 재등록 필요");
       expect(surface("anchor-stale")?.textContent).toContain("이전 등록");
       expect(surface("anchor-idle")).toBeNull();
       expect(surface("anchor-restored")).toBeNull();
@@ -408,7 +408,7 @@ describe("내보내기 묶음 등록 게이트", () => {
       await waitFor(() => expect(surface("anchor-checking")).toBeNull());
 
       expect(ports.document).not.toHaveBeenCalled();
-      expect(surface("anchor-idle")?.textContent).toContain("아직 체인에 등록되지 않았어요");
+      expect(surface("anchor-idle")?.textContent).toContain("체인 미등록");
     });
 
     it("잎을 못 받으면 단정하지 않는다", async () => {
@@ -419,7 +419,7 @@ describe("내보내기 묶음 등록 게이트", () => {
       fireEvent.pointerOver(card());
       await waitFor(() => expect(surface("anchor-unknown")).not.toBeNull());
 
-      expect(surface("anchor-unknown")?.textContent).toContain("등록 여부를 확인하지 못했어요");
+      expect(surface("anchor-unknown")?.textContent).toContain("등록 여부 확인 불가");
       expect(surface("anchor-idle")).toBeNull();
       // 행은 잠기지 않는다. 누르면 루트로 다시 묻는다.
       expect(screen.getByRole("button", { name: "직접 신고용 내려받기" })).toBeEnabled();
@@ -546,7 +546,7 @@ describe("내보내기 묶음 등록 게이트", () => {
     expect(ports.document).not.toHaveBeenCalled();
     expect(ports.record).not.toHaveBeenCalled();
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(surface("anchor-idle")?.textContent).toContain("등록할 계산 근거가 없어요");
+    expect(surface("anchor-idle")?.textContent).toContain("등록 대상 없음");
   });
 
   it("만들 수 없는 파일은 확인하지도 않는다", async () => {

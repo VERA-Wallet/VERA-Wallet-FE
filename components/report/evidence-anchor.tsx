@@ -80,14 +80,13 @@ export function EvidenceAnchor() {
         )}
       </div>
       <p className="mt-2 text-sm leading-6 text-zinc-500">
-        {taxYear}년 귀속 계산을 OmniOne 체인에 봉인합니다. 금액·지갑 주소는 올라가지 않고, 계산 판정과 파일 해시를
-        묶은 해시(머클루트) 하나만 올라갑니다.
+        {taxYear}년 귀속 계산의 검증값을 OmniOne 체인에 기록합니다. 계산 결과와 파일의 검증값을 하나로 묶은 값(머클루트)만 등록하며, 금액과 지갑 주소는 체인에 저장하지 않습니다.
       </p>
 
       {/* 아직 등록한 적이 없으면 버튼 대신 이 상태가 언제 바뀌는지를 말한다 — 등록은 내려받기가 한다. */}
       {!evidence && (
         <p className="mt-4 text-sm leading-6 text-zinc-500">
-          이 리포트는 내려받을 때 체인에 등록돼요.{" "}
+          이 리포트는 파일을 내려받을 때 체인에 등록됩니다.{" "}
           <Link href="/export" className="font-semibold text-primary-600 underline">
             내려받기로 이동
           </Link>
@@ -111,7 +110,7 @@ export function EvidenceAnchor() {
               판정 수를 이 카드가 알 길이 없다(잎을 안 갖고 있다) — 말을 지어내지 않는다. */}
           {!stale && (
             <div className="flex items-start justify-between gap-3">
-              <dt className="shrink-0 text-zinc-500">봉인한 판정</dt>
+              <dt className="shrink-0 text-zinc-500">기록된 계산 결과</dt>
               <dd className="text-right font-medium text-zinc-900">{result.judgments.length}건</dd>
             </div>
           )}
@@ -125,7 +124,7 @@ export function EvidenceAnchor() {
       {/* 기록 뒤에 거래를 고쳤으면 그 사실을 말한다. "기록됨" 배지만 남기면 옛 근거를 현재 근거로 읽는다. */}
       {stale && (
         <p className="mt-4 rounded-card border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-900">
-          계산이 바뀌어 다음 내려받기 때 새로 등록돼요. 이전 기록은 체인에 그대로 남습니다.
+          계산 결과가 변경되어 다음 내려받기 시 새로 등록됩니다. 이전 기록은 체인에 유지됩니다.
         </p>
       )}
 

@@ -46,7 +46,7 @@ export function FileCheck({ client, verificationId, capabilities, evidenceRoot }
     const gen = ++generation.current;
     const format = detectFormat(file);
     if (format === "pdf") {
-      setPhase({ kind: "unsupported", name: file.name, reason: "PDF 보고서는 인쇄물이라 근거에 파일 해시가 없어 검증할 수 없습니다. CSV 또는 XLSX 파일을 선택하세요." });
+      setPhase({ kind: "unsupported", name: file.name, reason: "PDF 보고서는 인쇄물이라 근거에 파일 해시가 없어 검증할 수 없습니다. CSV 또는 XLSX 파일을 선택해 주세요." });
       return;
     }
     if (format === "unknown" || !capabilities.fileFormats.includes(format)) {
@@ -130,8 +130,8 @@ export function FileCheck({ client, verificationId, capabilities, evidenceRoot }
             <Notice tone={localProof === "failed" ? "error" : "warn"} surface="report-vc-file-unverified">
               <span className="block font-semibold">{phase.name}</span>
               {localProof === "failed"
-                ? "서버는 포함이라고 답했지만 브라우저에서 다시 계산한 머클 증명이 근거 루트와 맞지 않습니다. 검증 성공으로 보지 않습니다."
-                : "서버는 포함이라고 답했지만 브라우저에서 다시 확인할 머클 증명이 없어 성공으로 표시하지 않습니다."}
+                ? "브라우저에서 재계산한 검증값이 증명서의 근거와 일치하지 않아 파일 검증에 실패했습니다."
+                : "파일을 대조하는 데 필요한 증명 자료가 없어 검증을 완료하지 못했습니다."}
             </Notice>
           );
         }
@@ -147,7 +147,7 @@ export function FileCheck({ client, verificationId, capabilities, evidenceRoot }
         return (
           <Notice tone="warn" surface={`report-vc-file-${result.status}`}>
             <span className="block font-semibold">{phase.name}</span>
-            {result.status === "unsupported" ? "서버가 이 형식의 파일 검증을 지원하지 않습니다." : "근거 잎 정보를 읽을 수 없어 포함 여부를 판단하지 못했습니다."}
+            {result.status === "unsupported" ? "해당 파일 형식은 검증을 지원하지 않습니다." : "근거 잎 정보를 읽을 수 없어 포함 여부를 판단하지 못했습니다."}
           </Notice>
         );
       })()}

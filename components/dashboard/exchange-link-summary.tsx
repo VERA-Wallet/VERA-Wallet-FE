@@ -46,7 +46,7 @@ export function ExchangeLinkSummary({ storage }: { storage?: Storage | null } = 
         })}
       </ul>
       <p className="mt-2 text-xs leading-5 text-zinc-500">
-        연동 흐름만 시연한 상태라 아래 목록에는 거래소 거래가 아직 들어오지 않습니다.
+        거래소 연결은 시연 기능입니다. 실제 거래소 거래는 아래 목록에 반영되지 않습니다.
       </p>
     </section>
   );

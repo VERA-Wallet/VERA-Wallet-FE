@@ -136,7 +136,7 @@ describe("전역 귀속연도 단일 소스", () => {
     ).toBe(false);
 
     // 계산 설정 화면의 과세연도 셀렉터를 2022로 바꾼다(더 이상 접힘 안이 아니다 — 페이지가 곧 그 주제다).
-    const conditions = (await screen.findByText("계산 조건 바꾸기")).closest("section")!;
+    const conditions = (await screen.findByText("계산 조건")).closest("section")!;
     fireEvent.click(within(conditions).getByRole("button", { name: "2022" }));
 
     // 대시보드도 같은 소스를 구독하므로 KR/2022로 다시 조회해야 한다(desync 해소).
@@ -175,7 +175,7 @@ describe("거주자 전제·잠정 배지", () => {
     // 나라 칩은 "다른 나라였다면" 화면으로 나갔다 — 거주국 리포트가 답이고 나라 전환은 비교다.
     fireEvent.click(within(screen.getByLabelText("국가 선택")).getByRole("button", { name: /한국/ }));
     await screen.findByText("한국 · 2025");
-    const conditions = screen.getByText("계산 조건 바꾸기").closest("section")!;
+    const conditions = screen.getByText("계산 조건").closest("section")!;
     fireEvent.click(within(conditions).getByRole("button", { name: /2027/ }));
     await screen.findByText("한국 · 2027");
 

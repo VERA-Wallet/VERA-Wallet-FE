@@ -132,7 +132,7 @@ export function ReportInputsProvider({
   const blockedReason = !walletConnected
     ? "지갑을 연결하면 내 거래로 신고 근거자료를 만들 수 있습니다."
     : source === "scenario"
-      ? "데모 시나리오는 내 지갑 데이터가 아니라 파일로 만들지 않습니다. 계산 설정에서 “내 지갑 이벤트”로 바꾸면 내려받을 수 있습니다."
+      ? "예제 데이터는 내 지갑 데이터가 아니라 파일로 만들지 않습니다. 계산 설정에서 “연결 지갑 거래”로 바꾸면 내려받을 수 있습니다."
       : comparingLabel !== null
         ? `지금은 ${comparingLabel} 기준으로 비교 중입니다. 신고 근거자료는 거주국 기준으로만 만듭니다.`
         : null;

@@ -50,7 +50,7 @@ function recorder() {
       page.locator(`[data-surface="${surface}"]`).getByTestId("mock-provenance");
     const verifyBadge = async (surface: string, screenshot: string) => {
       const badge = badgeIn(surface);
-      await expect(badge).toHaveText("mock 데이터");
+      await expect(badge).toHaveText("예제 데이터");
       transcript.assertion(`[data-surface="${surface}"] [data-testid="mock-provenance"]`);
       // 배지 요소만 잘라내면 24px 띠가 남아 증거로서 맥락이 없다. 배지가 실제로 놓인 화면을 찍는다.
       await page.screenshot({ path: `${artifactDirectory}/g003-provenance-${mode}-${screenshot}.png` });

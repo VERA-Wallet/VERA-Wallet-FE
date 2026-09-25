@@ -38,7 +38,7 @@ const FAILED_GRACE_MS = 5_000;
  * BE `EvidenceView`에 `failureReason`이 없으므로 화면이 말할 수 있는 사실은 "확정되지 않았다"뿐이다.
  * 타임아웃도 같은 문구를 쓴다 — 사용자가 할 수 있는 일이 같고, 둘을 구분해도 행동이 달라지지 않는다.
  */
-export const BUNDLE_FAILED_REASON = "체인에 등록하지 못했어요. 다시 시도하면 새로 등록해요.";
+export const BUNDLE_FAILED_REASON = "체인 등록에 실패했습니다. 다시 시도해 주세요.";
 
 /** 사용자가 시키지 않았는데 계산이 갱신돼 등록이 끊겼을 때의 사유. 조용히 사라지는 것보다 낫다. */
 const INTERRUPTED_REASON = "계산이 갱신되어 등록을 다시 시작해야 합니다.";

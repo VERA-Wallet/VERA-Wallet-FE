@@ -118,7 +118,7 @@ describe("리포트 플랜 잠금", () => {
     expect(screen.queryByText("플랜을 구독하면 리포트가 열립니다")).toBeNull();
     expect(document.querySelector("[data-surface='plan-cta']")).toBeNull();
     // 대신 내려받기 카드가 무엇이 무료이고 무엇이 결제인지 한 줄로 말한다.
-    expect(screen.getByText("계산은 무료예요. 파일로 내려받을 때만 결제해요.")).toBeInTheDocument();
+    expect(screen.getByText("계산 기능은 무료입니다. 파일을 내려받으려면 플랜 이용이 필요합니다.")).toBeInTheDocument();
     // 다운로드 두 버튼은 잠긴다(자물쇠 아이콘 + data-locked).
     const csv = screen.getByRole("button", { name: /직접 신고용 내려받기/ });
     await waitFor(() => expect(csv).toBeDisabled());
@@ -161,7 +161,7 @@ describe("리포트 플랜 잠금", () => {
 
     expect(await screen.findByText("₩5,000,000")).toBeInTheDocument();
     // 구독자에게 "계산은 무료예요" 줄은 필요 없다 — 이미 결제했다.
-    expect(screen.queryByText("계산은 무료예요. 파일로 내려받을 때만 결제해요.")).toBeNull();
+    expect(screen.queryByText("계산 기능은 무료입니다. 파일을 내려받으려면 플랜 이용이 필요합니다.")).toBeNull();
     const csv = screen.getByRole("button", { name: /직접 신고용 내려받기/ });
     await waitFor(() => expect(csv).not.toBeDisabled());
     expect(csv).not.toHaveAttribute("data-locked");

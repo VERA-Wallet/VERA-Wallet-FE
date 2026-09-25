@@ -72,14 +72,14 @@ async function renderSimulator() {
   );
   await selectTaxYear(2025);
   // 락인된 기대치(1,015.44 등)는 데모 시나리오 픽스처의 값이다. 출처를 명시한다.
-  fireEvent.click(screen.getByRole("button", { name: "데모 시나리오" }));
+  fireEvent.click(screen.getByRole("button", { name: "예제 데이터" }));
   await waitFor(() => expect(ports.estimate.mock.calls.at(-1)?.[0].source).toBe("scenario"));
   return view;
 }
 
-/** 과세연도 칩은 계산 설정 화면의 "계산 조건 바꾸기" 안에 있다(더 이상 접힘이 아니라 펼친 섹션이다). */
+/** 과세연도 칩은 계산 설정 화면의 "계산 조건" 안에 있다(더 이상 접힘이 아니라 펼친 섹션이다). */
 async function selectTaxYear(year: number) {
-  const conditions = (await screen.findByText("계산 조건 바꾸기")).closest("section")!;
+  const conditions = (await screen.findByText("계산 조건")).closest("section")!;
   fireEvent.click(within(conditions).getByRole("button", { name: String(year) }));
 }
 
@@ -122,7 +122,7 @@ describe("리포트 계산 표면", () => {
     await screen.findByText("인도 · 2025");
     expect(await screen.findByText("상계 불가로 무시된 손실")).toBeInTheDocument();
     // 실효세율은 메인의 답 옆과 비교 화면 두 곳에 같은 estimate에서 나온다 — 답 쪽을 본다.
-    expect(within(screen.getByLabelText("계산 요약")).getByText(/실효 31.2%/)).toBeInTheDocument();
+    expect(within(screen.getByLabelText("계산 요약")).getByText(/실효세율 31.2%/)).toBeInTheDocument();
   });
 
   it("가정을 끄면 시행 전 국가는 금액 대신 과세 대상 아님과 판단 필요 항목을 제시한다", async () => {
@@ -154,9 +154,9 @@ describe("리포트 계산 표면", () => {
       expect(screen.getByTestId("estimated-charge").textContent).toContain("₩1,480,518"),
     );
     // 큰 금액 옆에 가정이라는 사실이 계속 있어야 한다.
-    expect(screen.getByText(/시행 가정으로 보는 중입니다/)).toBeInTheDocument();
+    expect(screen.getByText(/시행 예정 기준 적용/)).toBeInTheDocument();
     // "시행 전인 지금 실제 부담은 0원"은 지우지 않고 접어 둔다.
-    expect(screen.getByText("시행 전인 지금 실제 부담은")).toBeInTheDocument();
+    expect(screen.getByText("시행 전 과세 여부")).toBeInTheDocument();
     // 방식 라벨도 가정임을 밝힌다 — 내보낸 결과만 봐도 알 수 있어야 한다.
     expect(within(screen.getByLabelText("계산 요약")).getByText(/거주자별 총평균법 · 2027 시행 가정/)).toBeInTheDocument();
 
@@ -184,7 +184,7 @@ describe("리포트 계산 표면", () => {
     // 미래 연도를 아무 말 없이 계산하면 사용자는 확정된 답으로 읽는다.
     // 이제는 배지로 보이고, 전문은 그 배지를 펼쳐야 나오는 접힘 안에 보존된다.
     expect(screen.getByText("2027년 시행 기준 미리보기")).toBeInTheDocument();
-    expect(screen.getByText(/아직 시행 전인 2027년 기준으로 미리 계산했습니다/)).toBeInTheDocument();
+    expect(screen.getByText(/아직 시행 전인 2027년 시행 예정 기준으로 계산한 참고 금액입니다/)).toBeInTheDocument();
   });
 
   it("규칙이 미확정인 룰셋은 같은 0을 '산출 불가'라 부른다", async () => {
@@ -229,10 +229,10 @@ describe("리포트 계산 표면", () => {
     expect(ports.estimate.mock.calls.at(-1)?.[0].source).toBe("wallet");
 
     // 지갑 경로만 만들 수 있는 파생 한계가 실제로 도달한다. 화면은 엔진 원문이 아니라 사람 말로 옮겨 보인다.
-    const shaky = await screen.findByLabelText("흔들리는 것");
+    const shaky = await screen.findByLabelText("계산 결과 확인 사항");
     expect(shaky.querySelector('[data-limitation-group="excluded"]')).not.toBeNull();
-    expect(shaky.textContent).toContain("계산에서 뺌");
-    expect(shaky.textContent).toContain("가스비는");
+    expect(shaky.textContent).toContain("계산 제외");
+    expect(shaky.textContent).toContain("네트워크 수수료의");
   });
 
   it("금지 용어를 노출하지 않는다", async () => {
@@ -278,7 +278,7 @@ describe("리포트 제외 배너", () => {
     // "메인의 답 다음에 오는 메뉴 줄의 순서"가 됐다. 순서를 안 재면 메뉴가 설정부터 내미는
     // 화면이 되어도 통과한다.
     await renderWithWallet(createNormalizedEventFixtures(FIXTURE_TAX_YEAR));
-    await screen.findByLabelText("흔들리는 것");
+    await screen.findByLabelText("계산 결과 확인 사항");
     await screen.findByLabelText("판정 그룹");
 
     const main = document.querySelector('[data-surface="report"]')!.closest("main")!;
@@ -305,8 +305,8 @@ describe("리포트 제외 배너", () => {
       .getAllByRole("button")
       .filter((node) => node.getAttribute("aria-pressed") === "true")
       .map((node) => node.textContent);
-    expect(pressed).toContain("내 지갑 이벤트");
-    expect(pressed).not.toContain("데모 시나리오");
+    expect(pressed).toContain("연결 지갑 거래");
+    expect(pressed).not.toContain("예제 데이터");
     expect(ports.estimate.mock.calls.at(-1)?.[0].source).toBe("wallet");
   });
 
@@ -318,18 +318,18 @@ describe("리포트 제외 배너", () => {
       { ...base, id: "estimated", price_status: "ESTIMATED" },
       { ...base, id: "sold", classification: "SEND", direction: "OUT", user_override: null },
     ]);
-    const shaky = await screen.findByLabelText("흔들리는 것");
+    const shaky = await screen.findByLabelText("계산 결과 확인 사항");
     const grounds = screen.queryByLabelText("계산 근거");
 
     const shakyText = shaky.textContent ?? "";
     const groundsText = grounds?.textContent ?? "";
     // 흔들리는 지점은 엔진 원문(상태값 UNKNOWN·ESTIMATED)이 아니라 사람 말로 보인다.
-    for (const sentence of ["거래 당시 가격을 확인하지 못했습니다", "추정 가격으로 계산했습니다", "가스비는"]) {
+    for (const sentence of ["거래 당시 가격을 확인하지 못했습니다", "추정 가격으로 계산했습니다", "네트워크 수수료의"]) {
       // 문구가 사라져도 통과하던 조건부 검사를 없앤다.
       expect(shakyText, sentence).toContain(sentence);
     }
     // 계산 근거(규칙 메모)에는 같은 경고가 원문으로도 다시 서지 않는다.
-    for (const sentence of ["계산에서 제외했습니다", "추정가(ESTIMATED)", "가스비는"]) {
+    for (const sentence of ["계산에서 제외했습니다", "추정가(ESTIMATED)", "네트워크 수수료의"]) {
       expect(groundsText, sentence).not.toContain(sentence);
     }
   });
@@ -342,9 +342,9 @@ describe("리포트 제외 배너", () => {
       { ...base, id: "estimated", price_status: "ESTIMATED" },
       { ...base, id: "sold", classification: "SEND", direction: "OUT", user_override: null },
     ]);
-    const section = await screen.findByLabelText("흔들리는 것");
+    const section = await screen.findByLabelText("계산 결과 확인 사항");
 
-    expect(section.textContent).toContain("이 답이 흔들리는 지점");
+    expect(section.textContent).toContain("계산 결과 확인 사항");
     // 답에서 빠진 것이 근사보다 먼저 온다 — 영향 순. 이제 종류별로 묶이므로 묶음의 순서를 잰다.
     const kinds = [...section.querySelectorAll("[data-limitation-group]")].map((node) =>
       node.getAttribute("data-limitation-group"),
@@ -352,7 +352,7 @@ describe("리포트 제외 배너", () => {
     expect(kinds.indexOf("excluded")).toBeLessThan(kinds.indexOf("approximation"));
     // 묶음 제목이 그 종류의 라벨과 건수를 말한다.
     const excluded = section.querySelector('[data-limitation-group="excluded"]')!;
-    expect(excluded.textContent).toContain("계산에서 뺌");
+    expect(excluded.textContent).toContain("계산 제외");
     expect(excluded.textContent).toMatch(/\d+건/);
     // 얼마나 달라지는지는 계산하지 않았다. 금액을 쓰면 지어낸 추정이 된다.
     expect(section.textContent).not.toMatch(/[€$₩][\d,]/);
@@ -417,8 +417,8 @@ describe("리포트 제외 배너", () => {
 
     await renderSimulator();
     await screen.findByTestId("estimated-charge");
-    const conditions = screen.getByText("계산 조건 바꾸기").closest("section")!;
-    fireEvent.click(within(conditions).getByRole("button", { name: "내 지갑 이벤트" }));
+    const conditions = screen.getByText("계산 조건").closest("section")!;
+    fireEvent.click(within(conditions).getByRole("button", { name: "연결 지갑 거래" }));
 
     await waitFor(() => {
       const calls = ports.estimate.mock.calls.map(([input]) => input.source);
@@ -437,7 +437,7 @@ describe("리포트가 답 우선 3계층인가", () => {
 
     // L1 답과 설정의 문서 순서를 비교한다. 설정이 먼저면 사용자는 답까지 스크롤해야 한다.
     const answer = screen.getByTestId("estimated-charge");
-    const settings = screen.getByText("계산 조건 바꾸기");
+    const settings = screen.getByText("계산 조건");
     const order = answer.compareDocumentPosition(settings);
     expect(order & Node.DOCUMENT_POSITION_FOLLOWING, "답이 설정보다 앞에 있어야 한다").toBeTruthy();
     void container;
@@ -492,7 +492,7 @@ describe("리포트가 답 우선 3계층인가", () => {
     await screen.findByText("독일 · 2025");
     expect(screen.getByRole("button", { name: /2025년 귀속/ })).toBeInTheDocument();
     // 이유는 배지로 강등됐지만 삭제되지 않았다 — 배지가 보이고, 전문은 접힘 안에 그대로 있다.
-    expect(screen.getByText("2025년으로 열림")).toBeInTheDocument();
+    expect(screen.getByText("2025년 거래 기준")).toBeInTheDocument();
     expect(screen.getByText(/2026년에는 계산할 거래가 없어/)).toBeInTheDocument();
 
     expect(screen.getByRole("button", { name: "2025" })).toHaveAttribute("aria-pressed", "true");
@@ -509,7 +509,7 @@ describe("리포트가 답 우선 3계층인가", () => {
       </QueryClientProvider>,
     );
 
-    await screen.findByText("계산 조건 바꾸기");
+    await screen.findByText("계산 조건");
     expect(screen.getByRole("button", { name: "2020" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: "2026" })).toBeInTheDocument();
   });
@@ -522,20 +522,20 @@ describe("리포트가 답 우선 3계층인가", () => {
       </QueryClientProvider>,
     );
     await screen.findByText("독일 · 2025");
-    expect(screen.getByText(/거주국 룰셋을 적용한 결과/)).toBeInTheDocument();
+    expect(screen.getByText(/거주국 계산 기준을 적용한 결과/)).toBeInTheDocument();
 
     await selectCountry(/미국/);
     await screen.findByText(/미국 · 2025/);
-    expect(screen.getByText(/선택한 국가 룰셋을 적용한 결과/)).toBeInTheDocument();
-    expect(screen.queryByText(/거주국 룰셋을 적용한 결과/)).not.toBeInTheDocument();
+    expect(screen.getByText(/선택한 국가 계산 기준을 적용한 결과/)).toBeInTheDocument();
+    expect(screen.queryByText(/거주국 계산 기준을 적용한 결과/)).not.toBeInTheDocument();
   });
 
   it("거주국을 모르면 어느 나라도 거주국이라 하지 않는다", async () => {
     // prop이 없으면 기본 국가(독일)를 열지만, 그게 이 사람의 거주국이라는 근거는 없다.
     await renderSimulator();
     await screen.findByText("독일 · 2025");
-    expect(screen.getByText(/선택한 국가 룰셋을 적용한 결과/)).toBeInTheDocument();
-    expect(screen.queryByText(/거주국 룰셋을 적용한 결과/)).not.toBeInTheDocument();
+    expect(screen.getByText(/선택한 국가 계산 기준을 적용한 결과/)).toBeInTheDocument();
+    expect(screen.queryByText(/거주국 계산 기준을 적용한 결과/)).not.toBeInTheDocument();
   });
 
   it("헤더가 실제 출처와 준비 상태를 말한다", async () => {
@@ -548,12 +548,12 @@ describe("리포트가 답 우선 3계층인가", () => {
     );
     // 기본은 내 지갑이다.
     await screen.findByText("독일 · 2025");
-    expect(screen.getByText(/지갑 이력에 거주국 룰셋을 적용한 결과/)).toBeInTheDocument();
+    expect(screen.getByText(/지갑 이력에 거주국 계산 기준을 적용한 결과/)).toBeInTheDocument();
 
     // 데모 시나리오로 바꾸면 헤더도 따라간다.
-    fireEvent.click(screen.getByRole("button", { name: "데모 시나리오" }));
-    await waitFor(() => expect(screen.getByText(/데모 시나리오에 거주국 룰셋을 적용한 결과/)).toBeInTheDocument());
-    expect(screen.queryByText(/지갑 이력에 거주국 룰셋을 적용한 결과/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "예제 데이터" }));
+    await waitFor(() => expect(screen.getByText(/예제 데이터에 거주국 계산 기준을 적용한 결과/)).toBeInTheDocument());
+    expect(screen.queryByText(/지갑 이력에 거주국 계산 기준을 적용한 결과/)).not.toBeInTheDocument();
   });
 
   it("결과가 없으면 적용한 결과라고 하지 않는다", async () => {
@@ -564,7 +564,7 @@ describe("리포트가 답 우선 3계층인가", () => {
         <ReportPages countryCode="DE" currentYear={2025} />
       </QueryClientProvider>,
     );
-    await screen.findByText("적용할 룰셋을 확인하는 중입니다. 아직 계산하지 않았습니다.");
+    await screen.findByText("적용할 계산 기준을 확인하는 중입니다. 아직 계산하지 않았습니다.");
     // 아직 아무것도 계산하지 않았는데 "적용한 결과"라 하면 화면이 거짓을 말한다.
     expect(document.body.textContent).not.toMatch(/적용한 결과입니다/);
   });
@@ -583,10 +583,10 @@ describe("리포트가 답 우선 3계층인가", () => {
 
     // 새 출처의 계산을 붙잡아 둔다.
     ports.estimate.mockImplementation(() => new Promise((resolve) => { release = () => resolve(undefined as never); }));
-    fireEvent.click(screen.getByRole("button", { name: "데모 시나리오" }));
+    fireEvent.click(screen.getByRole("button", { name: "예제 데이터" }));
 
     // 헤더가 새 출처를 말하는 순간 금액은 이미 사라져 있어야 한다.
-    await waitFor(() => expect(screen.getByText(/데모 시나리오에/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/예제 데이터에/)).toBeInTheDocument());
     expect(screen.queryByTestId("estimated-charge")).not.toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/적용한 결과입니다/);
     void release;
@@ -633,7 +633,7 @@ describe("리포트가 답 우선 3계층인가", () => {
         <ReportPages countryCode="DE" currentYear={2025} />
       </QueryClientProvider>,
     );
-    await screen.findByText(/룰셋을 적용하지 못했습니다/);
+    await screen.findByText(/계산 기준을 적용하지 못했습니다/);
     expect(document.body.textContent).not.toMatch(/적용하는 중입니다/);
     expect(document.body.textContent).not.toMatch(/적용한 결과입니다/);
   });
@@ -646,7 +646,7 @@ describe("리포트가 답 우선 3계층인가", () => {
     // 조건부 return을 두면 픽스처가 바뀌는 순간 이 계약이 조용히 검증되지 않는다.
     expect(estimate.lossCarryforward).not.toBe("0");
 
-    expect(screen.getByText(/다음 기간으로 넘길 손실/)).toBeInTheDocument();
+    expect(screen.getByText(/이월 손실/)).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/이전 기간에서 넘어온/);
   });
 
@@ -658,7 +658,7 @@ describe("리포트가 답 우선 3계층인가", () => {
         <ReportPages countryCode="DE" currentYear={2025} />
       </QueryClientProvider>,
     );
-    await screen.findByText("적용할 룰셋을 확인하지 못해 아직 계산하지 않았습니다.");
+    await screen.findByText("적용할 계산 기준을 확인하지 못해 아직 계산하지 않았습니다.");
     expect(document.body.textContent).not.toMatch(/적용한 결과입니다/);
   });
 
@@ -670,11 +670,11 @@ describe("리포트가 답 우선 3계층인가", () => {
         <ReportPages currentYear={FIXTURE_TAX_YEAR} />
       </QueryClientProvider>,
     );
-    await screen.findByText("계산 조건 바꾸기");
+    await screen.findByText("계산 조건");
     // 12개 입력이 펼쳐져 있으면 첫 화면이 설정으로 찬다 — 그래서 설정은 이제 메인에 없고 별도 화면이다.
     // 접힘을 세던 자리를 "메인에 없다"로 바꾼다: 접혀 있든 펼쳐져 있든, 메인에 있으면 첫 화면이 길어진다.
     const main = document.querySelector('[data-surface="report"]')!.closest("main")!;
-    expect(within(main).queryByText("계산 조건 바꾸기")).toBeNull();
+    expect(within(main).queryByText("계산 조건")).toBeNull();
     expect(within(main).queryByLabelText("계산 조건")).toBeNull();
     // 대신 메뉴 줄이 그 화면으로 가는 문을 연다.
     expect(within(main).getByRole("link", { name: /계산 설정/ })).toHaveAttribute("href", "/export/settings");
@@ -705,7 +705,7 @@ describe("리포트가 답 우선 3계층인가", () => {
     // 각 그룹에 건수와 금액이 붙는다.
     expect(section.textContent).toMatch(/\d+건/);
     // 건별로 넘어갈 동선이 있다.
-    expect(section.textContent).toContain("어떤 거래가 어느 그룹인지 보기");
+    expect(section.textContent).toContain("거래별 분류 확인");
   });
 
   it("판정 그룹이 답을 이루는 금액을 실제로 보여준다", async () => {
@@ -785,7 +785,7 @@ describe("리포트가 답 우선 3계층인가", () => {
     }
     expect(ports.estimate.mock.calls.length).toBe(before);
     expect(screen.getByText(/한계세율 40%/)).toBeInTheDocument();
-    expect(screen.getByText(/손을 떼면 40%로 다시 계산합니다/)).toBeInTheDocument();
+    expect(screen.getByText(/조절을 마치면 40%를 적용하여 다시 계산합니다/)).toBeInTheDocument();
 
     fireEvent.pointerUp(slider);
     await waitFor(() => expect(ports.estimate.mock.calls.length).toBe(before + 1));
@@ -801,7 +801,7 @@ describe("리포트가 답 우선 3계층인가", () => {
     expect(screen.getByLabelText("전년 이월결손금")).toBeInTheDocument();
     // 안 쓰는 입력은 숨기지 않는다 — 숨기면 사용자가 자기 실수로 오해한다.
     const filing = screen.getByText("신고 구분").closest("div")!;
-    expect(filing.textContent).toContain("이 국가에서 쓰지 않음");
+    expect(filing.textContent).toContain("해당 국가 미적용");
     expect(screen.queryByRole("button", { name: "부부합산" })).not.toBeInTheDocument();
   });
 
@@ -816,14 +816,14 @@ describe("리포트가 답 우선 3계층인가", () => {
       </QueryClientProvider>,
     );
 
-    await screen.findByText("계산 조건 바꾸기");
-    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("룰셋 목록을 불러오지 못했습니다."));
+    await screen.findByText("계산 조건");
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("계산 기준 목록을 불러오지 못했습니다."));
     // 오류만 띄우고 나가는 문을 안 주면 막다른 화면이다.
     expect(screen.getByRole("button", { name: "다시 시도" })).toBeInTheDocument();
     const body = document.body.textContent ?? "";
-    expect(body).toContain("룰셋을 불러오지 못함");
-    expect(body).not.toContain("룰셋 확인 중");
-    expect(body).not.toContain("이 국가에서 쓰지 않음");
+    expect(body).toContain("계산 기준 조회 실패");
+    expect(body).not.toContain("계산 기준 확인 중");
+    expect(body).not.toContain("해당 국가 미적용");
 
     // 다시 시도가 실제로 회복시킨다.
     ports.listRuleSets.mockImplementation(async () => ruleSetListSchema.parse(listRuleSetSummaries()));
@@ -842,9 +842,9 @@ describe("리포트가 답 우선 3계층인가", () => {
       </QueryClientProvider>,
     );
 
-    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/룰셋이 없습니다/));
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/계산 기준이 없습니다/));
     expect(screen.getByRole("button", { name: "다시 시도" })).toBeInTheDocument();
-    expect(screen.queryByText("적용할 룰셋을 확인하는 중입니다. 아직 계산하지 않았습니다.")).not.toBeInTheDocument();
+    expect(screen.queryByText("적용할 계산 기준을 확인하는 중입니다. 아직 계산하지 않았습니다.")).not.toBeInTheDocument();
     expect(screen.queryByTestId("estimated-charge")).not.toBeInTheDocument();
   });
 
@@ -862,7 +862,7 @@ describe("리포트가 답 우선 3계층인가", () => {
 
     // GB는 지갑 외 소득과 디파이 소유권을 쓴다 — 룰셋을 찾았다는 증거.
     expect(screen.getByLabelText("지갑 외 과세소득")).toBeInTheDocument();
-    expect(document.body.textContent).not.toContain("룰셋 확인 중");
+    expect(document.body.textContent).not.toContain("계산 기준 확인 중");
   });
 
   it("룰셋을 못 받았으면 쓰지 않는다고 단정하지 않는다", async () => {
@@ -875,10 +875,10 @@ describe("리포트가 답 우선 3계층인가", () => {
       </QueryClientProvider>,
     );
 
-    await screen.findByText("계산 조건 바꾸기");
+    await screen.findByText("계산 조건");
     const body = document.body.textContent ?? "";
-    expect(body).toContain("룰셋 확인 중");
-    expect(body).not.toContain("이 국가에서 쓰지 않음");
+    expect(body).toContain("계산 기준 확인 중");
+    expect(body).not.toContain("해당 국가 미적용");
 
     ports.listRuleSets.mockImplementation(async () => ruleSetListSchema.parse(listRuleSetSummaries()));
   });
@@ -900,7 +900,7 @@ describe("리포트가 답 우선 3계층인가", () => {
       </QueryClientProvider>,
     );
     // 요청을 보낸 적이 없다 — "불러오는 중"이 아니라 "아직 계산하지 않았다"고 말해야 한다.
-    await screen.findByText("적용할 룰셋을 확인하는 중입니다. 아직 계산하지 않았습니다.");
+    await screen.findByText("적용할 계산 기준을 확인하는 중입니다. 아직 계산하지 않았습니다.");
     expect(screen.queryByText("계산 결과를 불러오는 중입니다")).not.toBeInTheDocument();
     expect(ports.estimate.mock.calls.length).toBe(before);
 
@@ -998,7 +998,7 @@ describe("리포트가 답 우선 3계층인가", () => {
     expect(screen.getByRole("button", { name: "부부합산" })).toBeInTheDocument();
     // 반대로 독일이 쓰던 한계세율은 미국에서 쓰지 않는다.
     const rate = screen.getByText("한계세율").closest("div")!;
-    expect(rate.textContent).toContain("이 국가에서 쓰지 않음");
+    expect(rate.textContent).toContain("해당 국가 미적용");
   });
 
   it("이월결손금이 계산에 반영된다", async () => {
@@ -1080,13 +1080,13 @@ describe("리포트가 답 우선 3계층인가", () => {
 
     // 데모 시나리오는 어느 해를 골라도 그 해의 거래를 만든다 — 비어 있는 쪽은 내 지갑이다.
     // 취득 원가는 기간 밖에서도 남지만 그건 "이번 기간의 답"이 아니다.
-    fireEvent.click(screen.getByRole("button", { name: "내 지갑 이벤트" }));
+    fireEvent.click(screen.getByRole("button", { name: "연결 지갑 거래" }));
     await selectTaxYear(2023);
     await waitFor(() => expect(screen.getByTestId("estimated-charge")).toHaveTextContent("계산할 거래 없음"));
     const body = document.body.textContent ?? "";
     // "€0.00"을 크게 띄우면 "올해는 낼 게 없구나"로 읽힌다.
     expect(screen.getByTestId("estimated-charge").textContent).not.toMatch(/0\.00/);
-    expect(body).toContain("계산에 넣을 거래가 없습니다");
+    expect(body).toContain("계산 대상 거래가 없습니다");
     // 셀 것이 없다면서 옛 취득 그룹을 금액과 함께 보이면 화면이 두 이야기를 한다.
     expect(screen.queryByLabelText("판정 그룹")).not.toBeInTheDocument();
   });
@@ -1095,7 +1095,7 @@ describe("리포트가 답 우선 3계층인가", () => {
     // 깨끗한 시나리오에서는 한계 패널 자체가 없어야 한다. 빈 패널을 띄우면 없는 불안을 만든다.
     await renderSimulator();
     await screen.findByText("독일 · 2025");
-    expect(screen.queryByLabelText("흔들리는 것")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("계산 결과 확인 사항")).not.toBeInTheDocument();
   });
 
   it("같은 조건 재조회 중에는 이전 금액임을 명시하고 결과를 유지한다", async () => {
@@ -1106,7 +1106,7 @@ describe("리포트가 답 우선 3계층인가", () => {
       </QueryClientProvider>,
     );
     await selectTaxYear(2025);
-    fireEvent.click(screen.getByRole("button", { name: "데모 시나리오" }));
+    fireEvent.click(screen.getByRole("button", { name: "예제 데이터" }));
     await screen.findByText("독일 · 2025");
     await waitFor(() => expect(screen.getByTestId("estimated-charge").textContent).toContain("1,015.44"));
 
@@ -1116,7 +1116,7 @@ describe("리포트가 답 우선 3계층인가", () => {
     expect(within(screen.getByLabelText("이전 계산 결과")).getByTestId("estimated-charge")).toHaveTextContent("1,015.44");
     expect(screen.getByText(/새 결과 확인 전에는 내보내기와 증명서 발급에 사용하지 않습니다/)).toBeInTheDocument();
     // 결과가 없어도 조건은 바꿀 수 있어야 한다. 조건이 결과 안에 있으면 막다른 화면이 된다.
-    expect(screen.getByText("계산 조건 바꾸기")).toBeInTheDocument();
+    expect(screen.getByText("계산 조건")).toBeInTheDocument();
     expect(screen.getByLabelText(/한계세율/)).toBeInTheDocument();
   });
 });

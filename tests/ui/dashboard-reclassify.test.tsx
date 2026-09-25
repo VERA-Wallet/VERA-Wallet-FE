@@ -52,7 +52,7 @@ describe("거래 탭 reclassification", () => {
     const { invalidate } = setup({ status: "conflict", event: latest, version: 2 });
     fireEvent.click(await screen.findByText(rowLabel(event)));
     fireEvent.click(screen.getByRole("button", { name: "적용" }));
-    expect(await screen.findByText("다른 곳에서 변경됨, 다시 확인")).toBeInTheDocument();
+    expect(await screen.findByText("금액이 변경되었습니다. 최신 내용을 확인해 주세요.")).toBeInTheDocument();
     expect(screen.getByDisplayValue("latest")).toBeInTheDocument();
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["events", "detail", event.id] });
     // 충돌 응답도 최신 이벤트를 실어 온다. 요약·판정을 갱신하지 않으면

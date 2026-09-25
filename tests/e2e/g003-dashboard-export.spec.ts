@@ -169,10 +169,10 @@ test.describe.serial("G003 dashboard and export contract red team", () => {
     await page.locator("#classification").selectOption(staleTarget);
     transcript.act({ type: "click", selector: 'button[name="적용"]' });
     await page.getByRole("button", { name: "적용" }).click();
-    await expect(page.getByText("다른 곳에서 변경됨, 다시 확인")).toBeVisible();
+    await expect(page.getByText("금액이 변경되었습니다. 최신 내용을 확인해 주세요.")).toBeVisible();
     await expect(page.locator("#classification")).toHaveValue(preemptClassification);
     transcript.assert("Stale UI mutation displays conflict and synchronizes latest classification", true, "[role=alert]");
-    record(cases, "dashboard-stale-version-conflict", "409 stale version shows conflict and reloads latest event", preemptClassification, { status: preempt.status(), alert: await page.getByText("다른 곳에서 변경됨, 다시 확인").innerText(), current: await page.locator("#classification").inputValue() }, await page.locator("#classification").inputValue() === preemptClassification);
+    record(cases, "dashboard-stale-version-conflict", "409 stale version shows conflict and reloads latest event", preemptClassification, { status: preempt.status(), alert: await page.getByText("금액이 변경되었습니다. 최신 내용을 확인해 주세요.").innerText(), current: await page.locator("#classification").inputValue() }, await page.locator("#classification").inputValue() === preemptClassification);
     await page.getByRole("button", { name: "닫기", exact: true }).click();
 
     // 내보내기 다운로드는 플랜(데모 결제) 뒤에 있다 — 미구독이면 버튼이 disabled라 다운로드가 영영 안 뜬다.

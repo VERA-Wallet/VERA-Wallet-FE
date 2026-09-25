@@ -63,7 +63,7 @@ export function OtherCountryJudgments({
 
   return (
     <details className="mt-4 rounded-lg bg-zinc-50 p-3">
-      <summary className="cursor-pointer text-sm font-semibold text-zinc-700 marker:text-zinc-400">다른 나라였다면</summary>
+      <summary className="cursor-pointer text-sm font-semibold text-zinc-700 marker:text-zinc-400">국가별 계산 비교</summary>
       <div className="mt-2 space-y-2">
         {renderRows(firstFresh.data, firstRows, firstCountry, firstFresh.state)}
         {renderRows(secondFresh.data, secondRows, secondCountry, secondFresh.state)}

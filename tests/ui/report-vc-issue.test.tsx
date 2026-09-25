@@ -94,7 +94,7 @@ describe("VC로 받기 카드", () => {
 
     fake.issuanceStatus.mockResolvedValue(live({ status: "issuing", retryAfterMs: 2000 }));
     await tick(2000);
-    expect(screen.getByText(/발급 서버가 증명서를 만들고/)).toBeInTheDocument();
+    expect(screen.getByText(/증명서를 발급하고 있습니다/)).toBeInTheDocument();
     expect(surface("report-vc-issued")).toBeNull();
 
     fake.issuanceStatus.mockResolvedValue(live(fixtureIssued(fixtureIssuanceOffer())));

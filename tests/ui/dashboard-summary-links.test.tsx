@@ -131,7 +131,7 @@ describe("요약은 목록 화면이 아니다", () => {
     expect(screen.queryAllByRole("tab")).toHaveLength(0);
     expect(screen.queryByLabelText("거래 검색")).not.toBeInTheDocument();
     expect(document.querySelector('[data-surface="transaction-filters"]')).toBeNull();
-    expect(screen.queryByText("배지 뜻")).not.toBeInTheDocument();
+    expect(screen.queryByText("표시 항목 안내")).not.toBeInTheDocument();
   });
 
   it("남길 것은 그대로 남는다 — 기간·그래프·요약 카드·금액 가리기", async () => {

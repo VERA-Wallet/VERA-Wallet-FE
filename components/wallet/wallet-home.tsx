@@ -43,7 +43,7 @@ export function WalletHome({ walletAddress }: { walletAddress: string }) {
 
   // 목록이 답했는데 이 주소가 없다: 잘못된 링크거나 다른 계정의 지갑이다.
   if (wallets.data !== undefined && registered === null) {
-    return <NotFoundView title="등록하지 않은 지갑입니다" body="이 주소는 현재 계정에 등록되어 있지 않습니다. 지갑 목록에서 고르거나 새로 등록해 주세요." code={walletAddress} />;
+    return <NotFoundView title="등록하지 않은 지갑입니다" body="이 주소는 현재 계정에 등록되어 있지 않습니다. 지갑 목록에서 선택하거나 새로 등록해 주세요." code={walletAddress} />;
   }
 
   if (query.data === undefined) {
@@ -105,11 +105,11 @@ export function WalletHome({ walletAddress }: { walletAddress: string }) {
       onRemove={() => setConfirmOpen(true)}
     />
     <BottomSheet open={confirmOpen} onClose={() => { if (!removal.isPending) setConfirmOpen(false); }} title="지갑 삭제">
-      <h2 className="text-lg font-bold text-zinc-900">이 지갑을 삭제할까요?</h2>
+      <h2 className="text-lg font-bold text-zinc-900">지갑 삭제 확인</h2>
       <p className="mt-1 break-all font-mono text-xs text-zinc-500">{displayAddress}</p>
       {/* 무엇이 사라지고 무엇이 남는지를 먼저 말한다 — "삭제"만 크게 띄우면 사용자는 거래까지 지워지는 줄 모른다. */}
       <ul className="mt-3 list-disc space-y-1.5 pl-5 text-sm leading-6 text-zinc-600">
-        <li>이 지갑에서 불러온 거래가 원장·세금 계산·리포트에서 빠집니다.</li>
+        <li>이 지갑의 거래가 거래 내역·세금 계산·리포트에서 제외됩니다.</li>
         <li>직접 고친 분류·금액도 함께 사라집니다. 다시 등록하면 처음부터 다시 불러옵니다.</li>
         <li>다른 등록 지갑과 이 지갑 사이의 이동은 소유를 증명할 지갑이 없어져 일반 전송으로 다시 판정됩니다.</li>
         <li>체인에 이미 기록한 계산 근거는 지워지지 않습니다.</li>
@@ -192,7 +192,7 @@ function describeFailure(error: unknown): { kind: "session" | "retry"; message: 
       // 이 화면은 세션에 지갑이 있을 때만 열린다. 그런데 잔액 서버가 못 찾았다면 세션과 BE 저장소가 어긋난 것이다.
       return { kind: "session", message: "잔액 서버에서 이 지갑의 등록을 찾지 못했습니다. 다시 로그인한 뒤에도 같으면 지갑을 다시 등록해 주세요." };
     case "backend_endpoint_missing":
-      return { kind: "retry", message: "잔액 서버가 아직 보유 자산 조회를 지원하지 않습니다. 서버 배포 버전을 확인해 주세요." };
+      return { kind: "retry", message: "현재 보유 자산 조회를 이용할 수 없습니다. 잠시 후 다시 시도해 주세요." };
     case "service_unavailable":
     case "upstream_unavailable":
       return { kind: "retry", message: "잔액 서버에서 응답을 받지 못했습니다. 잠시 후 다시 시도해 주세요." };

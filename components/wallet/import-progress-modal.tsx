@@ -198,7 +198,7 @@ export function ImportProgressModal({
         ) : (
           <>
             {/* 창을 닫은 뒤 무슨 일이 일어나는지까지 말한다 — "계속된다"만으로는 결과를 어디서 보는지 알 수 없다. */}
-            <p className="mt-4 text-center text-xs leading-5 text-zinc-400">창을 닫아도 불러오기는 계속돼요. 끝나면 화면 위에 알려드릴게요.</p>
+            <p className="mt-4 text-center text-xs leading-5 text-zinc-400">창을 닫아도 거래 조회는 계속됩니다. 완료되면 화면 상단에 알림이 표시됩니다.</p>
             <button
               className="mt-2 w-full rounded-xl py-3 text-sm font-semibold text-primary-600"
               onClick={onBackground}

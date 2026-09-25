@@ -64,9 +64,9 @@ export function groupJudgments(result: TaxEstimate): GroupRow[] {
 export function WhyThisAmount({ groups, currency }: { groups: GroupRow[]; currency: string }) {
   return (
     <section className="mt-6" aria-label="판정 그룹">
-      <h3 className="font-bold text-zinc-900">왜 이 금액인가</h3>
+      <h3 className="font-bold text-zinc-900">거래별 계산 반영 내역</h3>
       <p className="mt-1 text-sm text-zinc-500">
-        거래 하나하나에 세금을 나눠 붙일 수는 없습니다. 대신 각 거래가 계산에서 어떻게 쓰였는지를 묶어 보여줍니다.
+        세금은 과세기간 전체 거래를 합산하여 계산합니다. 아래에서 거래 유형별 반영 내역을 확인할 수 있습니다.
       </p>
       <ul className="mt-2 grid grid-cols-1 gap-2">
         {groups.map((row) => (
@@ -92,8 +92,8 @@ export function WhyThisAmount({ groups, currency }: { groups: GroupRow[]; curren
         href="/transactions"
         className="mt-2 flex items-center justify-between gap-3 rounded-card border border-zinc-200 bg-white p-3 text-sm text-zinc-700 shadow-card"
       >
-        <span>어떤 거래가 어느 그룹인지 보기</span>
-        <span className="shrink-0 font-semibold text-primary-600 underline">거래 탭으로</span>
+        <span>거래별 분류 확인</span>
+        <span className="shrink-0 font-semibold text-primary-600 underline">거래 내역 확인</span>
       </Link>
     </section>
   );

@@ -205,7 +205,7 @@ export function ReportView() {
             <Lock aria-hidden className="size-5 shrink-0 text-primary-600" strokeWidth={2} />
             <p className="font-semibold text-primary-600">플랜을 구독하면 보고서가 열립니다</p>
           </div>
-          <p className="mt-2 text-sm leading-6 text-zinc-600">신고 요약·자산별 명세·예외 목록과 PDF 저장은 구독 후 공개됩니다.</p>
+          <p className="mt-2 text-sm leading-6 text-zinc-600">신고 요약·자산별 명세·예외 목록과 PDF 저장은 플랜 이용 시 제공됩니다.</p>
           <Link href="/plan" className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-primary-600">
             플랜 보기
             <ArrowRight aria-hidden className="size-4 shrink-0" strokeWidth={2.5} />
@@ -233,7 +233,7 @@ export function ReportView() {
       {ledgerError && <p className="mt-3 text-sm wrap-anywhere text-red-600">{ledgerError}</p>}
 
       <div className="mt-4 flex items-center justify-between gap-3">
-        <p className="text-xs leading-5 text-zinc-500">인쇄에서 &lsquo;PDF로 저장&rsquo;을 고르면 이 보고서가 파일이 됩니다.</p>
+        <p className="text-xs leading-5 text-zinc-500">인쇄 창에서 &lsquo;PDF로 저장&rsquo;을 선택하면 보고서를 파일로 저장할 수 있습니다.</p>
         {printButton}
       </div>
       {printError && <p className="mt-2 text-sm text-red-600">{printError}</p>}
@@ -397,7 +397,7 @@ export function ReportView() {
                 ) : (
                   <>
                     <p className="mt-1 text-sm leading-6 text-zinc-500">
-                      계산이 확정하지 못한 항목입니다. 금액영향은 관련 거래의 가액 합이며, 가격을 모르는 거래가 섞이면 비워 둡니다.
+                      추가 확인이 필요한 항목입니다. 금액영향은 관련 거래 금액의 합계이며 세금 차이를 뜻하지 않습니다. 가격을 확인하지 못한 거래가 포함되면 금액을 표시하지 않습니다.
                     </p>
                     <ul className="mt-2 divide-y divide-zinc-100">
                       {exceptionRows.slice(0, EXCEPTION_ROW_LIMIT).map((row, index) => {
@@ -439,7 +439,7 @@ export function ReportView() {
             <dl className="mt-3 space-y-3 text-sm">
               {estimate && (
                 <div className="grid grid-cols-2 gap-3">
-                  <MetaItem term="적용 룰셋">{estimate.countryLabel} · {estimate.taxYear}년 귀속</MetaItem>
+                  <MetaItem term="적용 계산 기준">{estimate.countryLabel} · {estimate.taxYear}년 귀속</MetaItem>
                   <MetaItem term="취득가액 산정">{estimate.method}</MetaItem>
                 </div>
               )}
@@ -462,7 +462,7 @@ export function ReportView() {
                   {anchor.anchoredAt && <MetaItem term="기록 시각">{generatedAtText(anchor.anchoredAt)}</MetaItem>}
                 </dl>
                 <p className="mt-3 text-xs leading-5 text-zinc-600">
-                  머클루트는 계산 판정과 파일 해시를 잎으로 묶은 해시입니다. 체인에는 이 해시만 올라가며 금액·지갑 주소는 올라가지 않습니다.
+                  머클루트는 계산 결과와 파일의 검증값을 하나로 묶은 값입니다. 체인에는 이 값만 기록하며 금액과 지갑 주소는 저장하지 않습니다.
                 </p>
                 <Link href={`/export/evidence/${anchor.merkleRoot}`} className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-primary-600">
                   체인에서 직접 확인
@@ -473,7 +473,7 @@ export function ReportView() {
 
             {estimate && estimate.requiredInputs.length > 0 && (
               <>
-                <p className="mt-4 text-sm font-semibold text-zinc-800">지갑 밖에서 확인이 필요한 입력</p>
+                <p className="mt-4 text-sm font-semibold text-zinc-800">추가 확인 정보</p>
                 <ul className="mt-1 list-disc space-y-1 pl-5 text-sm leading-6 wrap-anywhere text-zinc-700">
                   {estimate.requiredInputs.map((item) => <li key={item}>{item}</li>)}
                 </ul>
@@ -488,13 +488,13 @@ export function ReportView() {
               </>
             )}
             <p className="mt-4 rounded-card border-l-4 border-amber-400 bg-amber-50 p-3 text-sm leading-6 text-amber-900">
-              <strong>이 리포트는 계산 보조용이며 확정 판단이 아닙니다.</strong> 거주국 룰셋·의제취득가액·거래소 보유분 등에 따라 실제 신고 값은
+              <strong>이 리포트는 세금 계산을 위한 참고 자료입니다. 실제 신고 금액과 다를 수 있습니다.</strong> 거주국 계산 기준·의제취득가액·거래소 보유분 등에 따라 실제 신고 값은
               달라질 수 있습니다. 신고 전 세무 전문가의 확인을 권합니다.
             </p>
           </Card>
 
           <div className="mt-6 flex items-center justify-between gap-3">
-            <p className="text-xs leading-5 text-zinc-500">같은 내용을 A4로 조판한 문서를 인쇄합니다.</p>
+            <p className="text-xs leading-5 text-zinc-500">같은 내용을 A4 문서로 인쇄합니다.</p>
             {printButton}
           </div>
         </>

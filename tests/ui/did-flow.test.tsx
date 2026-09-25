@@ -24,7 +24,7 @@ function stubAuthClient(overrides: Partial<AuthClient> = {}): AuthClient {
   };
 }
 
-const residencyLine = (label: string) => `거주 국가 ${label} 기준으로 계산할게요`;
+const residencyLine = (label: string) => `거주 국가 ${label} 기준으로 계산합니다.`;
 
 describe("DID login flow", () => {
   beforeEach(() => {
@@ -65,7 +65,7 @@ describe("DID login flow", () => {
     expect(screen.getByText("인증 대기 중...")).toBeInTheDocument();
     await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
     expect(authClient.presentDid).toHaveBeenCalledWith({ country: "US" });
-    expect(screen.getByText("본인 확인이 끝났어요")).toBeInTheDocument();
+    expect(screen.getByText("본인 확인 완료")).toBeInTheDocument();
     expect(screen.getByText(residencyLine("미국"))).toBeInTheDocument();
   });
 
@@ -86,7 +86,7 @@ describe("DID login flow", () => {
       expect.any(Function),
     );
     expect(authClient.presentDid).toHaveBeenCalledWith({ country: "KR", cxToken: "cx-window-token" });
-    expect(screen.getByText("본인 확인이 끝났어요")).toBeInTheDocument();
+    expect(screen.getByText("본인 확인 완료")).toBeInTheDocument();
     expect(screen.getByText(residencyLine("한국"))).toBeInTheDocument();
   });
 
@@ -132,7 +132,7 @@ describe("DID login flow", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
 
     expect(authClient.presentDid).toHaveBeenCalledWith({ country: "KR", cxToken: "mock-cx-token" });
-    expect(screen.getByText("본인 확인이 끝났어요")).toBeInTheDocument();
+    expect(screen.getByText("본인 확인 완료")).toBeInTheDocument();
     expect(screen.getByText(residencyLine("한국"))).toBeInTheDocument();
   });
 
@@ -202,7 +202,7 @@ describe("DID login flow", () => {
       fireEvent.click(screen.getByRole("button", { name: "QR/딥링크 제시" }));
       fireEvent.click(screen.getByRole("button", { name: "제시 완료" }));
       await act(async () => { await vi.advanceTimersByTimeAsync(600); });
-      expect(screen.getByText("본인 확인이 끝났어요")).toBeInTheDocument();
+      expect(screen.getByText("본인 확인 완료")).toBeInTheDocument();
     }
 
     it("does not navigate before ~1s and navigates right at 1s", async () => {
@@ -283,7 +283,7 @@ describe("DID login flow", () => {
       fireEvent.click(screen.getByRole("button", { name: "QR/딥링크 제시" }));
       fireEvent.click(screen.getByRole("button", { name: "제시 완료" }));
       await act(async () => { await vi.advanceTimersByTimeAsync(600); });
-      expect(screen.getByText("본인 확인이 끝났어요")).toBeInTheDocument();
+      expect(screen.getByText("본인 확인 완료")).toBeInTheDocument();
       unmount();
       await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
       expect(push).not.toHaveBeenCalled();

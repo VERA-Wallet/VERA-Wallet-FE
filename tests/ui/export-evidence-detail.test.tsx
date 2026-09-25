@@ -66,7 +66,7 @@ describe("계산 근거 화면", () => {
   it("기록 정보는 조회에 쓸 수 있게 전문으로 보이고, 잎이 아니라 판정 건수로 말한다", async () => {
     render(<EvidenceView merkleRoot={ROOT} />);
 
-    expect(await screen.findByText("봉인한 판정 5건")).toBeInTheDocument();
+    expect(await screen.findByText("기록된 계산 결과 5건")).toBeInTheDocument();
     expect(ports.document).toHaveBeenCalledWith(ROOT);
     expect(screen.getByText(TX)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "2027년 귀속 계산 근거" })).toBeInTheDocument();
@@ -76,7 +76,7 @@ describe("계산 근거 화면", () => {
   it("브라우저가 잎으로 루트를 다시 계산해 기록과 같음을 보인다 — 서버 말을 믿는 대신 센다", async () => {
     render(<EvidenceView merkleRoot={ROOT} />);
 
-    expect(await screen.findByText(/기록된 루트와 같습니다/)).toBeInTheDocument();
+    expect(await screen.findByText(/기록된 검증값과 일치합니다/)).toBeInTheDocument();
     // 기록의 루트와 다시 센 루트, 두 자리에 같은 값이 찍힌다.
     expect(screen.getAllByText(ROOT)).toHaveLength(2);
   });
@@ -87,12 +87,12 @@ describe("계산 근거 화면", () => {
     ports.document.mockResolvedValue(tampered);
     render(<EvidenceView merkleRoot={ROOT} />);
 
-    expect(await screen.findByText(/기록된 루트와 다릅니다/)).toBeInTheDocument();
+    expect(await screen.findByText(/기록된 검증값과 일치하지 않습니다/)).toBeInTheDocument();
   });
 
   it("판정 행마다 도장·근거 조문·금액의 뜻을 보인다", async () => {
     render(<EvidenceView merkleRoot={ROOT} />);
-    await screen.findByText("봉인한 판정 5건");
+    await screen.findByText("기록된 계산 결과 5건");
 
     expect(screen.getAllByText("과세 · 기타소득 20%")).toHaveLength(2);
     expect(screen.getAllByText("소득세법 제21조제1항제27호")).toHaveLength(2);
@@ -111,7 +111,7 @@ describe("계산 근거 화면", () => {
     expect(screen.getByText("기본공제")).toBeInTheDocument();
     expect(screen.getByText("소득세")).toBeInTheDocument();
     expect(screen.getByText("과세 대상")).toBeInTheDocument();
-    expect(screen.getByText("예상 부담 추정")).toBeInTheDocument();
+    expect(screen.getByText("예상 세금")).toBeInTheDocument();
     expect(screen.getByText(/거주자별 총평균법/)).toBeInTheDocument();
   });
 
@@ -128,10 +128,10 @@ describe("계산 근거 화면", () => {
 
   it("증명 경로는 펼칠 때만 계산하고, 잎 해시와 형제 해시를 보인다", async () => {
     const { container } = render(<EvidenceView merkleRoot={ROOT} />);
-    await screen.findByText("봉인한 판정 5건");
+    await screen.findByText("기록된 계산 결과 5건");
     expect(container.querySelector('[data-surface="evidence-leaf-proof"]')).toBeNull();
 
-    fireEvent.click(screen.getAllByRole("button", { name: "잎 해시와 증명 경로" })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: "항목 검증값(해시)와 증명 경로" })[0]);
 
     const proof = container.querySelector('[data-surface="evidence-leaf-proof"]');
     expect(proof).not.toBeNull();
@@ -170,14 +170,14 @@ describe("계산 근거 화면", () => {
     render(<EvidenceView merkleRoot={ROOT} />);
 
     expect(await screen.findByText("기록을 찾지 못했습니다")).toBeInTheDocument();
-    expect(screen.queryByText(/봉인한 판정/)).toBeNull();
+    expect(screen.queryByText(/기록된 계산 결과/)).toBeNull();
     expect(screen.getByRole("link", { name: /리포트/ })).toHaveAttribute("href", "/export");
   });
 
   it("파일 잎이 없는 옛 문서에는 「파일」 표를 그리지 않는다", async () => {
     render(<EvidenceView merkleRoot={ROOT} />);
 
-    expect(await screen.findByText("봉인한 판정 5건")).toBeInTheDocument();
+    expect(await screen.findByText("기록된 계산 결과 5건")).toBeInTheDocument();
     expect(screen.queryByText(/파일 \d+건/)).toBeNull();
     expect(screen.queryByText("직접 신고용")).toBeNull();
     expect(screen.queryByText("세무사 전달용")).toBeNull();
@@ -196,7 +196,7 @@ describe("계산 근거 화면", () => {
     const { container } = render(<EvidenceView merkleRoot={BUNDLE.merkleRoot} />);
 
     // 판정 건수 옆에 파일 건수가 붙는다 — 잎에서 헤더·판정과 같이 있어도 판정 수는 흔들리지 않는다.
-    expect(await screen.findByText("봉인한 판정 5건 · 파일 2건")).toBeInTheDocument();
+    expect(await screen.findByText("기록된 계산 결과 5건 · 파일 2건")).toBeInTheDocument();
     expect(screen.getByText("직접 신고용")).toBeInTheDocument();
     expect(screen.getByText("세무사 전달용")).toBeInTheDocument();
 
@@ -205,8 +205,8 @@ describe("계산 근거 화면", () => {
     expect(within(table).getAllByText(/^\d+(\.\d+)?(B|KB|MB|GB)$/)).toHaveLength(fileLeaves.length);
 
     // 판정 잎도 같은 이름의 버튼을 쓰므로 파일 표 안에서만 찾는다.
-    const [firstToggle] = within(table).getAllByRole("button", { name: "잎 해시와 증명 경로" });
-    expect(screen.queryByText("루트까지의 형제 해시 (아래부터 차례로 붙여 올린다)")).toBeNull();
+    const [firstToggle] = within(table).getAllByRole("button", { name: "항목 검증값(해시)와 증명 경로" });
+    expect(screen.queryByText("전체 검증값 산출에 필요한 해시(하위 단계부터 표시)")).toBeNull();
     fireEvent.click(firstToggle);
 
     const proof = container.querySelector('[data-surface="evidence-leaf-proof"]');

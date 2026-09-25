@@ -154,7 +154,7 @@ export function WalletLinkCard({ client: override }: { client?: ReportVcClient }
             증명서 지갑
           </p>
           <p className="mt-1 text-xs leading-5 text-zinc-500">
-            추정 세금 리포트 증명서(VC)를 받아 두는 Open DID 지갑입니다. 거래를 읽는 암호화폐 지갑과는 다른 지갑이며, 연결해도 계정이나 로그인은 바뀌지 않습니다.
+            세금 리포트 증명서(VC)를 보관하는 Open DID 지갑입니다. 암호화폐 거래 조회용 지갑과 별도로 연결하며, 현재 로그인 계정은 유지됩니다.
           </p>
         </div>
         {provenance === "mock" ? <ProvenanceChip provenance="mock" /> : null}
@@ -190,7 +190,7 @@ export function WalletLinkCard({ client: override }: { client?: ReportVcClient }
         <QrPanel
           text={phase.attempt.qr.text}
           title="증명서 지갑 연결 QR 코드"
-          hint="폰의 Open DID 지갑으로 이 QR을 스캔하고 PIN 또는 생체 인증으로 제출하세요."
+          hint="휴대전화의 Open DID 지갑으로 이 QR을 스캔하고 PIN 또는 생체 인증으로 제출해 주세요."
           expiresAt={phase.attempt.expiresAt}
           onCancel={cancel}
         />
@@ -215,7 +215,7 @@ export function WalletLinkCard({ client: override }: { client?: ReportVcClient }
           {phase.confirmingUnlink ? (
             <div className="space-y-2 rounded-card border border-zinc-200 bg-white p-3" role="group" aria-label="연결 해제 확인">
               <p className="text-sm leading-6 text-zinc-700">
-                이 계정에서 증명서 지갑 연결을 해제할까요? 해제한 뒤에는 새 증명서를 받으려면 다시 연결해야 합니다. 이미 받은 증명서가 어떻게 되는지는 발급 정책에 따르며, 이 화면에서 정하지 않습니다.
+                증명서 지갑 연결을 해제합니다. 해제한 뒤에는 새 증명서를 받으려면 다시 연결해야 합니다. 이미 발급된 증명서의 유효 여부는 발급자의 정책에 따릅니다.
               </p>
               <button type="button" className={SECONDARY_BUTTON} disabled={phase.unlinking} onClick={() => void unlink()}>
                 {phase.unlinking ? "해제하는 중..." : "연결 해제"}

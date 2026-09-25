@@ -173,7 +173,7 @@ export function DidLoginFlow({ authClient = compositionAuthClient, provenance = 
           <div className="space-y-3">
             {/* CX 표준인증창은 전면 오버레이 iframe(oacx.ts)에 격리 렌더된다 — 여기엔 안내/취소만 둔다. */}
             <p aria-live="polite" className="text-center text-sm text-zinc-600">
-              OmniOne CX 인증창에서 모바일신분증을 제출하세요. 데스크톱은 QR 스캔, 모바일은 앱 이동으로 진행됩니다.
+              OmniOne CX 인증창에서 모바일신분증을 제출해 주세요. 데스크톱은 QR 스캔, 모바일은 앱 이동으로 진행됩니다.
             </p>
             {createPortal(
               <button className="fixed bottom-6 right-4 rounded-xl border border-zinc-300 bg-white px-5 py-3 text-sm font-semibold text-zinc-700 shadow-lg" style={{ zIndex: 2147483647 }} onClick={cancelPresentation} type="button">
@@ -212,9 +212,9 @@ export function DidLoginFlow({ authClient = compositionAuthClient, provenance = 
           <div role="status" aria-live="polite" className="space-y-3 rounded-xl bg-zinc-50 p-4">
             <div className="flex items-center gap-2">
               <CircleCheck aria-hidden="true" className="size-5 shrink-0 text-primary-500" />
-              <p className="font-medium text-zinc-900">본인 확인이 끝났어요</p>
+              <p className="font-medium text-zinc-900">본인 확인 완료</p>
             </div>
-            <p className="text-sm text-zinc-600">거주 국가 {COUNTRY_LABEL[claim.countryCode]} 기준으로 계산할게요</p>
+            <p className="text-sm text-zinc-600">거주 국가 {COUNTRY_LABEL[claim.countryCode]} 기준으로 계산합니다.</p>
             {/* 진행률이 아니라 "곧 넘어간다"는 사실만 말한다. 실제 대기 시간은 위 useEffect의 setTimeout이 정한다. */}
             <div aria-hidden="true" className="h-1 w-full overflow-hidden rounded-full bg-zinc-200">
               <div className="h-full w-full origin-left scale-x-0 rounded-full bg-primary-500 animate-claimed-advance motion-reduce:scale-x-100 motion-reduce:animate-none" />
@@ -222,7 +222,7 @@ export function DidLoginFlow({ authClient = compositionAuthClient, provenance = 
           </div>
         )}
 
-        {state === "done" && <p aria-live="polite" className="text-sm text-zinc-500">이동하고 있어요...</p>}
+        {state === "done" && <p aria-live="polite" className="text-sm text-zinc-500">화면 이동 중…</p>}
 
         {error && (
           <div role="alert" className="rounded-xl bg-red-50 px-3 py-2 text-sm wrap-anywhere text-red-700">
@@ -256,7 +256,7 @@ export function DidLoginFlow({ authClient = compositionAuthClient, provenance = 
                   </button>
                 ))}
               </div>
-              <p className="text-xs text-zinc-500">{COUNTRY_LABEL[country]} 규칙으로 계산해요. 모바일신분증은 본인 확인에만 쓰고, 거주 국가는 여기서 고른 값을 따라요.</p>
+              <p className="text-xs text-zinc-500">{COUNTRY_LABEL[country]} 계산 기준을 적용합니다. 모바일 신분증은 본인 확인에 사용하며, 거주 국가는 선택한 국가를 기준으로 합니다.</p>
             </div>
         </details>
       </div>

@@ -46,7 +46,7 @@ describe("success envelope provenance contract", () => {
     const { MockProvenanceChip } = await import("@/components/ui/provenance-chip");
     const { render, screen } = await import("@testing-library/react");
     render(<MockProvenanceChip />);
-    expect(screen.getByTestId("mock-provenance")).toHaveTextContent("mock 데이터");
+    expect(screen.getByTestId("mock-provenance")).toHaveTextContent("예제 데이터");
     vi.restoreAllMocks();
   });
 });

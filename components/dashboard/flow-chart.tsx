@@ -330,8 +330,8 @@ export function FlowChart({
         {state !== "ready" && series.points.length > 0 ? (
           <p className="mt-1 text-xs leading-5 text-zinc-500">
             {state === "error"
-              ? "목록을 갱신하지 못했습니다. 이 선은 마지막으로 받은 거래로 그렸습니다."
-              : "목록을 갱신하는 중입니다. 이 선은 마지막으로 받은 거래로 그렸습니다."}
+              ? "거래 내역을 갱신하지 못해 이전 조회 결과를 표시합니다."
+              : "거래 내역을 갱신하고 있습니다. 이전 조회 결과를 표시합니다."}
           </p>
         ) : null}
       </div>

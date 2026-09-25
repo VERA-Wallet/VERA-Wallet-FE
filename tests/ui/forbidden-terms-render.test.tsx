@@ -125,6 +125,6 @@ describe("forbidden terminology in rendered route surfaces", () => {
     for (const term of forbidden) expect(transactionsText).not.toContain(term);
     // 탭·배지 뜻이 실제로 그려진 화면을 훑었다는 증거. 빈 화면을 훑고 "금지어 없음"이라 말하면 안 된다.
     expect(transactionsText).toContain("확인 필요");
-    expect(transactionsText).toContain("배지 뜻");
+    expect(transactionsText).toContain("표시 항목 안내");
   });
 });

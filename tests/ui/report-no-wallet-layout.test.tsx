@@ -12,7 +12,7 @@ vi.mock("@/components/report/report-context", () => ({
 }));
 import ExportLayout from "@/app/export/layout";
 it("shows wallet connection instead of a synthetic report for a DID-only account", async () => {
-  render(await ExportLayout({ children: <div>예상 부담 추정 ₩1,480,518</div> }));
+  render(await ExportLayout({ children: <div>예상 세금 ₩1,480,518</div> }));
   expect(screen.getByRole("link", { name: "지갑 연결하기" })).toHaveAttribute("href", "/connect-wallet");
   expect(screen.queryByText(/1,480,518/)).not.toBeInTheDocument();
 });

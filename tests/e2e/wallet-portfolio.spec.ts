@@ -153,9 +153,9 @@ mockModeOnly("wallet list, portfolio and add-wallet live QA", () => {
       }
       // "DID"·"클레임" 문구는 화면에서 빠졌다. 확인 상태와 거주 국가 표시로 US 선택이 반영됐음을 검증한다.
       // (옛 "US FIFO" 원가법 배지는 이 화면에서 더는 렌더되지 않는다 — 구현 쪽 발견 사항으로 별도 보고.)
-      await expect(page.getByRole("status")).toContainText("본인 확인이 끝났어요", { timeout: 15_000 });
+      await expect(page.getByRole("status")).toContainText("본인 확인 완료", { timeout: 15_000 });
       assertion("US DID claim is confirmed", true, "role=status");
-      await expect(page.getByRole("status")).toContainText("거주 국가 미국 기준으로 계산할게요");
+      await expect(page.getByRole("status")).toContainText("거주 국가 미국 기준으로 계산합니다.");
       assertion("Selected country (US) is reflected in the confirmation status", true, "role=status");
       // 지갑 없는 세션은 로그인 직후 클릭 없이 /connect-wallet로 자동 진행한다(빈 요약을 거치지 않는다).
       await page.waitForURL(/\/connect-wallet$/, { timeout: 15_000 });

@@ -231,7 +231,7 @@ describe("제3자 검증 화면", () => {
       await flush();
       await flush();
       expect(surface("report-vc-file-included")).toBeNull();
-      expect(surface("report-vc-file-unverified")?.textContent).toContain("성공으로 표시하지 않습니다");
+      expect(surface("report-vc-file-unverified")?.textContent).toContain("증명 자료가 없어 검증을 완료하지 못했습니다");
 
       // 증명이 다른 루트로 이어지면 실패다.
       fake.checkFile.mockResolvedValue(live({ format: "csv", hash: leaf.hash, status: "included", leaf, proof, evidenceRoot: `0x${"ee".repeat(32)}` }));
@@ -239,7 +239,7 @@ describe("제3자 검증 화면", () => {
       await flush();
       await flush();
       expect(surface("report-vc-file-included")).toBeNull();
-      expect(surface("report-vc-file-unverified")?.textContent).toContain("맞지 않습니다");
+      expect(surface("report-vc-file-unverified")?.textContent).toContain("일치하지 않아 파일 검증에 실패했습니다");
     });
 
     it.each(["different_root", "mock"])("유효한 파일 증명이어도 VC 루트와 출처를 확인한다: %s", async (caseName) => {

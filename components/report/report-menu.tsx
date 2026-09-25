@@ -31,7 +31,7 @@ export function ReportMenu() {
     result ? new Set(result.judgments.filter(predicate).map((row) => row.eventId)).size : 0;
   const basisStatus = result
     ? `양도 ${uniqueEvents((row) => row.amountKind === "gain")}건 · 취득 ${uniqueEvents((row) => row.group === "acquire")}건`
-    : "아직 계산하지 않았어요";
+    : "계산 전";
 
   // 확인할 것 — 흔들리는 지점과 판단이 필요한 항목. 둘 다 0이면 없다고 분명히 말한다.
   // 한계도 판단 항목도 없는데 계산에서 빠진 이벤트만 있는 경우가 있다(제외·원가 0원). 그때
@@ -42,11 +42,11 @@ export function ReportMenu() {
   const hasIssues = shakyCount > 0 || openCount > 0 || nudgeCount > 0;
   const issuesStatus = result
     ? shakyCount > 0 || openCount > 0
-      ? `흔들리는 지점 ${shakyCount} · 판단 필요 ${openCount}`
+      ? `계산 확인 ${shakyCount} · 판단 필요 ${openCount}`
       : nudgeCount > 0
-        ? `정리할 이벤트 ${nudgeCount}건`
-        : "확인할 것이 없어요"
-    : "아직 계산하지 않았어요";
+        ? `확인 필요 거래 ${nudgeCount}건`
+        : "확인 사항 없음"
+    : "계산 전";
 
   // 계산 설정 — 지금 이 답이 어떤 입력 위에 서 있는지. 사용자가 바꾼 것이 있으면 그것부터 말한다.
   // 유효한 십진만 계산에 흘러가므로(use-report-inputs.ts) 세는 기준도 같다.
@@ -55,14 +55,14 @@ export function ReportMenu() {
   const filledInputs = filledFmv + filledProfile;
   const settingsStatus =
     source === "scenario"
-      ? "데모 시나리오로 보는 중"
+      ? "예제 데이터 기준"
       : filledInputs > 0
         ? `직접 입력한 값 ${filledInputs}개`
         : requiresYearEndFmv
           ? "연말 시가 미입력"
           : walletConnected
-            ? "내 지갑 이벤트로 계산 중"
-            : "데모 시나리오로 보는 중";
+            ? "연결 지갑 거래 기준"
+            : "예제 데이터 기준";
 
   // 다른 나라였다면 — 비교 중이면 그 사실이 먼저다. 목록을 아직 못 받았으면 개수를 지어내지 않는다.
   const compareStatus =
@@ -70,13 +70,13 @@ export function ReportMenu() {
       ? `${comparingLabel} 기준으로 비교 중`
       : rulesets.data
         ? `${rulesets.data.length}개 나라 규칙과 비교`
-        : "나라 목록을 불러오는 중";
+        : "국가 목록 조회 중";
 
   const items = [
     { menu: "basis", href: "/export/basis", title: "계산 근거", status: basisStatus, alert: false },
-    { menu: "issues", href: "/export/issues", title: "확인할 것", status: issuesStatus, alert: hasIssues },
+    { menu: "issues", href: "/export/issues", title: "확인 사항", status: issuesStatus, alert: hasIssues },
     { menu: "settings", href: "/export/settings", title: "계산 설정", status: settingsStatus, alert: false },
-    { menu: "compare", href: "/export/compare", title: "다른 나라였다면", status: compareStatus, alert: false },
+    { menu: "compare", href: "/export/compare", title: "국가별 계산 비교", status: compareStatus, alert: false },
   ] as const;
 
   return (

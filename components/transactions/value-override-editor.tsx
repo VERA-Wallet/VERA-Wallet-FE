@@ -92,8 +92,8 @@ export function ValueOverrideEditor({
         {/* 접힌 채로는 "내가 직접 채운 금액이 이미 있는지"를 알 길이 없다 — 그 사실만은 겉에 남긴다. */}
         <span className="ml-2 text-sm font-medium text-zinc-500">{hasOverride ? "직접 입력한 금액 있음" : "비어 있음"}</span>
       </summary>
-      <p className="mt-2 text-sm text-zinc-500">지갑 데이터로 확정되지 않은 금액을 직접 채우면 &ldquo;취득가 0원&rdquo; 경고가 사라지고 계산에 반영됩니다.</p>
-      {conflict ? <p role="alert" className="mt-3 rounded-lg bg-orange-50 px-3 py-2 text-sm text-orange-700">다른 곳에서 변경됨, 다시 확인</p> : null}
+      <p className="mt-2 text-sm text-zinc-500">취득가액과 비용을 확인할 수 있는 자료를 기준으로 입력해 주세요. 저장한 금액은 계산에 반영됩니다.</p>
+      {conflict ? <p role="alert" className="mt-3 rounded-lg bg-orange-50 px-3 py-2 text-sm text-orange-700">금액이 변경되었습니다. 최신 내용을 확인해 주세요.</p> : null}
       {saved && !conflict ? <p role="status" className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">금액을 저장했습니다.</p> : null}
 
       {isDisposal ? (

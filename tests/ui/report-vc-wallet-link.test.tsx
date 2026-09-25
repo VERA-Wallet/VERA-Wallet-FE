@@ -72,7 +72,7 @@ describe("증명서 지갑 연결 카드", () => {
   it("미연결이면 설명과 연결 버튼을 보이고, 암호화폐 지갑과 다른 지갑임을 말한다", async () => {
     await renderCard(fakeClient());
     expect(screen.getByText("증명서 지갑")).toBeInTheDocument();
-    expect(document.querySelector('[data-surface="report-vc-wallet"]')?.textContent).toContain("암호화폐 지갑과는 다른 지갑");
+    expect(document.querySelector('[data-surface="report-vc-wallet"]')?.textContent).toContain("암호화폐 거래 조회용 지갑과 별도로 연결");
     expect(screen.getByRole("button", { name: "증명서 지갑 연결" })).toBeEnabled();
   });
 

@@ -22,7 +22,7 @@ export default async function LoginPage() {
         <h1 className="text-3xl font-bold tracking-tight text-zinc-900">
           지갑 거래를 정리하고
           <br />
-          2027년 과세를 미리 계산해요
+          2027년 시행 예정 기준 예상 세금 조회
         </h1>
         {/* 설명은 문단이 아니라 두 줄 목록이다. 시작 버튼이 화면 아래에 붙으므로(엄지가 닿는 자리) 제목과 버튼 사이가
             길어지는데, 그 자리를 "이 앱이 뭘 해 주나"와 "왜 신분증인가"가 채운다 — 예전처럼 빈 채로 두지 않는다. */}
@@ -30,15 +30,15 @@ export default async function LoginPage() {
           <li className="flex items-start gap-3">
             <Wallet aria-hidden="true" className="mt-0.5 size-6 shrink-0 text-primary-500" strokeWidth={1.8} />
             <p className="text-sm leading-6 text-zinc-600">
-              <span className="block text-base font-semibold text-zinc-900">지갑 주소만 있으면 돼요</span>
-              지갑 주소로 거래를 불러와 자동으로 분류해요.
+              <span className="block text-base font-semibold text-zinc-900">지갑 주소로 거래 조회</span>
+              지갑 주소로 거래 내역을 조회하고 자동으로 분류합니다.
             </p>
           </li>
           <li className="flex items-start gap-3">
             <ShieldCheck aria-hidden="true" className="mt-0.5 size-6 shrink-0 text-primary-500" strokeWidth={1.8} />
             <p className="text-sm leading-6 text-zinc-600">
-              <span className="block text-base font-semibold text-zinc-900">거주 국가에 맞는 규칙으로 계산해요</span>
-              처음 한 번 모바일신분증으로 본인 확인을 해요.
+              <span className="block text-base font-semibold text-zinc-900">거주 국가별 계산 기준 적용</span>
+              모바일 신분증으로 본인 확인을 진행합니다.
             </p>
           </li>
         </ul>

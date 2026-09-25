@@ -156,12 +156,12 @@ export function DashboardView({ countryCode, provenance = "mock" }: { countryCod
               ? undefined
               : summaryFresh.data
                 ? estimate !== undefined && estimate.status !== "UNDETERMINED"
-                  ? "과세 여부는 거래 탭의 판정에서 갈립니다"
+                  ? "과세 여부는 거래 탭에서 거래별로 확인할 수 있습니다."
                   : "과세 여부는 아직 판단하지 않았습니다"
                 : (freshNotice(summaryFresh.state, "요약") ?? undefined)
           }
           // 불러오는 중이면 이 숫자는 아직 새 지갑을 모른다. 말하지 않으면 사용자는 건수가 틀렸다고 읽는다.
-          note={!events.isLoading && importTracker.state.status === "running" ? "새 지갑 거래는 불러온 뒤 반영돼요" : undefined}
+          note={!events.isLoading && importTracker.state.status === "running" ? "새로 연결한 지갑의 거래는 조회 완료 후 반영됩니다." : undefined}
         />
       </section>
 

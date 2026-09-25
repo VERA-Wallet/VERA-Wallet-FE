@@ -149,7 +149,7 @@ describe("불러오기 칩", () => {
     await poll(3);
 
     const chip = screen.getByRole("status");
-    expect(within(chip).getByText("체인 5곳을 조회하고 있어요")).toBeTruthy();
+    expect(within(chip).getByText("체인 5개 네트워크 조회 중")).toBeTruthy();
     expect(within(chip).queryByText(/곳 중/)).toBeNull();
     // 0%에 멈춘 원은 "아무 것도 안 끝났다"는 주장이다 — 모를 때는 도는 원을 쓴다.
     expect(container.querySelector('[data-progress-ring="indeterminate"]')).toBeTruthy();
@@ -177,7 +177,7 @@ describe("불러오기 칩", () => {
     await poll(Math.ceil(SLOW_IMPORT_CHIP_MS / IMPORT_POLL_INTERVAL_MS) + 1);
 
     // 침묵하면 사용자는 멈췄다고 읽고 새로고침한다.
-    expect(within(screen.getByRole("status")).getByText("거래가 많아 시간이 걸려요")).toBeTruthy();
+    expect(within(screen.getByRole("status")).getByText("거래가 많아 조회가 지연되고 있습니다.")).toBeTruthy();
   });
 
   it("칩을 누르면 체인 목록을 보여주되 취소는 주지 않는다", async () => {
@@ -191,7 +191,7 @@ describe("불러오기 칩", () => {
     });
     const sheet = screen.getByRole("dialog", { name: "거래 불러오는 중" });
     expect(within(sheet).getByRole("list", { name: "조회할 체인" })).toBeTruthy();
-    expect(within(sheet).getByText("이 창은 상태만 보여줘요. 닫아도 불러오기는 계속되고, 끝나면 알려드려요.")).toBeTruthy();
+    expect(within(sheet).getByText("창을 닫아도 거래 조회는 계속됩니다. 완료되면 알림이 표시됩니다.")).toBeTruthy();
     // 멈출 수단이 없는데 "취소"를 두면 화면이 하지 못할 일을 약속하는 셈이다.
     expect(within(sheet).queryByRole("button", { name: /취소/ })).toBeNull();
   });
@@ -236,9 +236,9 @@ describe("불러오기 칩", () => {
     await poll();
 
     const chip = screen.getByRole("alert");
-    expect(within(chip).getByText("Polygon 거래를 못 불러왔어요")).toBeTruthy();
+    expect(within(chip).getByText("Polygon 거래 조회 실패")).toBeTruthy();
     // 전부 실패했다고 읽히면 사용자는 이미 손에 있는 거래까지 없는 것으로 안다.
-    expect(within(chip).getByText("나머지 4곳 6건은 반영됐어요")).toBeTruthy();
+    expect(within(chip).getByText("나머지 4곳 6건 반영 완료")).toBeTruthy();
     expect(within(chip).getByRole("button", { name: "다시 시도" })).toBeTruthy();
   });
 
@@ -249,7 +249,7 @@ describe("불러오기 칩", () => {
     await act(async () => {});
 
     const chip = screen.getByRole("alert");
-    expect(within(chip).getByText("거래를 불러오지 못했어요")).toBeTruthy();
+    expect(within(chip).getByText("거래 조회 실패")).toBeTruthy();
     expect(within(chip).getByRole("button", { name: "다시 시도" })).toBeTruthy();
   });
 
@@ -265,8 +265,8 @@ describe("불러오기 칩", () => {
 
     const chip = screen.getByRole("alert");
     // 실패했다고 단정하면 하지 않은 판단을 한 것이다 — 무엇이 됐는지 모른다는 것이 사실이다.
-    expect(within(chip).getByText("불러오기 상태를 확인할 수 없어요")).toBeTruthy();
-    expect(within(chip).getByText("서버가 재시작됐을 수 있어요")).toBeTruthy();
+    expect(within(chip).getByText("거래 조회 상태 확인 불가")).toBeTruthy();
+    expect(within(chip).getByText("잠시 후 다시 확인해 주세요.")).toBeTruthy();
     expect(within(chip).getByRole("button", { name: "다시 불러오기" })).toBeTruthy();
   });
 });
@@ -296,7 +296,7 @@ describe("완료 토스트", () => {
 
   it("몇 건이 들어왔는지 말하고 보러 갈 길을 준다", async () => {
     await completeImport();
-    expect(screen.getByRole("status").textContent).toContain("거래 6건을 불러왔어요");
+    expect(screen.getByRole("status").textContent).toContain("거래 6건 조회 완료");
 
     act(() => {
       fireEvent.click(screen.getByRole("button", { name: "보러 가기" }));
@@ -331,7 +331,7 @@ describe("완료 토스트", () => {
     await poll();
     await act(async () => {});
 
-    expect(screen.getByRole("status").textContent).toContain("거래 3건을 불러왔어요");
+    expect(screen.getByRole("status").textContent).toContain("거래 3건 조회 완료");
   });
 
   it("읽을 틈을 준 뒤 스스로 물러난다", async () => {
@@ -428,7 +428,7 @@ describe("불러오기 뒤 원장 표시", () => {
         fireEvent.click(screen.getByRole("button", { name: "start" }));
       });
 
-      await waitFor(() => expect(screen.getByText("새 지갑 거래는 불러온 뒤 반영돼요")).toBeTruthy());
+      await waitFor(() => expect(screen.getByText("새로 연결한 지갑의 거래는 조회 완료 후 반영됩니다.")).toBeTruthy());
     });
   });
 });

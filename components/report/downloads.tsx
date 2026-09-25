@@ -80,21 +80,21 @@ function BundleStatus({ bundle, hasEstimate }: { bundle: ReportBundleState; hasE
   const body = (() => {
     if (!hasEstimate) {
       return (
-        <Line surface="anchor-idle" tone="idle" title="등록할 계산 근거가 없어요">
-          계산이 없는 기간이라 파일만 만들어요. 체인에는 아무것도 올라가지 않아요.
+        <Line surface="anchor-idle" tone="idle" title="등록 대상 없음">
+          계산 대상 거래가 없어 파일만 생성합니다. 체인에는 등록하지 않습니다.
         </Line>
       );
     }
     if (bundleInFlight(phase)) {
       return (
-        <Line surface="anchor-progress" tone="progress" title="체인에 등록하고 있어요">
-          {rejoined ? "이미 등록을 요청했어요. 확정될 때까지 기다려요." : "등록이 끝나면 파일이 저장돼요."}
+        <Line surface="anchor-progress" tone="progress" title="체인 등록 중">
+          {rejoined ? "등록 요청이 접수되었습니다. 완료될 때까지 기다려 주세요." : "등록 완료 후 파일이 저장됩니다."}
         </Line>
       );
     }
     if (phase === "anchored" && record !== null) {
       return (
-        <Line surface="anchor-done" tone="done" title="체인에 등록됐어요">
+        <Line surface="anchor-done" tone="done" title="체인 등록 완료">
           {formatDateTime(record.anchoredAt ?? record.recordedAt)} · 루트 {short(record.merkleRoot)}
           {record.txHash !== null && ` · tx ${short(record.txHash)}`}
         </Line>
@@ -102,8 +102,8 @@ function BundleStatus({ bundle, hasEstimate }: { bundle: ReportBundleState; hasE
     }
     if (phase === "failed") {
       return (
-        <Line surface="anchor-failed" tone="failed" title="등록하지 못했어요">
-          <span className="block">{error ?? "체인에 등록하지 못했어요."}</span>
+        <Line surface="anchor-failed" tone="failed" title="등록 실패">
+          <span className="block">{error ?? "체인 등록에 실패했습니다."}</span>
           <button
             className="mt-2 inline-flex items-center rounded-xl border border-primary-500 px-3 py-1.5 text-sm font-semibold text-primary-600"
             data-surface="anchor-retry"
@@ -123,39 +123,39 @@ function BundleStatus({ bundle, hasEstimate }: { bundle: ReportBundleState; hasE
     if (latestRecord !== null && latestMatch === "same") {
       // 근거 잎이 지금 계산과 같다. 사용자에게 이것은 「등록됨」이다 — 파일 잎까지는 탭할 때 루트로 확인한다.
       return (
-        <Line surface="anchor-restored" tone="done" title="이 리포트는 체인에 등록됐어요">
+        <Line surface="anchor-restored" tone="done" title="리포트 등록 완료">
           <span className="block">{when(latestRecord)}</span>
-          <span className="block text-zinc-600">내려받으면 다시 등록하지 않고 바로 저장돼요.</span>
+          <span className="block text-zinc-600">추가 등록 없이 파일을 내려받을 수 있습니다.</span>
         </Line>
       );
     }
     if (latestRecord !== null && latestMatch === "different") {
       return (
-        <Line surface="anchor-stale" tone="warn" title="계산이 바뀌어 다시 등록이 필요해요">
+        <Line surface="anchor-stale" tone="warn" title="계산 변경에 따른 재등록 필요">
           <span className="block">이전 등록 · {when(latestRecord)}</span>
-          <span className="block text-zinc-600">내려받을 때 지금 계산으로 새로 등록해요.</span>
+          <span className="block text-zinc-600">파일을 내려받을 때 현재 계산 결과를 새로 등록합니다.</span>
         </Line>
       );
     }
     if (restoring) {
       return (
-        <Line surface="anchor-checking" tone="progress" title="등록 여부를 확인하고 있어요">
-          {latestRecord !== null ? `최근 등록 · ${when(latestRecord)}` : "이 연도의 등록 기록을 찾고 있어요."}
+        <Line surface="anchor-checking" tone="progress" title="등록 여부 확인 중">
+          {latestRecord !== null ? `최근 등록 · ${when(latestRecord)}` : "해당 연도의 등록 기록을 조회하고 있습니다."}
         </Line>
       );
     }
     if (latestRecord !== null) {
       // 기록은 있는데 잎을 못 받았다(`unknown`). 단정하지 않고, 탭하면 루트로 다시 묻는다.
       return (
-        <Line surface="anchor-unknown" tone="idle" title="등록 여부를 확인하지 못했어요">
+        <Line surface="anchor-unknown" tone="idle" title="등록 여부 확인 불가">
           <span className="block">최근 등록 · {when(latestRecord)}</span>
-          <span className="block text-zinc-600">내려받을 때 이 리포트와 맞춰 봐요.</span>
+          <span className="block text-zinc-600">파일을 내려받을 때 현재 리포트와 대조합니다.</span>
         </Line>
       );
     }
     return (
-      <Line surface="anchor-idle" tone="idle" title="아직 체인에 등록되지 않았어요">
-        처음 내려받을 때 계산 근거와 파일을 한 번에 등록해요.
+      <Line surface="anchor-idle" tone="idle" title="체인 미등록">
+        최초 내려받기 시 계산 근거와 파일의 검증값을 함께 등록합니다.
       </Line>
     );
   })();
@@ -218,12 +218,12 @@ function BundleSheet({ bundle }: { bundle: ReportBundleState }) {
   const { phase, record, error, sheetOpen, awaitingConfirm, confirm, retry, closeSheet } = bundle;
   const running = bundleInFlight(phase);
   const title = phase === "anchored"
-    ? "체인에 등록됐어요"
+    ? "체인 등록 완료"
     : phase === "failed"
-      ? "등록하지 못했어요"
+      ? "등록 실패"
       : running
-        ? "체인에 등록하고 있어요"
-        : "신고 자료를 내려받을 수 있어요";
+        ? "체인 등록 중"
+        : "신고 자료 내려받기 가능";
   const step = activeStep(phase);
 
   return (
@@ -254,7 +254,7 @@ function BundleSheet({ bundle }: { bundle: ReportBundleState }) {
             </div>
           ) : phase === "failed" ? (
             <p className="rounded-card border border-red-200 bg-red-50 p-3 text-sm leading-6 text-red-900">
-              {error ?? "체인에 등록하지 못했어요."}
+              {error ?? "체인 등록에 실패했습니다."}
             </p>
           ) : (
             <ol className="space-y-2">
@@ -271,7 +271,7 @@ function BundleSheet({ bundle }: { bundle: ReportBundleState }) {
           )}
         </div>
         <p className="mt-4 text-sm leading-6 text-zinc-500">
-          계산 근거 + CSV + XLSX의 해시를 하나의 루트로 묶어 체인에 한 번 등록해요. 금액·지갑 주소는 올라가지 않아요.
+          계산 근거와 CSV·XLSX 파일의 검증값(해시)을 하나로 묶어 체인에 등록합니다. 금액과 지갑 주소는 체인에 저장하지 않습니다.
         </p>
         <div className="mt-5 space-y-2">
           {awaitingConfirm && (
@@ -384,7 +384,7 @@ export function Downloads({
       </p>
       {/* 계산은 무료다 — 결제는 파일을 만들 때만 필요하다. */}
       {!subscribed && (
-        <p className="mt-1 text-sm leading-6 text-zinc-500">계산은 무료예요. 파일로 내려받을 때만 결제해요.</p>
+        <p className="mt-1 text-sm leading-6 text-zinc-500">계산 기능은 무료입니다. 파일을 내려받으려면 플랜 이용이 필요합니다.</p>
       )}
       {blockedReason !== null && (
         <p data-surface="download-blocked" className="mt-3 rounded-card border border-zinc-200 bg-zinc-50 p-3 text-sm leading-6 text-zinc-600">
@@ -468,7 +468,7 @@ export function Downloads({
 
       {gateEnabled && (
         <p className="mt-3 text-xs leading-5 text-zinc-400">
-          계산 근거 + CSV + XLSX의 해시를 하나의 루트로 묶어 체인에 한 번 등록해요. 금액·지갑 주소는 올라가지 않아요.
+          계산 근거와 CSV·XLSX 파일의 검증값(해시)을 하나로 묶어 체인에 등록합니다. 금액과 지갑 주소는 체인에 저장하지 않습니다.
         </p>
       )}
 
