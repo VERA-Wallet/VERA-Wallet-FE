@@ -104,6 +104,11 @@ export function realCxAuthEnabled(): boolean {
 }
 
 let overlayFrame: HTMLIFrameElement | null = null;
+let loginGeneration = 0;
+let cancelPending: (() => void) | null = null;
+function assertActive(attempt: number): void {
+  if (attempt !== loginGeneration) throw new Error("모바일신분증 인증을 취소했습니다.");
+}
 
 /** 전면 고정 오버레이 iframe을 만든다. SDK의 position:fixed 모달이 이 iframe 뷰포트를 기준으로 배치된다. */
 function buildOverlayFrame(): HTMLIFrameElement {
@@ -114,7 +119,7 @@ function buildOverlayFrame(): HTMLIFrameElement {
   frame.setAttribute("aria-label", "OmniOne CX 표준인증창");
   // 자체 <html> 루트를 갖도록 srcless(about:blank) iframe으로 만든다 — 부모 origin을 상속하므로 스크립트 주입이 가능하다.
   // 자산 로딩 동안엔 pointer-events:none으로 두어 투명 오버레이가 호스트의 취소 버튼 클릭을 삼키지 않게 한다(모달 렌더 직전에 auto로 전환).
-  frame.style.cssText = "position:fixed;inset:0;width:100%;height:100%;margin:0;padding:0;border:0;background:transparent;pointer-events:none;z-index:2147483647;";
+  frame.style.cssText = "position:fixed;inset:0;width:100%;height:100%;margin:0;padding:0;border:0;background:transparent;pointer-events:none;z-index:2147483646;";
   document.body.appendChild(frame);
   overlayFrame = frame;
   return frame;
@@ -172,10 +177,14 @@ function teardownOverlay(): void {
 
 /** 진행 중인 CX 인증창을 닫고 오버레이를 제거한다. */
 export function closeCxLogin(): void {
+  loginGeneration += 1;
+  const cancel = cancelPending;
+  cancelPending = null;
+  cancel?.();
   teardownOverlay();
 }
 
-async function resolveOacx(base: string): Promise<OacxModule> {
+async function resolveOacx(base: string, attempt: number): Promise<OacxModule> {
   // 테스트/사전주입 seam: 호스트 window에 OACX가 이미 있으면 iframe 격리를 생략하고 그대로 쓴다.
   if (typeof window !== "undefined" && window.OACX) return window.OACX;
   const frame = buildOverlayFrame();
@@ -186,7 +195,9 @@ async function resolveOacx(base: string): Promise<OacxModule> {
   loadStylesheetInto(doc, `${base}/oacx-ux.css`);
   // vendor 번들이 먼저 있어야 oacx-ux.js가 OACX 전역을 초기화한다 (가이드북 p.23 로드 순서).
   await loadScriptInto(doc, `${base}/oacx-vendor.js`);
+  assertActive(attempt);
   await loadScriptInto(doc, `${base}/oacx-ux.js`);
+  assertActive(attempt);
   const moduleRef = view.OACX;
   if (!moduleRef) throw new Error("OmniOne CX 모듈(OACX)을 초기화하지 못했습니다.");
   return moduleRef;
@@ -196,21 +207,35 @@ async function resolveOacx(base: string): Promise<OacxModule> {
  * 표준인증창 모달을 열고, 사용자가 모바일신분증 제출을 마치면 일회용 CX 토큰을 반환한다.
  * 취소/만료(OACX_CANCLED_SIGNED 등)는 reject로 떨어진다. 성공·실패 어느 경우든 오버레이를 정리한다.
  */
-export async function openCxLogin(): Promise<string> {
+export function openCxLogin(): Promise<string> {
+  closeCxLogin();
+  const attempt = loginGeneration;
+  return new Promise<string>((resolve, reject) => {
+    cancelPending = () => reject(new Error("모바일신분증 인증을 취소했습니다."));
+    void runCxLogin(attempt).then(
+      token => { if (attempt === loginGeneration) { cancelPending = null; resolve(token); } },
+      error => { if (attempt === loginGeneration) { cancelPending = null; reject(error); } },
+    );
+  });
+}
+
+async function runCxLogin(attempt: number): Promise<string> {
   // mock: 실제 표준인증창을 열지 않고 "했다 치고" 일회용 가짜 토큰을 돌려준다. iframe/URL 모두 불필요.
   if (cxMockEnabled()) return MOCK_CX_TOKEN;
   const base = authBase();
   if (!base) throw new Error("OmniOne CX 표준인증창이 설정되지 않았습니다 (NEXT_PUBLIC_OMNIONE_CX_AUTH_URL).");
   let oacx: OacxModule;
   try {
-    oacx = await resolveOacx(base);
+    oacx = await resolveOacx(base, attempt);
+    assertActive(attempt);
   } catch (cause) {
-    teardownOverlay(); // 자산 로드 중 실패한 프레임을 남기지 않는다.
+    if (attempt === loginGeneration) teardownOverlay(); // 다른 시도의 프레임은 건드리지 않는다.
     throw cause;
   }
   return new Promise<string>((resolve, reject) => {
     // 모달이 결과를 돌려주면 오버레이를 먼저 걷어내고 상태를 확정한다(테스트 seam에서는 no-op).
     const settle = (finish: () => void) => {
+      if (attempt !== loginGeneration) return;
       teardownOverlay();
       finish();
     };

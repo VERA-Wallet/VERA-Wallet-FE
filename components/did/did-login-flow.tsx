@@ -1,5 +1,6 @@
 "use client";
 
+import { createPortal } from "react-dom";
 import { QueryClientContext } from "@tanstack/react-query";
 import { useContext, useCallback, useEffect, useRef, useState } from "react";
 import { OpenDidPresentation } from "@/components/did/opendid-presentation";
@@ -174,9 +175,12 @@ export function DidLoginFlow({ authClient = compositionAuthClient, provenance = 
             <p aria-live="polite" className="text-center text-sm text-zinc-600">
               OmniOne CX 인증창에서 모바일신분증을 제출하세요. 데스크톱은 QR 스캔, 모바일은 앱 이동으로 진행됩니다.
             </p>
-            <button className="w-full py-2 text-sm font-medium text-zinc-500" onClick={cancelPresentation} type="button">
-              취소하고 돌아가기
-            </button>
+            {createPortal(
+              <button className="fixed bottom-6 right-4 rounded-xl border border-zinc-300 bg-white px-5 py-3 text-sm font-semibold text-zinc-700 shadow-lg" style={{ zIndex: 2147483647 }} onClick={cancelPresentation} type="button">
+                취소하고 돌아가기
+              </button>,
+              document.body,
+            )}
           </div>
         )}
 

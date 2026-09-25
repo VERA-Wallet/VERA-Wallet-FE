@@ -43,9 +43,8 @@ function label(raw) {
         await page.waitForTimeout(18000);
         const frames = page.frames().length;
         const cancel = page.getByRole('button', { name: '취소하고 돌아가기' });
-        // The CX iframe covers the underlying VeraWallet cancel button. Invoke its handler
-        // to clean up the test; this is not a physical-click usability assertion.
-        if (await cancel.count()) { await cancel.evaluate(el => el.click()); await button.waitFor(); }
+        // Physical click: the host cancel control must stay above the SDK overlay.
+        if (await cancel.count()) { await cancel.click(); await button.waitFor(); }
         await page.waitForTimeout(100);
         report.samples.push({ device: mobile ? 'mobile-emulated' : 'desktop', route: 'cx-open-only', observationMs: Date.now() - started, frames, requests: [...requests], diagnostics: await page.evaluate(() => window.veraPerformance?.snapshot() || []) });
       }
