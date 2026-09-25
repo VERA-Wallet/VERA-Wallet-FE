@@ -121,7 +121,7 @@ test.describe.serial("G001 contract red team", () => {
 
     // 로그인 화면 개편(2026-09-17)으로 제목·"거주국 선택" 문구는 화면에서 빠졌다(mock 전용 접힌 줄의
     // summary 문구로만 남는다). h1·설명문의 상시 노출 텍스트로 대체한다.
-    await checkPage("/login", "지갑 거래를 정리하고", "모바일신분증으로 본인 확인을 해요");
+    await checkPage("/login", "지갑 거래 정리와", "모바일 신분증으로 본인 확인을 진행합니다");
 
     // DID 단계 세션에서만 지갑 연결 화면에 접근할 수 있다.
     const didResponse = await request.post("/api/auth/did/present", { data: { country: "KR" } });

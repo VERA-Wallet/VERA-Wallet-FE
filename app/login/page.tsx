@@ -20,9 +20,9 @@ export default async function LoginPage() {
     <main className="flex min-h-dvh flex-col px-5 py-10">
       <div>
         <h1 className="text-3xl font-bold tracking-tight text-zinc-900">
-          지갑 거래를 정리하고
+          지갑 거래 정리와
           <br />
-          2027년 시행 예정 기준 예상 세금 조회
+          예상 세금 계산
         </h1>
         {/* 설명은 문단이 아니라 두 줄 목록이다. 시작 버튼이 화면 아래에 붙으므로(엄지가 닿는 자리) 제목과 버튼 사이가
             길어지는데, 그 자리를 "이 앱이 뭘 해 주나"와 "왜 신분증인가"가 채운다 — 예전처럼 빈 채로 두지 않는다. */}
